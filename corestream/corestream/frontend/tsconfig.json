@@ -1,0 +1,100 @@
+/**
+ * Configuración de TypeScript para CoreStream Frontend
+ * 
+ * Define cómo TypeScript debe compilar y verificar el código.
+ * Incluye opciones de seguridad de tipo estricta y rutas de importación personalizadas.
+ */
+{
+  "compilerOptions": {
+    /**
+     * Versión de ECMAScript objetivo
+     * ES2020 proporciona soporte para características modernas de JavaScript
+     * (nullish coalescing, optional chaining, etc.)
+     */
+    "target": "ES2020",
+
+    /**
+     * Módulos: define cómo se resuelven las importaciones/exportaciones
+     * ESNext mantiene la sintaxis nativa de módulos ES6
+     */
+    "module": "ESNext",
+
+    /**
+     * Estrategia de resolución de módulos
+     * Bundler: optimizado para herramientas de empaquetación como Vite
+     */
+    "moduleResolution": "bundler",
+
+    /**
+     * Modo estricto: activa verificaciones de tipo más rigurosas
+     * Detecta errores potenciales y promueve código más seguro
+     */
+    "strict": true,
+
+    /**
+     * Permite módulos sin la palabra clave 'default export'
+     * Útil para compatibilidad con módulos CommonJS
+     */
+    "esModuleInterop": true,
+
+    /**
+     * Salta la verificación de tipos de bibliotecas de declaración
+     * Acelera la compilación en proyectos grandes
+     */
+    "skipLibCheck": true,
+
+    /**
+     * Omite la emisión de declaraciones de tipo en archivos .d.ts
+     * Solo TypeScript verifica tipos, Vite se encarga de la transpilación
+     */
+    "emitDeclarationOnly": false,
+
+    /**
+     * Permite importar módulos JSON directamente
+     * Ejemplo: import config from './config.json'
+     */
+    "resolveJsonModule": true,
+
+    /**
+     * Habilita sintaxis de decoradores (si se utiliza)
+     * Útil para frameworks que usan decoradores
+     */
+    "experimentalDecorators": true,
+
+    /**
+     * Rutas de importación personalizadas
+     * Permite usar @ como alias para importar desde src/
+     * Ejemplo: import User from '@/types' -> './src/types'
+     */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    /**
+     * Tipos de definición global
+     * Referencia a tipos de Vite y Node.js
+     */
+    "types": ["vite/client", "node"]
+  },
+
+  /**
+   * Incluir archivos TypeScript del proyecto
+   * Todos los archivos .ts y .vue se verificarán
+   */
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.tsx",
+    "src/**/*.vue"
+  ],
+
+  /**
+   * Excluir archivos de la verificación de tipos
+   * Vite, node_modules y dist no necesitan verificación
+   */
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

@@ -1,0 +1,445 @@
+/**
+ * Estilos Globales para CoreStream
+ * 
+ * Este archivo contiene:
+ * - Importación de Tailwind CSS
+ * - Estilos reset/normalize
+ * - Estilos personalizados globales
+ * - Variables CSS personalizadas
+ * 
+ * Se importa en main.ts para aplicarse a toda la aplicación
+ */
+
+/**
+ * Importación de Tailwind CSS
+ * 
+ * Tailwind proporciona tres directivas:
+ * @tailwind base: estilos base (reset)
+ * @tailwind components: clases de componentes
+ * @tailwind utilities: clases de utilidad
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * ========================================
+ * VARIABLES CSS PERSONALIZADAS
+ * ========================================
+ * 
+ * Define valores reutilizables en estilos personalizados
+ * Soporta cambios dinámicos en tiempo de ejecución
+ */
+:root {
+  /**
+   * Colores corporativos de CoreStream
+   */
+  --color-primary: #2563EB;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-indigo: #6366F1;
+
+  /**
+   * Espaciado consistente
+   */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /**
+   * Transiciones de animación
+   */
+  --transition-fast: 150ms;
+  --transition-normal: 300ms;
+  --transition-slow: 500ms;
+}
+
+/**
+ * ========================================
+ * ESTILOS BASE PERSONALIZADOS
+ * ========================================
+ */
+
+/**
+ * Estilos para el elemento html
+ */
+html {
+  /**
+   * Scroll suave para navegación interna
+   */
+  scroll-behavior: smooth;
+
+  /**
+   * Evita que el contenido se desplace al aparecer/desaparecer scrollbar
+   */
+  scrollbar-gutter: stable;
+}
+
+/**
+ * Estilos para el elemento body
+ */
+body {
+  /**
+   * Fuente por defecto
+   */
+  font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+  /**
+   * Suavizado antialiasing para texto
+   */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /**
+   * Cambio suave de color en transiciones
+   */
+  transition: background-color var(--transition-normal),
+              color var(--transition-normal);
+}
+
+/**
+ * ========================================
+ * ESTILOS DE SCROLLBAR PERSONALIZADO
+ * ========================================
+ * 
+ * Estiliza las barras de desplazamiento para coincidir con el tema
+ */
+
+/**
+ * Scrollbar moderno (navegadores basados en Chromium)
+ */
+::-webkit-scrollbar {
+  /**
+   * Ancho de la scrollbar vertical
+   */
+  width: 8px;
+
+  /**
+   * Alto de la scrollbar horizontal
+   */
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  /**
+   * Fondo de la pista de scrollbar
+   */
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  /**
+   * Estilo del deslizador
+   */
+  background: #CBD5E1;
+  border-radius: 4px;
+
+  /**
+   * Cambio suave de color al pasar el mouse
+   */
+  transition: background-color var(--transition-normal);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  /**
+   * Color más oscuro al pasar mouse
+   */
+  background: #94A3B8;
+}
+
+/**
+ * Modo oscuro: scrollbar más claro
+ */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748B;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE ENLACE (LINKS)
+ * ========================================
+ */
+
+a {
+  /**
+   * Color del enlace: azul primario
+   */
+  color: var(--color-primary);
+
+  /**
+   * Sin subrayado por defecto
+   */
+  text-decoration: none;
+
+  /**
+   * Transición suave de color
+   */
+  transition: color var(--transition-normal);
+}
+
+a:hover {
+  /**
+   * Subrayado al pasar mouse
+   */
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  /**
+   * Outline para accesibilidad
+   */
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE BOTÓN
+ * ========================================
+ */
+
+button,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  /**
+   * Cursor por defecto es pointer
+   */
+  cursor: pointer;
+
+  /**
+   * Borde transparente por defecto
+   */
+  border: none;
+
+  /**
+   * Fuente heredada
+   */
+  font: inherit;
+
+  /**
+   * Transición suave
+   */
+  transition: background-color var(--transition-normal),
+              color var(--transition-normal),
+              box-shadow var(--transition-normal);
+}
+
+button:focus-visible {
+  /**
+   * Outline para accesibilidad
+   */
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE ENTRADA (INPUTS)
+ * ========================================
+ */
+
+input,
+textarea,
+select {
+  /**
+   * Fuente heredada
+   */
+  font: inherit;
+
+  /**
+   * Transición suave
+   */
+  transition: border-color var(--transition-normal),
+              box-shadow var(--transition-normal);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  /**
+   * Outline suave en focus
+   */
+  outline: none;
+
+  /**
+   * Shadow para indicar focus
+   */
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/**
+ * Placeholder estilizado
+ */
+input::placeholder,
+textarea::placeholder {
+  /**
+   * Color gris claro
+   */
+  color: #9CA3AF;
+
+  /**
+   * Opacidad
+   */
+  opacity: 1;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  /**
+   * Color gris oscuro en modo oscuro
+   */
+  color: #6B7280;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE TABLA
+ * ========================================
+ */
+
+table {
+  /**
+   * Colapsar bordes de celda
+   */
+  border-collapse: collapse;
+
+  /**
+   * Ancho completo
+   */
+  width: 100%;
+}
+
+th,
+td {
+  /**
+   * Padding estándar
+   */
+  padding: var(--spacing-md);
+
+  /**
+   * Alineación
+   */
+  text-align: left;
+
+  /**
+   * Borde inferior
+   */
+  border-bottom: 1px solid #E5E7EB;
+}
+
+html.dark th,
+html.dark td {
+  /**
+   * Borde más oscuro en modo oscuro
+   */
+  border-bottom-color: #374151;
+}
+
+th {
+  /**
+   * Fondo gris para encabezados
+   */
+  background-color: #F9FAFB;
+
+  /**
+   * Fuente bold
+   */
+  font-weight: 600;
+}
+
+html.dark th {
+  /**
+   * Fondo oscuro en modo oscuro
+   */
+  background-color: #1F2937;
+
+  /**
+   * Texto claro
+   */
+  color: #F3F4F6;
+}
+
+/**
+ * ========================================
+ * UTILITARIOS PERSONALIZADOS
+ * ========================================
+ */
+
+/**
+ * Clase para ocultar elementos en modo oscuro
+ */
+.hidden-dark {
+  @apply dark:hidden;
+}
+
+/**
+ * Clase para mostrar solo en modo oscuro
+ */
+.dark-only {
+  @apply hidden dark:block;
+}
+
+/**
+ * Clase para borrado suave de contenido
+ */
+.fade-exit {
+  animation: fadeOut var(--transition-normal) ease-out forwards;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/**
+ * Clase para animación de carga
+ */
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/**
+ * Clase para truncar texto a una línea
+ */
+.truncate-line {
+  @apply truncate;
+}
+
+/**
+ * Clase para truncar a múltiples líneas
+ */
+.truncate-lines-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-lines-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

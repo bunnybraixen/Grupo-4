@@ -1,0 +1,40 @@
+# Dependencias
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Producción
+/dist
+/build
+
+# Varios
+.DS_Store
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+*.c9/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Vite
+.vite/
