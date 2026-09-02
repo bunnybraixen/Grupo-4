@@ -1,0 +1,180 @@
+# =====================================================================
+# DOCKER COMPOSE PARA CORESTREAM
+# =====================================================================
+# Orquestación de servicios para la plataforma de gestión de proyectos
+# Incluye: PostgreSQL, Redis, Backend (FastAPI) y Frontend (Vue.js)
+# =====================================================================
+
+version: '3.9'
+
+services:
+  # ===================================================================
+  # SERVICIO: PostgreSQL 15
+  # ===================================================================
+  # Base de datos principal para almacenar:
+  # - Aplicaciones y épicas
+  # - Tickets y subtareas
+  # - Usuarios y asignaciones
+  # - Eventos de actividad
+  # ===================================================================
+  postgres:
+    image: postgres:15
+    container_name: corestream-postgres
+    environment:
+      # Nombre de la base de datos a crear
+      POSTGRES_DB: corestream
+      # Usuario con permisos administrativos
+      POSTGRES_USER: corestream
+      # Contraseña para el usuario
+      POSTGRES_PASSWORD: corestream
+    ports:
+      # Puerto expuesto para conexiones externas
+      - "5432:5432"
+    volumes:
+      # Persistencia de datos entre reinicios del contenedor
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      # Red interna de Docker Compose
+      - corestream-network
+    # Healthcheck para verificar disponibilidad del servicio
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corestream"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================================================================
+  # SERVICIO: Redis 7 Alpine
+  # ===================================================================
+  # Cache en memoria para:
+  # - Sesiones de usuarios
+  # - Datos en caché (épicas, tickets, usuarios)
+  # - Cola de tareas asincrónicas
+  # - Limpieza automática de datos expirados
+  # ===================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: corestream-redis
+    ports:
+      # Puerto para conexiones al cache
+      - "6379:6379"
+    networks:
+      - corestream-network
+    # Comando para persistencia (AOF - Append Only File)
+    command: redis-server --appendonly yes
+    volumes:
+      # Persistencia de datos de Redis
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===================================================================
+  # SERVICIO: Backend (FastAPI con Uvicorn)
+  # ===================================================================
+  # API REST que gestiona:
+  # - Lógica de negocio de épicas y tickets
+  # - Autenticación y autorización
+  # - Integración con PostgreSQL y Redis
+  # - WebSockets para notificaciones en tiempo real
+  # ===================================================================
+  backend:
+    build:
+      # Ubicación del Dockerfile para construir la imagen
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: corestream-backend
+    ports:
+      # Puerto de la API REST
+      - "8000:8000"
+    depends_on:
+      postgres:
+        # Espera a que PostgreSQL esté listo antes de iniciar
+        condition: service_healthy
+      redis:
+        # Espera a que Redis esté listo antes de iniciar
+        condition: service_healthy
+    environment:
+      # URL de conexión a PostgreSQL desde el contenedor backend
+      DATABASE_URL: postgresql://corestream:corestream@postgres:5432/corestream
+      # URL de conexión a Redis desde el contenedor backend
+      REDIS_URL: redis://redis:6379
+      # Modo de desarrollo habilitado
+      DEBUG: "true"
+      # Clave secreta para firmar JWT tokens
+      SECRET_KEY: "your-secret-key-change-in-production"
+    volumes:
+      # Montaje de código fuente para desarrollo con hot-reload
+      - ./backend:/app
+    networks:
+      - corestream-network
+    # Comando para iniciar el servidor con soporte para recargas
+    command: >
+      uvicorn app.main:app 
+      --host 0.0.0.0 
+      --port 8000 
+      --reload
+      --reload-dirs /app
+    # Reintentos automáticos si la aplicación falla
+    restart: unless-stopped
+
+  # ===================================================================
+  # SERVICIO: Frontend (Vue.js 3 + Vite)
+  # ===================================================================
+  # Aplicación web con:
+  # - Vista de Constructor (Admin) para gestionar épicas y tickets
+  # - Vista de Workbench (Desarrollador) para trabajar en tickets
+  # - Paneles deslizantes, modales y notificaciones
+  # - Conectividad con Backend via API REST
+  # ===================================================================
+  frontend:
+    build:
+      # Ubicación del Dockerfile para construir la imagen
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: corestream-frontend
+    ports:
+      # Puerto del servidor de desarrollo Vite
+      - "5173:5173"
+    depends_on:
+      # El frontend depende del backend estar disponible
+      - backend
+    volumes:
+      # Montaje de código fuente para desarrollo con hot-module-replacement
+      - ./frontend:/app
+      # Excluir node_modules del montaje para mejor performance
+      - /app/node_modules
+    networks:
+      - corestream-network
+    # Comando para iniciar servidor de desarrollo Vite
+    command: npm run dev -- --host 0.0.0.0
+    # Reintentos automáticos si la aplicación falla
+    restart: unless-stopped
+    environment:
+      # URL base para llamadas API REST
+      VITE_API_BASE_URL: http://localhost:8000
+      # Habilitar modo desarrollo
+      NODE_ENV: development
+
+# ===================================================================
+# CONFIGURACIÓN DE REDES
+# ===================================================================
+networks:
+  # Red personalizada que permite comunicación entre contenedores
+  # Todos los servicios pueden referenciarse por su nombre de servicio
+  corestream-network:
+    driver: bridge
+
+# ===================================================================
+# CONFIGURACIÓN DE VOLÚMENES
+# ===================================================================
+volumes:
+  # Volumen para persistencia de datos de PostgreSQL
+  # Se mantiene entre reinicios de contenedores
+  postgres-data:
+    driver: local
+  # Volumen para persistencia de datos de Redis
+  redis-data:
+    driver: local

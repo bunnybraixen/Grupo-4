@@ -18,7 +18,7 @@
     "chart.js": "^4.0.0",
     "vue-chartjs": "^5.0.0",
     "@vueuse/core": "^10.0.0",
-    "vuedraggable": "^next",
+    "vuedraggable": "^4.1.0",
     "canvas-confetti": "^1.9.0"
   },
   "devDependencies": {
