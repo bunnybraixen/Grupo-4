@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.git
+.vscode
+cypress/videos
+cypress/screenshots
+*.log

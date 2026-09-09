@@ -1,0 +1,684 @@
+/**
+ * Estilos Globales para CoreStream
+ * 
+ * Este archivo contiene:
+ * - Importación de Tailwind CSS
+ * - Estilos reset/normalize
+ * - Estilos personalizados globales
+ * - Variables CSS personalizadas
+ * 
+ * Se importa en main.ts para aplicarse a toda la aplicación
+ */
+ 
+/**
+ * Importación de Tailwind CSS
+ * 
+ * Tailwind proporciona tres directivas:
+ * @tailwind base: estilos base (reset)
+ * @tailwind components: clases de componentes
+ * @tailwind utilities: clases de utilidad
+ */
+/**
+ * Nunito se auto-hospeda (src/assets/fonts) en vez de cargarse desde
+ * fonts.googleapis.com: la CSP del contenedor (frontend/nginx/default.conf)
+ * es intencionalmente estricta (style-src/font-src 'self') y no debe abrirse
+ * a dominios externos de Google solo por una tipografía.
+ */
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('../fonts/nunito-300.woff') format('woff');
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/nunito-400.woff') format('woff');
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/nunito-600.woff') format('woff');
+}
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/nunito-700.woff') format('woff');
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * ============================================================
+ * SISTEMA DE TEMAS — CoreStream
+ * Paleta: Alloxentric Quick Style Guide (Nov 2020)
+ * ============================================================
+ *
+ * Sistema de temas con soporte completo para modo claro y oscuro.
+ * Las variables se cambian vía data-theme="light|dark" en <html>
+ * Modo claro es el default (como muestra el manual de usuario)
+ */
+
+/**
+ * ========================================
+ * COLORES BASE (invariantes entre temas)
+ * ========================================
+ * Estos colores NO cambian entre temas
+ */
+:root {
+  /* Lime (Corporate Primary) */
+  --lime:     #ADEA4B;
+  --lime-90:  #B5EC5D;
+  --lime-80:  #BDEE6F;
+  --lime-70:  #C6F081;
+  --lime-60:  #CEF293;
+  --lime-50:  #D6F4A5;
+  --lime-40:  #DEF7B7;
+  --lime-30:  #E6F9C9;
+  --lime-20:  #EFFBDB;
+  --lime-10:  #F7FDED;
+
+  /* Teal (Secondary) */
+  --teal:         #0A8A85;
+  --teal-90:      #1FBEBA;
+  --teal-80:      #38C5C1;
+  --teal-70:      #51CDC9;
+  --teal-60:      #6AD4D1;
+  --teal-50:      #82DBD8;
+  --teal-40:      #9BE2E0;
+  --teal-30:      #B4E9E8;
+  --teal-20:      #CDF1F0;
+  --teal-10:      #E6F8F7;
+  --dark-teal:    #046B74;
+  --darker-teal:  #049A95;
+
+  /* Dark Gray */
+  --dark-gray:     #142730;
+  --dark-gray-90:  #2B3D45;
+  --dark-gray-80:  #435259;
+  --dark-gray-70:  #5A686E;
+  --dark-gray-60:  #727D83;
+  --dark-gray-50:  #899397;
+  --dark-gray-40:  #A1A9AC;
+  --dark-gray-30:  #B8BEC1;
+  --dark-gray-20:  #D0D4D6;
+  --dark-gray-10:  #E7E9EA;
+
+  /* Accent Warm */
+  --accent-warm-1: #C1108B;
+  --accent-warm-2: #D07AB8;
+  --accent-warm-3: #E8B4DA;
+
+  /* Accent Cold */
+  --accent-cold-1: #1106C6;
+  --accent-cold-2: #2058D8;
+  --accent-cold-3: #82A6F7;
+
+  /* Legacy aliases for backward compatibility */
+  --color-primary: #ADEA4B;
+  --color-success: #06B7B2;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  /**
+   * Espaciado consistente
+   */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /**
+   * Transiciones de animación
+   */
+  --transition-fast: 150ms;
+  --transition-normal: 300ms;
+  --transition-slow: 500ms;
+}
+
+/**
+ * ========================================
+ * MODO CLARO (default)
+ * Coincide con el manual de usuario
+ * ========================================
+ */
+:root,
+[data-theme="light"] {
+  /* Fondos */
+  --bg-app:          #F5F7FA;
+  --bg-sidebar:      #FFFFFF;
+  --bg-header:       #FFFFFF;
+  --bg-card:         #FFFFFF;
+  --bg-card-hover:   #F0F4F8;
+  --bg-input:        #FFFFFF;
+  --bg-panel:        #F5F7FA;
+  --bg-modal:        #FFFFFF;
+  --bg-dropdown:     #FFFFFF;
+  --bg-tag:          #F0F4F8;
+
+  /* Texto */
+  --text-primary:    #142730;
+  --text-secondary:  #5A686E;
+  --text-muted:      #899397;
+  --text-inverse:    #FFFFFF;
+  --text-on-lime:    #142730;
+  --text-on-teal:    #FFFFFF;
+
+  /* Bordes y separadores */
+  --border-color:    #D0D4D6;
+  --border-subtle:   #E7E9EA;
+  --border-focus:    #06B7B2;
+
+  /* Sombras */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.10);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.12);
+
+  /* Estados de tickets */
+  --status-todo-bg:      #E7E9EA;
+  --status-todo-text:    #5A686E;
+  --status-progress-bg:  #2058D8;
+  --status-progress-text:#FFFFFF;
+  --status-blocked-bg:   #B85398;
+  --status-blocked-text: #FFFFFF;
+  --status-done-bg:      #ADEA4B;
+  --status-done-text:    #142730;
+
+  /* Prioridades */
+  --priority-low-bg:    #E7E9EA;
+  --priority-low-text:  #5A686E;
+  --priority-med-bg:    #CDF1F0;
+  --priority-med-text:  #046B74;
+  --priority-high-bg:   #DEF7B7;
+  --priority-high-text: #142730;
+  --priority-urg-bg:    #C1108B;
+  --priority-urg-text:  #FFFFFF;
+
+  /* Sidebar */
+  --sidebar-item-hover:    #F0F4F8;
+  --sidebar-item-active:   #E6F8F7;
+  --sidebar-item-active-border: #06B7B2;
+
+  /* Tabs */
+  --tab-active-color:      #06B7B2;
+  --tab-active-border:     #06B7B2;
+  --tab-inactive-color:    #899397;
+
+  /* Scrollbar */
+  --scrollbar-thumb:       #B8BEC1;
+  --scrollbar-thumb-hover: #A1A9AC;
+}
+
+/**
+ * ========================================
+ * MODO OSCURO
+ * Paleta Alloxentric completa
+ * ========================================
+ */
+[data-theme="dark"] {
+  /* Teal más claro en modo oscuro para mantener contraste sobre fondos oscuros */
+  --teal:            #38C5C1;
+
+  /* Fondos */
+  --bg-app:          #142730;
+  --bg-sidebar:      #2B3D45;
+  --bg-header:       #2B3D45;
+  --bg-card:         #435259;
+  --bg-card-hover:   #5A686E;
+  --bg-input:        #435259;
+  --bg-panel:        #2B3D45;
+  --bg-modal:        #2B3D45;
+  --bg-dropdown:     #435259;
+  --bg-tag:          #5A686E;
+
+  /* Texto */
+  --text-primary:    #E7E9EA;
+  --text-secondary:  #A1A9AC;
+  --text-muted:      #727D83;
+  --text-inverse:    #142730;
+  --text-on-lime:    #142730;
+  --text-on-teal:    #FFFFFF;
+
+  /* Bordes y separadores */
+  --border-color:    #5A686E;
+  --border-subtle:   #435259;
+  --border-focus:    #06B7B2;
+
+  /* Sombras */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.5);
+
+  /* Estados de tickets */
+  --status-todo-bg:      #5A686E;
+  --status-todo-text:    #E7E9EA;
+  --status-progress-bg:  #2058D8;
+  --status-progress-text:#FFFFFF;
+  --status-blocked-bg:   #B85398;
+  --status-blocked-text: #FFFFFF;
+  --status-done-bg:      #ADEA4B;
+  --status-done-text:    #142730;
+
+  /* Prioridades */
+  --priority-low-bg:    #5A686E;
+  --priority-low-text:  #E7E9EA;
+  --priority-med-bg:    #2B3D45;
+  --priority-med-text:  #9BE2E0;
+  --priority-high-bg:   #142730;
+  --priority-high-text: #C6F081;
+  --priority-urg-bg:    #C1108B;
+  --priority-urg-text:  #FFFFFF;
+
+  /* Sidebar */
+  --sidebar-item-hover:    #435259;
+  --sidebar-item-active:   #142730;
+  --sidebar-item-active-border: #ADEA4B;
+
+  /* Tabs */
+  --tab-active-color:      #ADEA4B;
+  --tab-active-border:     #ADEA4B;
+  --tab-inactive-color:    #727D83;
+
+  /* Scrollbar */
+  --scrollbar-thumb:       #6AD4D1;
+  --scrollbar-thumb-hover: #82DBD8;
+}
+
+/**
+ * ========================================
+ * ESTILOS BASE PERSONALIZADOS
+ * ========================================
+ */
+
+/**
+ * Estilos para el elemento html
+ */
+html {
+  /**
+   * Scroll suave para navegación interna
+   */
+  scroll-behavior: smooth;
+
+  /**
+   * Evita que el contenido se desplace al aparecer/desaparecer scrollbar
+   */
+  scrollbar-gutter: stable;
+}
+
+/**
+ * Estilos para el elemento body
+ */
+body {
+  /**
+   * Fuente por defecto: Nunito (Google Font)
+   */
+  font-family: 'Nunito', Calibri, sans-serif;
+
+  /**
+   * Suavizado antialiasing para texto
+   */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /**
+   * Cambio suave de color en transiciones
+   */
+  transition: background-color var(--transition-normal),
+              color var(--transition-normal);
+}
+
+/**
+ * ========================================
+ * ESTILOS DE SCROLLBAR PERSONALIZADO
+ * ========================================
+ * 
+ * Estiliza las barras de desplazamiento para coincidir con el tema
+ */
+
+/**
+ * Scrollbar moderno (navegadores basados en Chromium)
+ */
+::-webkit-scrollbar {
+  /**
+   * Ancho de la scrollbar vertical
+   */
+  width: 8px;
+
+  /**
+   * Alto de la scrollbar horizontal
+   */
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  /**
+   * Fondo de la pista de scrollbar
+   */
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  /**
+   * Estilo del deslizador (dark-gray-30)
+   */
+  background: #B8BEC1;
+  border-radius: 4px;
+
+  /**
+   * Cambio suave de color al pasar el mouse
+   */
+  transition: background-color var(--transition-normal);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  /**
+   * Color más oscuro al pasar mouse (dark-gray-40)
+   */
+  background: #A1A9AC;
+}
+
+/**
+ * Modo oscuro: scrollbar más claro
+ */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/**
+ * ========================================
+ * ESTILOS DE ENLACE (LINKS)
+ * ========================================
+ */
+
+a {
+  /**
+   * Color del enlace: azul primario
+   */
+  color: var(--color-primary);
+
+  /**
+   * Sin subrayado por defecto
+   */
+  text-decoration: none;
+
+  /**
+   * Transición suave de color
+   */
+  transition: color var(--transition-normal);
+}
+
+a:hover {
+  /**
+   * Subrayado al pasar mouse
+   */
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  /**
+   * Outline para accesibilidad
+   */
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE BOTÓN
+ * ========================================
+ */
+
+button,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  /**
+   * Cursor por defecto es pointer
+   */
+  cursor: pointer;
+
+  /**
+   * Borde transparente por defecto
+   */
+  border: none;
+
+  /**
+   * Fuente heredada
+   */
+  font: inherit;
+
+  /**
+   * Transición suave
+   */
+  transition: background-color var(--transition-normal),
+              color var(--transition-normal),
+              box-shadow var(--transition-normal);
+}
+
+button:focus-visible {
+  /**
+   * Outline para accesibilidad
+   */
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/**
+ * ========================================
+ * ESTILOS DE ENTRADA (INPUTS)
+ * ========================================
+ */
+
+input,
+textarea,
+select {
+  /**
+   * Fuente heredada
+   */
+  font: inherit;
+
+  /**
+   * Transición suave
+   */
+  transition: border-color var(--transition-normal),
+              box-shadow var(--transition-normal);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  /**
+   * Outline suave en focus
+   */
+  outline: none;
+
+  /**
+   * Shadow para indicar focus (lima brand color)
+   */
+  box-shadow: 0 0 0 3px rgba(173, 234, 75, 0.1);
+}
+
+/**
+ * Placeholder estilizado
+ */
+input::placeholder,
+textarea::placeholder {
+  /**
+   * Color gris claro (dark-gray-40)
+   */
+  color: #A1A9AC;
+
+  /**
+   * Opacidad
+   */
+  opacity: 1;
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  /**
+   * Color gris oscuro en modo oscuro (dark-gray-60)
+   */
+  color: var(--text-muted);
+}
+
+/**
+ * ========================================
+ * ESTILOS DE TABLA
+ * ========================================
+ */
+
+table {
+  /**
+   * Colapsar bordes de celda
+   */
+  border-collapse: collapse;
+
+  /**
+   * Ancho completo
+   */
+  width: 100%;
+}
+
+th,
+td {
+  /**
+   * Padding estándar
+   */
+  padding: var(--spacing-md);
+
+  /**
+   * Alineación
+   */
+  text-align: left;
+
+  /**
+   * Borde inferior (dark-gray-20)
+   */
+  border-bottom: 1px solid #D0D4D6;
+}
+
+[data-theme="dark"] th,
+[data-theme="dark"] td {
+  /**
+   * Borde más oscuro en modo oscuro (dark-gray-70)
+   */
+  border-bottom-color: var(--border-color);
+}
+
+th {
+  /**
+   * Fondo gris claro para encabezados
+   */
+  background-color: var(--dark-gray-10);
+
+  /**
+   * Fuente bold
+   */
+  font-weight: 600;
+}
+
+[data-theme="dark"] th {
+  /**
+   * Fondo oscuro en modo oscuro (dark-gray-80)
+   */
+  background-color: var(--dark-gray-80);
+
+  /**
+   * Texto claro (dark-gray-10)
+   */
+  color: var(--text-primary);
+}
+
+/**
+ * ========================================
+ * UTILITARIOS PERSONALIZADOS
+ * ========================================
+ */
+
+/**
+ * Clase para ocultar elementos en modo oscuro
+ */
+.hidden-dark {
+  @apply dark:hidden;
+}
+
+/**
+ * Clase para mostrar solo en modo oscuro
+ */
+.dark-only {
+  @apply hidden dark:block;
+}
+
+/**
+ * Clase para borrado suave de contenido
+ */
+.fade-exit {
+  animation: fadeOut var(--transition-normal) ease-out forwards;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/**
+ * Clase para animación de carga
+ */
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/**
+ * Clase para truncar texto a una línea
+ */
+.truncate-line {
+  @apply truncate;
+}
+
+/**
+ * Clase para truncar a múltiples líneas
+ */
+.truncate-lines-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.truncate-lines-3 {
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

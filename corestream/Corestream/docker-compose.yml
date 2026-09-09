@@ -1,0 +1,157 @@
+# =====================================================================
+# CoreStream — perfil de PRODUCCIÓN
+# =====================================================================
+# Pensado para "docker compose up -d --build" en la VM, sin nada más.
+#
+# Postgres y Redis NO corren aquí: esta VM ya tiene instancias compartidas
+# corriendo para otros proyectos (contenedores `db-postgre` y
+# `directa-redis-1`) — CoreStream se conecta a esas mismas, con su propia
+# base de datos y usuario dentro de esa instancia (ver docs/DEPLOYMENT.md).
+# Levantar un Postgres/Redis propio aquí sería duplicar infraestructura que
+# ya existe en la máquina, sin ningún beneficio real.
+#
+# Frontend y backend publican sus puertos directo en 0.0.0.0 — así lo hace
+# cada proyecto en esta VM (no hay Nginx local; el enrutamiento público es
+# externo a esta máquina). Ver docs/DEPLOYMENT.md para el checklist y los
+# puertos exactos a comunicarle a sistemas.
+#
+# Variables: copiar .env.example a .env en este mismo directorio y rellenar
+# ANTES de levantar. Los valores por defecto de abajo son placeholders
+# obvios a propósito — con ENVIRONMENT=production (el default de este
+# fichero), app/config.py aborta el arranque si SECRET_KEY sigue siendo un
+# placeholder, si DEBUG=true, o si ALLOWED_ORIGINS es "*".
+#
+# Para desarrollo local (bind mounts, --reload, servidor de Vite, Postgres/
+# Redis propios y descartables — docker-compose.dev.yml los define):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# =====================================================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: corestream-backend
+    environment:
+      # Postgres/Redis compartidos de la VM (contenedores db-postgre /
+      # directa-redis-1) — no instancias propias. DATABASE_URL/REDIS_URL
+      # vienen completas desde .env porque el host y las credenciales son
+      # los de esa instancia compartida, no algo que este fichero componga.
+      DATABASE_URL: ${DATABASE_URL:-CAMBIAR-en-.env}
+      REDIS_URL: ${REDIS_URL:-CAMBIAR-en-.env}
+      SECRET_KEY: ${SECRET_KEY:-CAMBIAR-en-.env-openssl-rand-hex-32}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://CAMBIAR-en-.env}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_NAME: ${APP_NAME:-CoreStream API}
+      AZURE_TRANSLATOR_KEY: ${AZURE_TRANSLATOR_KEY:-}
+      AZURE_TRANSLATOR_REGION: ${AZURE_TRANSLATOR_REGION:-eastus}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+    ports:
+      # 0.0.0.0, igual que el resto de proyectos en esta VM (no hay Nginx
+      # local — el enrutamiento público es externo a esta máquina). Puerto
+      # 8010 por defecto porque 8000 ya lo usa otro proyecto en la misma VM.
+      - "0.0.0.0:${BACKEND_PORT:-8010}:8000"
+    volumes:
+      - storage-data:/app/storage
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # /api/health comprueba Postgres y Redis de verdad (no solo que el
+      # proceso responda) y devuelve 503 si alguno falla. python3 -c en vez
+      # de curl porque la imagen (python:3.11-slim) no trae curl instalado.
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://localhost:8000/api/health', timeout=3).status == 200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: corestream-frontend
+    depends_on:
+      - backend
+    ports:
+      - "0.0.0.0:${FRONTEND_PORT:-8080}:80"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://127.0.0.1:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: corestream-worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-CAMBIAR-en-.env}
+      REDIS_URL: ${REDIS_URL:-CAMBIAR-en-.env}
+      SECRET_KEY: ${SECRET_KEY:-CAMBIAR-en-.env-openssl-rand-hex-32}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    command: python -m arq app.worker.settings.WorkerSettings
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # ARQ escribe la clave de app.redis_client.ARQ_HEALTH_CHECK_KEY cada
+      # health_check_interval segundos (fijado a 30s en app/worker/settings.py;
+      # el valor por defecto de ARQ es 3600s, demasiado lento para esto). Si
+      # el worker se cuelga, deja de refrescarla y expira sola.
+      test:
+        - CMD
+        - python3
+        - -c
+        - import os,redis,sys; sys.exit(0 if redis.from_url(os.environ['REDIS_URL']).exists('corestream:arq:queue:health-check') else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  storage-data:
+    driver: local

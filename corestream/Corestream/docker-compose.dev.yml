@@ -1,0 +1,123 @@
+# =====================================================================
+# CoreStream — overlay de DESARROLLO
+# =====================================================================
+# Se combina con docker-compose.yml, no lo sustituye:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Restaura el flujo de desarrollo de antes de la fase 6: bind mounts con
+# recarga en caliente, servidor de Vite (no la build de Nginx). A
+# diferencia de producción (que usa el Postgres/Redis YA COMPARTIDOS de la
+# VM — ver docker-compose.yml), en desarrollo local sí levanta sus propios
+# Postgres/Redis descartables, publicados en 127.0.0.1 por comodidad
+# (cliente de BD, redis-cli desde el host). No usar esto para desplegar —
+# para eso está solo docker-compose.yml.
+# =====================================================================
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: corestream-postgres-dev
+    environment:
+      POSTGRES_DB: corestream
+      POSTGRES_USER: corestream
+      POSTGRES_PASSWORD: corestream
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corestream"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: corestream-redis-dev
+    # Sin --requirepass: más simple para desarrollo local. Los tests de
+    # integración (tests/integration/conftest.py) esperan Redis sin auth.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV_DEPS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://corestream:corestream@postgres:5432/corestream
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: clave-de-desarrollo-no-usar-en-produccion-0000000000
+      ENVIRONMENT: development
+      DEBUG: "true"
+      # Leídas por tests/integration/conftest.py: la suite de integración
+      # corre dentro de este contenedor (docker compose exec backend
+      # pytest ...) y necesita los hostnames de la red bridge, no localhost.
+      TEST_DATABASE_URL: postgresql+asyncpg://corestream:corestream@postgres:5432/corestream_test
+      TEST_REDIS_URL: redis://redis:6379/15
+    volumes:
+      - ./backend:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+    # Puerto fijo a 8000 aquí (distinto del default de producción, 8010):
+    # docker-compose.yml también publica su propio ${BACKEND_PORT:-8010},
+    # así que ambos coexisten sin chocar (host ports distintos). Se
+    # mantiene 8000 en dev por costumbre.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    build:
+      dockerfile: Dockerfile
+      args:
+        INSTALL_DEV_DEPS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://corestream:corestream@postgres:5432/corestream
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: clave-de-desarrollo-no-usar-en-produccion-0000000000
+      ENVIRONMENT: development
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "127.0.0.1:5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://127.0.0.1:5173/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local

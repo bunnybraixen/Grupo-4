@@ -1,0 +1,16 @@
+# Dependencias de desarrollo y CI.
+#
+# Nota: los tests de integración (tests/integration) necesitan además
+# psycopg2-binary y httpx, que ya vienen en requirements.txt porque la
+# aplicación los usa en producción.
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+
+# SQLite en memoria para los tests unitarios
+aiosqlite==0.22.1
+
+# Linting y tipos
+ruff==0.16.1
+mypy==2.3.0

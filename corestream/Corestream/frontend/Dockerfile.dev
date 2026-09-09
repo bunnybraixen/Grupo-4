@@ -1,0 +1,28 @@
+# =====================================================================
+# DOCKERFILE PARA FRONTEND — DESARROLLO (servidor de Vite con HMR)
+# =====================================================================
+# Este es el Dockerfile que se usaba en ./Dockerfile antes de la fase 6.
+# Para producción se usa ./Dockerfile (build estático + Nginx); este solo
+# lo usa docker-compose.dev.yml para el flujo de desarrollo local.
+# =====================================================================
+
+FROM node:20-bookworm
+
+WORKDIR /app
+
+ENV NODE_ENV=development
+
+COPY package*.json ./
+
+# Limpiar cache de npm y node_modules para evitar problemas de binding nativo
+RUN npm cache clean --force && rm -rf node_modules
+
+# rolldown es una optional dependency que necesita forzarse en Docker
+RUN npm ci --force
+
+COPY . .
+
+EXPOSE 5173
+
+# --host 0.0.0.0 permite acceso desde fuera del contenedor
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

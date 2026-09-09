@@ -1,0 +1,56 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["alembic/versions", "venv", ".venv"]
+
+[tool.ruff.lint]
+# Conjunto deliberadamente acotado: reglas que atrapan errores reales, no estilo.
+# El árbol tiene ~776 avisos con la configuración por defecto de ruff, casi todos
+# de modernización de sintaxis (UP*) y anotaciones. Bloquear el CI con eso hoy
+# solo conseguiría que se ignore el CI. Se irá ampliando por bloques.
+select = [
+    "F",      # pyflakes: imports sin usar, variables sin definir, f-strings vacías
+    "E4",     # imports mal colocados
+    "E7",     # comparaciones y sentencias sospechosas
+    "E9",     # errores de sintaxis y de runtime
+    "I",      # orden de imports
+    "ASYNC",  # bloqueos del event loop dentro de funciones async
+    "B",      # bugbear: trampas comunes
+    "PLE",    # errores de pylint (no estilo)
+    "RUF100", # noqa que ya no aplican
+]
+
+ignore = [
+    # FastAPI usa llamadas en argumentos por defecto por diseño:
+    # def endpoint(db = Depends(get_db)). No es el antipatrón que B008 persigue.
+    "B008",
+
+    # 73 ocurrencias de `raise HTTPException(...)` dentro de un `except` sin
+    # `from exc`, lo que rompe el encadenado de trazas. Se aborda en la fase 8
+    # (observabilidad), donde toca revisar el manejo de errores de todas formas:
+    # arreglarlo ahora sería un diff enorme sin ganancia inmediata.
+    "B904",
+]
+
+# Nota sobre ASYNC230/ASYNC240: hay 11 llamadas bloqueantes a disco dentro de
+# funciones async (subida y descarga de ficheros, traducción de documentos).
+# Cada una congela el event loop mientras dura la E/S. Están marcadas una a una
+# con `# noqa: ASYNC230 — deuda conocida (plan fase 7.2)` en lugar de desactivar
+# la regla, para que cualquier violación NUEVA siga rompiendo el CI.
+
+[tool.ruff.lint.per-file-ignores]
+# Los tests importan la configuración antes que la aplicación a propósito, y el
+# conftest fija variables de entorno antes de los imports.
+"tests/**" = ["E402"]
+"tests/integration/conftest.py" = ["E402", "F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+# Se irá endureciendo módulo a módulo; hoy el árbol no está anotado por completo.
+check_untyped_defs = false
+warn_unused_ignores = true
+exclude = ["alembic/", "venv/", ".venv/"]
