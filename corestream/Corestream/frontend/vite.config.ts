@@ -11,6 +11,18 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { existsSync } from 'node:fs'
+
+/**
+ * WEB-08: destino del proxy hacia el backend.
+ * - Dentro de Docker (existe /.dockerenv): 'localhost' apunta al propio
+ *   contenedor de Vite y el proxy daba ECONNREFUSED, así que usamos el
+ *   nombre del servicio 'backend' de docker-compose en la red interna.
+ * - Fuera de Docker (dev local): http://localhost:8000 como siempre.
+ */
+const BACKEND_TARGET = existsSync('/.dockerenv')
+  ? 'http://backend:8000'
+  : 'http://localhost:8000'
 
 export default defineConfig({
   // Plugins: activamos el plugin de Vue 3 para procesar componentes .vue
@@ -40,17 +52,18 @@ export default defineConfig({
        * changeOrigin: true cambia el header 'Host' de la solicitud para que coincida con el servidor destino
        */
       '/api': {
-        target: 'http://localhost:8000',
+        target: BACKEND_TARGET,
         changeOrigin: true
       },
 
       /**
        * WebSocket proxy para comunicación en tiempo real
-       * Redirige conexiones ws://localhost:5173/ws a ws://localhost:8000/ws
+       * Redirige conexiones ws://localhost:5173/ws al backend (misma lógica
+       * de detección de entorno que /api)
        * ws: true activa el soporte de WebSocket
        */
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: BACKEND_TARGET.replace(/^http/, 'ws'),
         changeOrigin: true,
         ws: true
       }

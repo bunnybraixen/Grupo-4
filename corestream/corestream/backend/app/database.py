@@ -40,6 +40,16 @@ async_session_maker = async_sessionmaker(
 Base = declarative_base()
 
 
+def get_session_maker() -> async_sessionmaker:
+    """
+    WEB-08: devuelve la fábrica de sesiones asincrónicas.
+
+    Los scripts (p. ej. app/scripts/create_admin.py) la importan con este
+    nombre; antes no existía y el bootstrap del ADMIN fallaba con ImportError.
+    """
+    return async_session_maker
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Generador asincrónico que proporciona sesiones de base de datos para inyección de dependencias.

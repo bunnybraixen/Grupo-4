@@ -7,6 +7,7 @@ Maneja operaciones CRUD para aplicaciones del sistema:
 - Requiere permisos de ADMIN para crear, actualizar y eliminar
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -116,7 +117,7 @@ async def create_application(
     description="Recupera los detalles completos de una aplicación, incluyendo conteos"
 )
 async def get_application(
-    app_id: int,
+    app_id: UUID,
     current_user: Application = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> ApplicationResponse:
@@ -158,7 +159,7 @@ async def get_application(
     description="Modifica los datos de una aplicación existente (requiere permisos ADMIN)"
 )
 async def update_application(
-    app_id: int,
+    app_id: UUID,
     app_update: ApplicationUpdate,
     current_user: Application = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
@@ -226,7 +227,7 @@ async def update_application(
     description="Elimina una aplicación del sistema y todos sus datos relacionados"
 )
 async def delete_application(
-    app_id: int,
+    app_id: UUID,
     current_user: Application = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
 ) -> None:

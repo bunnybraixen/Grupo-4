@@ -9,6 +9,7 @@ Permiten:
 - Cada subtarea puede tener su propio progreso
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -101,7 +102,7 @@ async def create_subtask(
     description="Modifica una subtarea (título, estado de completación)"
 )
 async def update_subtask(
-    subtask_id: int,
+    subtask_id: UUID,
     subtask_update: SubtaskUpdate,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -174,7 +175,7 @@ async def update_subtask(
     description="Elimina una subtarea del ticket"
 )
 async def delete_subtask(
-    subtask_id: int,
+    subtask_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> None:

@@ -8,6 +8,7 @@ Gestiona el ciclo de vida de épicas:
 - Épicas contienen tickets que son los elementos de trabajo reales
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/epics", tags=["Épicas"])
     description="Obtiene todas las épicas de una aplicación ordenadas por índice de orden"
 )
 async def get_application_epics(
-    app_id: int,
+    app_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[EpicResponse]:
@@ -138,7 +139,7 @@ async def create_epic(
     description="Recupera los detalles de una épica incluyendo información de progreso"
 )
 async def get_epic(
-    epic_id: int,
+    epic_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> EpicResponse:
@@ -180,7 +181,7 @@ async def get_epic(
     description="Modifica los datos de una épica existente"
 )
 async def update_epic(
-    epic_id: int,
+    epic_id: UUID,
     epic_update: EpicUpdate,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -237,7 +238,7 @@ async def update_epic(
     description="Elimina una épica y todos sus tickets relacionados"
 )
 async def delete_epic(
-    epic_id: int,
+    epic_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> None:
@@ -283,7 +284,7 @@ async def delete_epic(
     description="Cambia la posición de una épica y ajusta otros órdenes en consecuencia"
 )
 async def reorder_epic(
-    epic_id: int,
+    epic_id: UUID,
     new_order: dict,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -371,7 +372,7 @@ async def reorder_epic(
     description="Carga un archivo de documentación a una épica"
 )
 async def upload_epic_document(
-    epic_id: int,
+    epic_id: UUID,
     file_data: dict,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

@@ -106,28 +106,16 @@ app.add_middleware(
 
 
 # Incluir routers con prefijos de API
-# Cada router maneja un dominio específico de la aplicación
-# Estos routers se crearían en carpeta app/routers/
+# Cada router maneja un dominio específico de la aplicación.
+# WEB-08: se montan los routers de la cadena auth -> applications -> epics -> tickets
+# (más subtasks) para poder probar el ciclo de vida completo de tickets.
+from app.routers import applications, auth, epics, subtasks, tickets  # noqa: E402
 
-# router_auth = APIRouter(prefix="/api/auth", tags=["auth"])
-# router_users = APIRouter(prefix="/api/users", tags=["users"])
-# router_applications = APIRouter(prefix="/api/applications", tags=["applications"])
-# router_epics = APIRouter(prefix="/api/epics", tags=["epics"])
-# router_tickets = APIRouter(prefix="/api/tickets", tags=["tickets"])
-# router_subtasks = APIRouter(prefix="/api/subtasks", tags=["subtasks"])
-# router_analytics = APIRouter(prefix="/api/analytics", tags=["analytics"])
-# router_documents = APIRouter(prefix="/api/documents", tags=["documents"])
-# router_notifications = APIRouter(prefix="/api/notifications", tags=["notifications"])
-
-# app.include_router(router_auth)
-# app.include_router(router_users)
-# app.include_router(router_applications)
-# app.include_router(router_epics)
-# app.include_router(router_tickets)
-# app.include_router(router_subtasks)
-# app.include_router(router_analytics)
-# app.include_router(router_documents)
-# app.include_router(router_notifications)
+app.include_router(auth.router, prefix="/api")
+app.include_router(applications.router, prefix="/api")
+app.include_router(epics.router, prefix="/api")
+app.include_router(tickets.router, prefix="/api")
+app.include_router(subtasks.router, prefix="/api")
 
 
 # Endpoint de salud para verificar que la API está funcionando

@@ -14,6 +14,7 @@ Cada operación de cambio de estado utiliza la máquina de estados (ticket_state
 para garantizar transiciones válidas y consistencia de datos.
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -66,13 +67,51 @@ async def _load_ticket(db: AsyncSession, ticket_id) -> Optional[Ticket]:
 
 
 @router.get(
+    "/",
+    response_model=List[TicketResponse],
+    summary="Listar tickets",
+    description="Obtiene tickets, opcionalmente filtrados por épica y estado"
+    )
+async def list_tickets(
+    epic_id: Optional[int] = Query(None, description="Filtrar por épica"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status_filter: Optional[TicketStatus] = Query(
+        None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
+    ),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> List[TicketResponse]:
+    """
+    Lista tickets con filtros opcionales de épica y estado.
+
+    Returns:
+        List[TicketResponse]: Tickets con sus relaciones precargadas
+    """
+    query = _ticket_query()
+
+    if epic_id is not None:
+        query = query.where(Ticket.epic_id == epic_id)
+
+    if status_filter:
+        query = query.where(Ticket.status == status_filter)
+
+    result = await db.execute(
+        query.offset(skip).limit(limit)
+    )
+    tickets = result.scalars().all()
+
+    return [TicketResponse.from_orm(ticket) for ticket in tickets]
+
+
+@router.get(
     "/by-epic/{epic_id}",
     response_model=List[TicketResponse],
     summary="Listar tickets de una épica",
     description="Obtiene todos los tickets de una épica específica con sus detalles"
 )
 async def get_epic_tickets(
-    epic_id: int,
+    epic_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status_filter: Optional[TicketStatus] = Query(
@@ -243,7 +282,7 @@ async def create_ticket(
     description="Recupera todos los detalles de un ticket incluyendo subtareas y asignado"
 )
 async def get_ticket(
-    ticket_id: int,
+    ticket_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> TicketResponse:
@@ -282,7 +321,7 @@ async def get_ticket(
     description="Modifica los datos de un ticket (título, descripción, prioridad)"
 )
 async def update_ticket(
-    ticket_id: int,
+    ticket_id: UUID,
     ticket_update: TicketUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -361,7 +400,7 @@ async def update_ticket(
     description="Elimina un ticket del sistema de forma permanente"
 )
 async def delete_ticket(
-    ticket_id: int,
+    ticket_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> None:
@@ -413,7 +452,7 @@ async def delete_ticket(
     description="Permite arrastra-soltar (drag-drop) de tickets entre épicas"
 )
 async def move_ticket_to_epic(
-    ticket_id: int,
+    ticket_id: UUID,
     move_data: dict,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -491,7 +530,7 @@ async def move_ticket_to_epic(
     description="Cambia estado TODO -> IN_PROGRESS e inicia el temporizador"
 )
 async def start_ticket_work(
-    ticket_id: int,
+    ticket_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> TicketResponse:
@@ -563,7 +602,7 @@ async def start_ticket_work(
     description="Cambia estado IN_PROGRESS -> COMPLETED (requiere pull request link válido)"
 )
 async def complete_ticket(
-    ticket_id: int,
+    ticket_id: UUID,
     completion_data: dict,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -645,7 +684,7 @@ async def complete_ticket(
     description="Pausa el trabajo bloqueando el ticket con una pregunta"
 )
 async def raise_ticket_question(
-    ticket_id: int,
+    ticket_id: UUID,
     question_data: TicketQuestion,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -724,7 +763,7 @@ async def raise_ticket_question(
     description="Resuelve una pregunta y reanuda el temporizador"
 )
 async def resolve_ticket_question(
-    ticket_id: int,
+    ticket_id: UUID,
     resolution_data: dict,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -800,7 +839,7 @@ async def resolve_ticket_question(
     description="Transfiere un ticket a otro usuario con motivo documentado"
 )
 async def redirect_ticket(
-    ticket_id: int,
+    ticket_id: UUID,
     redirect_data: dict,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -898,7 +937,7 @@ async def redirect_ticket(
     description="Retorna todos los eventos registrados de un ticket (creación, cambios de estado, etc.)"
 )
 async def get_ticket_events(
-    ticket_id: int,
+    ticket_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     current_user: User = Depends(get_current_user),

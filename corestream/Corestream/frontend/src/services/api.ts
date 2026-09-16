@@ -65,6 +65,46 @@ let authState: AuthState = {
  * 
  * @returns Instancia de Axios configurada
  */
+/**
+ * ADAPTADOR camelCase <-> snake_case (WEB-08)
+ *
+ * El frontend trabaja con claves camelCase (epicId, dueDate, prLink...)
+ * y el backend FastAPI con snake_case (epic_id, due_date, pr_link...).
+ * Los interceptores de abajo aplican estas conversiones SOLO a los
+ * módulos de épicas/tickets/aplicaciones/subtareas, dejando intacto
+ * el resto (por ejemplo /auth) para no romper flujos existentes.
+ */
+const CONVERTIBLE_URL_RE = /\/(tickets|epics|applications|subtasks)(\/|\?|$)/
+
+const shouldConvertCase = (url?: string): boolean =>
+  !!url && CONVERTIBLE_URL_RE.test(url)
+
+/** Convierte una clave snake_case a camelCase ('due_date' -> 'dueDate') */
+const toCamelKey = (key: string): string =>
+  key.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+
+/** Convierte una clave camelCase a snake_case ('dueDate' -> 'due_date') */
+const toSnakeKey = (key: string): string =>
+  key.replace(/[A-Z0-9]/g, (c) => '_' + c.toLowerCase())
+
+/** Transforma recursivamente todas las claves de un objeto/array */
+const deepMapKeys = (value: any, mapper: (key: string) => string): any => {
+  if (Array.isArray(value)) {
+    return value.map((item) => deepMapKeys(item, mapper))
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, any> = {}
+    for (const [key, val] of Object.entries(value)) {
+      result[mapper(key)] = deepMapKeys(val, mapper)
+    }
+    return result
+  }
+  return value
+}
+
+const snakeToCamelDeep = (value: any): any => deepMapKeys(value, toCamelKey)
+const camelToSnakeDeep = (value: any): any => deepMapKeys(value, toSnakeKey)
+
 const createApiClient = (): AxiosInstance => {
   const instance = axios.create({
     /**
@@ -118,6 +158,24 @@ const createApiClient = (): AxiosInstance => {
   )
 
   /**
+   * INTERCEPTOR DE REQUEST (WEB-08): payload camelCase -> snake_case
+   *
+   * Solo para las rutas de épicas/tickets/aplicaciones/subtareas, que son
+   * los módulos alineados al backend FastAPI (que espera snake_case).
+   */
+  instance.interceptors.request.use((config) => {
+    if (!shouldConvertCase(config.url)) return config
+
+    if (config.data !== undefined && config.data !== null) {
+      config.data = camelToSnakeDeep(config.data)
+    }
+    if (config.params !== undefined && config.params !== null) {
+      config.params = camelToSnakeDeep(config.params)
+    }
+    return config
+  })
+
+  /**
    * INTERCEPTOR DE RESPONSE
    * 
    * Se ejecuta cuando se recibe una respuesta.
@@ -129,7 +187,21 @@ const createApiClient = (): AxiosInstance => {
     /**
      * Respuesta exitosa: retorna tal cual
      */
-    (response) => response,
+    (response) => {
+      /**
+       * WEB-08: respuesta snake_case -> camelCase para los módulos
+       * alineados (épicas, tickets, aplicaciones, subtareas). El resto
+       * de módulos se deja tal cual para no romper flujos existentes.
+       */
+      if (
+        response.data !== undefined &&
+        response.data !== null &&
+        shouldConvertCase(response.config?.url)
+      ) {
+        response.data = snakeToCamelDeep(response.data)
+      }
+      return response
+    },
 
     /**
      * Respuesta con error
@@ -733,12 +805,19 @@ export const api = {
      * @param newOrderIndex - Nuevo índice de orden
      * @returns Ticket actualizado
      */
-    move: async (ticketId: string, newEpicId: string, newOrderIndex: number): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    move: async (ticketId: string, newEpicId: string): Promise<ApiResponse<Ticket>> => {
+      const response = await apiClient.patch<ApiResponse<Ticket>>(
         `/tickets/${ticketId}/move`,
-        { epicId: newEpicId, orderIndex: newOrderIndex }
+        { epic_id: newEpicId }
       )
       return response.data
+    },
+
+    /**
+     * Mueve un ticket a otra épica (recibe objeto, usado por el store)
+     */
+    moveToEpic: async (data: { ticketId: string; newEpicId: string }): Promise<ApiResponse<Ticket>> => {
+      return api.tickets.move(data.ticketId, data.newEpicId)
     },
 
     /**
@@ -747,9 +826,10 @@ export const api = {
      * @param ticketId - ID del ticket
      * @returns Ticket actualizado
      */
-    complete: async (ticketId: string): Promise<ApiResponse<Ticket>> => {
+    complete: async (ticketId: string, prLink: string): Promise<ApiResponse<Ticket>> => {
       const response = await apiClient.post<ApiResponse<Ticket>>(
-        `/tickets/${ticketId}/complete`
+        `/tickets/${ticketId}/complete`,
+        { pr_link: prLink }
       )
       return response.data
     },
@@ -764,7 +844,7 @@ export const api = {
     question: async (ticketId: string, question: string): Promise<ApiResponse<any>> => {
       const response = await apiClient.post<ApiResponse<any>>(
         `/tickets/${ticketId}/question`,
-        { question }
+        { question_text: question }
       )
       return response.data
     },
@@ -777,10 +857,10 @@ export const api = {
      * @param answer - Respuesta a la pregunta
      * @returns Evento de resolución
      */
-    resolveQuestion: async (ticketId: string, questionId: string, answer: string): Promise<ApiResponse<any>> => {
-      const response = await apiClient.post<ApiResponse<any>>(
+    resolveQuestion: async (ticketId: string, resolution: string = 'Pregunta resuelta'): Promise<ApiResponse<Ticket>> => {
+      const response = await apiClient.post<ApiResponse<Ticket>>(
         `/tickets/${ticketId}/resolve-question`,
-        { questionId, answer }
+        { resolution }
       )
       return response.data
     },
@@ -793,10 +873,16 @@ export const api = {
      * @param reason - Razón de la redirección
      * @returns Ticket actualizado
      */
-    redirect: async (ticketId: string, newAssigneeId: string, reason: string): Promise<ApiResponse<Ticket>> => {
+    redirect: async (
+      ticketId: string,
+      data: { toUserId?: string; targetUserId?: string; reason: string }
+    ): Promise<ApiResponse<Ticket>> => {
       const response = await apiClient.post<ApiResponse<Ticket>>(
         `/tickets/${ticketId}/redirect`,
-        { assigneeId: newAssigneeId, reason }
+        {
+          target_user_id: data.targetUserId ?? data.toUserId,
+          reason: data.reason
+        }
       )
       return response.data
     },
@@ -822,7 +908,49 @@ export const api = {
      */
     getMyWorkbench: async (): Promise<ApiResponse<Ticket[]>> => {
       const response = await apiClient.get<ApiResponse<Ticket[]>>(
-        '/tickets/workbench'
+        '/tickets/my-workbench'
+      )
+      return response.data
+    },
+
+    /**
+     * Lista los tickets de una épica (usado por el store de tickets)
+     */
+    listByEpic: async (epicId: string, filters?: { status?: string }): Promise<ApiResponse<Ticket[]>> => {
+      const response = await apiClient.get<ApiResponse<Ticket[]>>(
+        `/tickets/by-epic/${epicId}`,
+        { params: filters }
+      )
+      return response.data
+    },
+
+    /**
+     * Banco de trabajo del usuario actual (alias de getMyWorkbench)
+     */
+    listMyWorkbench: async (): Promise<ApiResponse<Ticket[]>> => {
+      return api.tickets.getMyWorkbench()
+    },
+
+    /**
+     * Cambia el estado de un ticket a IN_PROGRESS.
+     * El resto de transiciones tiene endpoint propio (complete, question, redirect...)
+     */
+    updateStatus: async (ticketId: string, newStatus: string): Promise<ApiResponse<Ticket>> => {
+      if (newStatus === 'IN_PROGRESS') {
+        return api.tickets.start(ticketId)
+      }
+      throw new Error(
+        `Transición de estado no soportada por la API: ${newStatus}. Use complete() o start().`
+      )
+    },
+
+    /**
+     * Plantea una pregunta bloqueante (alias de question, usado por el store)
+     */
+    raiseQuestion: async (ticketId: string, questionText: string): Promise<ApiResponse<Ticket>> => {
+      const response = await apiClient.post<ApiResponse<Ticket>>(
+        `/tickets/${ticketId}/question`,
+        { question_text: questionText }
       )
       return response.data
     }

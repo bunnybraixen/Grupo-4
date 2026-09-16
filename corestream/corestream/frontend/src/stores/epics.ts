@@ -163,11 +163,10 @@ export const useEpicsStore = defineStore('epics', () => {
    * @returns Promise<Epic>
    */
   const create = async (data: {
-    appId: string
-    name: string
+    applicationId: string
+    title: string
     description?: string
-    color?: string
-    icon?: string
+    dueDate?: string
   }): Promise<Epic> => {
     isLoading.value = true
     error.value = null

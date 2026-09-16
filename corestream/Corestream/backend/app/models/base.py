@@ -6,12 +6,16 @@ Define la configuración común y tipos de datos base para los modelos SQLAlchem
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import func
-from sqlalchemy.orm import declarative_base, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
-from typing import UUID as PyUUID
+from uuid import UUID as PyUUID
 
-# Base declarativa para todos los modelos
-Base = declarative_base()
+from app.database import Base
+
+# WEB-08: la Base declarativa única vive en app.database (es la que usa
+# main.py en create_all). Antes este módulo creaba OTRA Base con
+# declarative_base(), los modelos se registraban en un metadata distinto
+# y el create_all del startup no creaba ninguna tabla.
 
 
 class BaseEntity:

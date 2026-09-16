@@ -10,6 +10,9 @@ from app.schemas.user import (
     TokenResponse,
     TokenPayload,
 )
+
+# Alias usado por app/routers/auth.py (mismo esquema que UserCreate)
+UserRegister = UserCreate
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationUpdate,
@@ -39,6 +42,9 @@ from app.schemas.notification import (
     NotificationResponse,
     NotificationMarkRead,
 )
+from app.schemas.document import (
+    DocumentResponse,
+)
 from app.schemas.ticket_redirection import (
     TicketEventResponse,
     TicketRedirectionRequest,
@@ -57,6 +63,7 @@ __all__ = [
     # Esquemas de Usuario
     "UserBase",
     "UserCreate",
+    "UserRegister",
     "UserUpdate",
     "UserResponse",
     "UserLogin",
@@ -86,6 +93,8 @@ __all__ = [
     # Esquemas de Notificación
     "NotificationResponse",
     "NotificationMarkRead",
+    # Esquemas de Documentos
+    "DocumentResponse",
     # Esquemas de Redirección / Eventos de Ticket
     "TicketEventResponse",
     "TicketRedirectionRequest",
