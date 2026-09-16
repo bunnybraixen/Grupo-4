@@ -13,9 +13,9 @@
     @dragend="$emit('dragEnd')"
     @click="$emit('select', ticket)"
     :class="[
-      'p-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl cursor-grab active:cursor-grabbing',
-      'hover:shadow-[var(--shadow-md)] hover:border-[var(--border-focus)] transition-all duration-200',
-      ticket.status === 'BLOCKED_QUESTION' ? 'border-[var(--status-blocked-bg)] border-opacity-100' : '',
+      'p-3 bg-slate-700 border border-slate-600 rounded-lg cursor-grab active:cursor-grabbing',
+      'hover:shadow-lg hover:border-slate-500 transition-all duration-200',
+      ticket.status === 'BLOCKED' ? 'border-orange-500 border-opacity-50' : '',
       'group'
     ]"
   >
@@ -26,7 +26,7 @@
       <!-- ================================================================ -->
       <div class="flex items-start justify-between gap-2">
         <!-- Título del ticket -->
-        <h4 class="text-sm font-semibold text-[var(--text-primary)] flex-1 line-clamp-2">
+        <h4 class="text-sm font-medium text-white flex-1 line-clamp-2">
           {{ ticket.title }}
         </h4>
 
@@ -57,7 +57,7 @@
         <!-- Avatar del asignado -->
         <div
           v-if="ticket.assignee"
-          class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-[var(--teal)] text-white flex-shrink-0"
+          class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white flex-shrink-0"
           :title="ticket.assignee.name"
         >
           {{ getInitials(ticket.assignee.name) }}
@@ -72,10 +72,10 @@
             :icon="isOverdue ? 'mdi:alert-circle' : 'mdi:calendar'"
             :class="[
               'flex-shrink-0',
-              isOverdue ? 'text-[var(--priority-urg-bg)]' : 'text-[var(--text-muted)]'
+              isOverdue ? 'text-red-400' : 'text-slate-400'
             ]"
           />
-          <span :class="[isOverdue ? 'text-[var(--priority-urg-bg)] font-semibold' : 'text-[var(--text-muted)]']">
+          <span :class="[isOverdue ? 'text-red-400 font-semibold' : 'text-slate-400']">
             {{ formatDate(ticket.dueDate) }}
           </span>
         </div>
@@ -86,7 +86,7 @@
       <!-- ================================================================ -->
       <!-- Muestra cantidad de días atrasados en rojo -->
       <!-- ================================================================ -->
-      <div v-if="isOverdue && daysOverdue > 0" class="text-xs font-semibold text-[var(--priority-urg-bg)]">
+      <div v-if="isOverdue && daysOverdue > 0" class="text-xs font-semibold text-red-400">
         <Icon icon="mdi:close-circle" class="inline mr-1" />
         {{ daysOverdue }} días atrasado
       </div>
@@ -98,8 +98,8 @@
     <!-- Si el ticket está bloqueado, muestra borde pulsante -->
     <!-- ================================================================ -->
     <div
-      v-if="ticket.status === 'BLOCKED_QUESTION'"
-      class="absolute inset-0 border border-[var(--status-blocked-bg)] rounded-xl animate-pulse pointer-events-none"
+      v-if="ticket.status === 'BLOCKED'"
+      class="absolute inset-0 border border-orange-500 rounded-lg animate-pulse pointer-events-none"
     />
   </div>
 </template>
@@ -125,8 +125,8 @@ interface Assignee {
 interface Ticket {
   id: string
   title: string
-  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'BLOCKED_QUESTION' | 'REDIRECTED' | 'COMPLETED'
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
   assignee?: Assignee
   dueDate?: string
 }
@@ -180,18 +180,15 @@ const daysOverdue = computed(() => {
 const getStatusColor = (status: string): string => {
   switch (status) {
     case 'TODO':
-      return 'bg-[var(--status-todo-bg)] text-[var(--status-todo-text)]'
+      return 'bg-gray-600 text-gray-100'
     case 'IN_PROGRESS':
-      return 'bg-[var(--status-progress-bg)] text-[var(--status-progress-text)]'
+      return 'bg-blue-600 text-blue-100'
     case 'BLOCKED':
-    case 'BLOCKED_QUESTION':
-      return 'bg-[var(--status-blocked-bg)] text-[var(--status-blocked-text)] animate-pulse'
-    case 'REDIRECTED':
-      return 'bg-[var(--status-redirected-bg)] text-[var(--status-redirected-text)]'
-    case 'COMPLETED':
-      return 'bg-[var(--status-done-bg)] text-[var(--status-done-text)]'
+      return 'bg-orange-600 text-orange-100 animate-pulse'
+    case 'DONE':
+      return 'bg-green-600 text-green-100'
     default:
-      return 'bg-[var(--status-todo-bg)] text-[var(--status-todo-text)]'
+      return 'bg-slate-600 text-slate-100'
   }
 }
 
@@ -207,11 +204,8 @@ const getStatusLabel = (status: string): string => {
     case 'IN_PROGRESS':
       return 'En Curso'
     case 'BLOCKED':
-    case 'BLOCKED_QUESTION':
       return 'Bloqueado'
-    case 'REDIRECTED':
-      return 'Redirigido'
-    case 'COMPLETED':
+    case 'DONE':
       return 'Completado'
     default:
       return status
@@ -226,15 +220,15 @@ const getStatusLabel = (status: string): string => {
 const getPriorityColor = (priority: string): string => {
   switch (priority) {
     case 'LOW':
-      return 'bg-[var(--priority-low-bg)]'
+      return 'bg-green-500'
     case 'MEDIUM':
-      return 'bg-[var(--priority-med-bg)]'
+      return 'bg-yellow-500'
     case 'HIGH':
-      return 'bg-[var(--priority-high-bg)]'
-    case 'URGENT':
-      return 'bg-[var(--priority-urg-bg)]'
+      return 'bg-orange-500'
+    case 'CRITICAL':
+      return 'bg-red-500'
     default:
-      return 'bg-[var(--priority-low-bg)]'
+      return 'bg-slate-500'
   }
 }
 

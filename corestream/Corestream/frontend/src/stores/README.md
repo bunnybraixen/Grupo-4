@@ -8,7 +8,7 @@ Tienda de estado centralizada para CoreStream Vue 3 frontend usando Pinia con Co
 **Store de Autenticación**
 - Gestiona sesión JWT, usuario actual y permisos RBAC
 - **Estado**: `user`, `tokens`, `isAuthenticated`, `isLoading`, `error`
-- **Getters**: `isAdmin`, `isDeveloper`, `isTeamLeader`, `userRole`, `fullName`, `userEmail`, `isTokenExpiringSoon`
+- **Getters**: `isAdmin`, `isDeveloper`, `isGroupLeader`, `userRole`, `fullName`, `userEmail`, `isTokenExpiringSoon`
 - **Acciones**:
   - `initialize()` - Restaura sesión desde localStorage
   - `login(email, password)` - Autentica usuario
@@ -133,7 +133,7 @@ Tienda de estado centralizada para CoreStream Vue 3 frontend usando Pinia con Co
 - Gestiona miembros del equipo, roles y asignaciones
 - **Estado**: `members`, `unassignedTickets`, `isLoading`, `error`, `showAddModal`, `currentAppId`
 - **Getters**:
-  - `leaders` - Miembros con rol TEAM_LEADER/ADMIN
+  - `leaders` - Miembros con rol GROUP_LEADER/ADMIN
   - `developers` - Miembros con rol DEVELOPER
   - `admin` - Admin del grupo
   - `memberCount`, `developerCount`

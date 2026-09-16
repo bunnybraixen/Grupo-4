@@ -9,34 +9,23 @@ Proporciona endpoints para análisis y visualización de datos:
 - Exportación de datos en CSV
 """
 
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from typing import Optional
+from datetime import datetime, timedelta
 import csv
 import io
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models import Application, Ticket, User, TicketEvent, Epic, TicketStatus
+from app.services import analytics_service
 from app.middleware.auth import get_current_user, require_role
-from app.models import (
-    Application,
-    Epic,
-    SupportSeverity,
-    Ticket,
-    TicketStatus,
-    TicketType,
-    User,
-    UserRole,
-)
-from app.schemas.analytics import SupportSummarySchema
-from app.services.analytics_service import analytics_service
+from app.models import UserRole
 
 # Router para analíticas
-router = APIRouter(tags=["Analíticas"])
+router = APIRouter(prefix="/analytics", tags=["Analíticas"])
 
 
 @router.get(
@@ -45,7 +34,7 @@ router = APIRouter(tags=["Analíticas"])
     description="Retorna estadísticas resumidas de una aplicación"
 )
 async def get_application_summary(
-    app_id: UUID,
+    app_id: int,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -102,25 +91,6 @@ async def get_application_summary(
     )
     todo_count = todo.scalar()
 
-    # Contar tickets bloqueados (BLOCKED + BLOCKED_QUESTION)
-    blocked = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(
-            Epic.application_id == app_id,
-            Ticket.status.in_([TicketStatus.BLOCKED, TicketStatus.BLOCKED_QUESTION])
-        )
-    )
-    blocked_count = blocked.scalar()
-
-    # Contar tickets redirigidos
-    redirected = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.REDIRECTED)
-    )
-    redirected_count = redirected.scalar()
-
     # Contar épicas
     epics = await db.execute(
         select(func.count(Epic.id))
@@ -128,12 +98,8 @@ async def get_application_summary(
     )
     epic_count = epics.scalar()
 
-    # Calcular KPIs
-    total_safe = total or 1
-    completion_percentage = ((completed_count or 0) / total_safe) * 100
-    efficiency_index = round(((completed_count or 0) / total_safe) * 100, 1)
-    block_rate       = round(((blocked_count or 0)   / total_safe) * 100, 1)
-    rotation_rate    = round(((redirected_count or 0) / total_safe) * 100, 1)
+    # Calcular porcentaje de completación
+    completion_percentage = ((completed_count or 0) / (total or 1)) * 100
 
     return {
         "application_id": app_id,
@@ -141,97 +107,9 @@ async def get_application_summary(
         "completed_tickets": completed_count,
         "in_progress_tickets": in_progress_count,
         "todo_tickets": todo_count,
-        "blocked_tickets": blocked_count,
-        "redirected_tickets": redirected_count,
         "total_epics": epic_count,
-        "completion_percentage": round(completion_percentage, 2),
-        "efficiency_index": efficiency_index,
-        "block_rate": block_rate,
-        "rotation_rate": rotation_rate,
+        "completion_percentage": round(completion_percentage, 2)
     }
-
-
-@router.get(
-    "/support-summary",
-    response_model=SupportSummarySchema,
-    summary="Resumen de tickets de soporte",
-    description="Retorna conteos por estado/severidad y el tiempo promedio de resolución de los tickets de soporte"
-)
-async def get_support_summary(
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> SupportSummarySchema:
-    """
-    Obtiene métricas agregadas de los tickets de soporte (ticket_type == SUPPORT).
-
-    Los tickets de soporte tienen epic_id = NULL por diseño, por lo que quedan
-    fuera de las métricas por-aplicación (que usan INNER JOIN Epic). Este endpoint
-    los agrega de forma global e independiente, sin recibir app_id.
-
-    Returns:
-        SupportSummarySchema: conteos por estado, por severidad y tiempo promedio
-        de resolución en horas.
-    """
-    # Conteo por estado (REPORTED / INVESTIGATING / RESOLVED)
-    status_result = await db.execute(
-        select(Ticket.status, func.count(Ticket.id))
-        .where(Ticket.ticket_type == TicketType.SUPPORT)
-        .group_by(Ticket.status)
-    )
-    by_status: dict[str, int] = {
-        TicketStatus.REPORTED.value: 0,
-        TicketStatus.INVESTIGATING.value: 0,
-        TicketStatus.RESOLVED.value: 0,
-    }
-    for st, count in status_result.all():
-        key = st.value if hasattr(st, "value") else str(st)
-        by_status[key] = count
-
-    # Conteo por severidad (CRITICAL / HIGH / MEDIUM / LOW) — solo tickets activos
-    # (no resueltos), ya que esta sección representa bugs pendientes por severidad.
-    severity_result = await db.execute(
-        select(Ticket.severity, func.count(Ticket.id))
-        .where(
-            Ticket.ticket_type == TicketType.SUPPORT,
-            Ticket.status != TicketStatus.RESOLVED,
-        )
-        .group_by(Ticket.severity)
-    )
-    by_severity: dict[str, int] = {
-        SupportSeverity.CRITICAL.value: 0,
-        SupportSeverity.HIGH.value: 0,
-        SupportSeverity.MEDIUM.value: 0,
-        SupportSeverity.LOW.value: 0,
-    }
-    for sev, count in severity_result.all():
-        if sev is None:
-            continue
-        key = sev.value if hasattr(sev, "value") else str(sev)
-        by_severity[key] = count
-
-    # Tiempo promedio de resolución (completed_at - created_at) de los RESOLVED
-    resolved_result = await db.execute(
-        select(Ticket.created_at, Ticket.completed_at)
-        .where(
-            Ticket.ticket_type == TicketType.SUPPORT,
-            Ticket.status == TicketStatus.RESOLVED,
-            Ticket.completed_at.isnot(None),
-        )
-    )
-    durations_hours: list[float] = []
-    for created_at, completed_at in resolved_result.all():
-        if created_at and completed_at:
-            durations_hours.append((completed_at - created_at).total_seconds() / 3600.0)
-
-    avg_resolution_time_hours = (
-        round(sum(durations_hours) / len(durations_hours), 2) if durations_hours else 0.0
-    )
-
-    return SupportSummarySchema(
-        by_status=by_status,
-        by_severity=by_severity,
-        avg_resolution_time_hours=avg_resolution_time_hours,
-    )
 
 
 @router.get(
@@ -240,7 +118,7 @@ async def get_support_summary(
     description="Retorna métricas de desempeño por usuario en una aplicación"
 )
 async def get_performance_data(
-    app_id: UUID,
+    app_id: int,
     start_date: Optional[str] = Query(None, description="Fecha inicial (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Fecha final (YYYY-MM-DD)"),
     current_user = Depends(get_current_user),
@@ -272,33 +150,25 @@ async def get_performance_data(
             detail=f"Aplicación con ID {app_id} no encontrada"
         )
 
-    # Parsear fechas si se proporcionan (soporta ISO y YYYY-MM-DD)
+    # Parsear fechas si se proporcionan
     start = None
     end = None
     if start_date:
         try:
-            # Intenta ISO primero, luego YYYY-MM-DD
-            if 'T' in start_date:
-                start = datetime.fromisoformat(start_date.replace('Z', '+00:00')).replace(tzinfo=None)
-            else:
-                start = datetime.strptime(start_date, "%Y-%m-%d")
+            start = datetime.strptime(start_date, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Formato de start_date inválido (use ISO o YYYY-MM-DD)"
+                detail="Formato de start_date inválido (use YYYY-MM-DD)"
             )
 
     if end_date:
         try:
-            # Intenta ISO primero, luego YYYY-MM-DD
-            if 'T' in end_date:
-                end = datetime.fromisoformat(end_date.replace('Z', '+00:00')).replace(tzinfo=None)
-            else:
-                end = datetime.strptime(end_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Formato de end_date inválido (use ISO o YYYY-MM-DD)"
+                detail="Formato de end_date inválido (use YYYY-MM-DD)"
             )
 
     # Usar servicio de analíticas para obtener datos
@@ -322,9 +192,7 @@ async def get_performance_data(
     description="Retorna datos de actividad en formato de mapa de calor"
 )
 async def get_heatmap_data(
-    app_id: UUID,
-    start_date: Optional[str] = Query(None, description="Fecha inicial (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="Fecha final (YYYY-MM-DD)"),
+    app_id: int,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -342,7 +210,7 @@ async def get_heatmap_data(
     Raises:
         HTTPException: Si la aplicación no existe (404)
     """
-    # 1. Verificar que la aplicación existe
+    # Verificar que la aplicación existe
     app_check = await db.execute(
         select(Application).where(Application.id == app_id)
     )
@@ -352,70 +220,8 @@ async def get_heatmap_data(
             detail=f"Aplicación con ID {app_id} no encontrada"
         )
 
-    # 2. Determinar rango de fechas: usa params si se envían, sino últimos 30 días
-    now = datetime.now(timezone.utc)
-    if start_date:
-        try:
-            query_start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            query_start = now - timedelta(days=30)
-    else:
-        query_start = now - timedelta(days=30)
-
-    if end_date:
-        try:
-            query_end = datetime.strptime(end_date, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=timezone.utc
-            )
-        except ValueError:
-            query_end = now
-    else:
-        query_end = now
-
-    # 3. Buscar todos los tickets completados en esta app en el rango seleccionado
-    query = (
-        select(User.full_name, User.email, Ticket.completed_at)
-        .select_from(Ticket)
-        .join(Epic, Ticket.epic_id == Epic.id)
-        .outerjoin(User, Ticket.assignee_id == User.id)
-        .where(
-            Epic.application_id == app_id,
-            Ticket.status == TicketStatus.COMPLETED,
-            Ticket.completed_at >= query_start,
-            Ticket.completed_at <= query_end,
-        )
-    )
-    result = await db.execute(query)
-    completed_tickets = result.all()
-
-    # 4. Procesar y agrupar los datos por usuario
-    user_activity = {}
-
-    # Función auxiliar para sacar iniciales del avatar (ej: "Ana García" -> "AG")
-    def get_initials(name: str) -> str:
-        if not name:
-            return "U"
-        parts = [n for n in name.split() if n]
-        return "".join([p for p in parts]).upper()[:2]
-
-    for full_name, email, completed_at in completed_tickets:
-        user_key = email or "sin_asignar" # Usamos el email como ID único
-        
-        if user_key not in user_activity:
-            display_name = full_name or email or "Sin Asignar"
-            user_activity[user_key] = {
-                "name": display_name,
-                "avatar": get_initials(display_name),
-                "data": [0, 0, 0, 0, 0, 0, 0] # Array para Lunes(0) a Domingo(6)
-            }
-
-        if completed_at:
-            # .weekday() devuelve 0 para Lunes y 6 para Domingo
-            weekday = completed_at.weekday()
-            user_activity[user_key]["data"][weekday] += 1
-
-    # 5. Estructurar exactamente como lo pide el Frontend
-    heatmap_data = list(user_activity.values())
+    # Usar servicio de analíticas
+    heatmap_data = await analytics_service.get_activity_heatmap(app_id, db)
 
     return {
         "application_id": app_id,
@@ -429,7 +235,7 @@ async def get_heatmap_data(
     description="Retorna datos del gráfico burndown de una épica"
 )
 async def get_burndown_chart(
-    epic_id: UUID,
+    epic_id: int,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -451,64 +257,18 @@ async def get_burndown_chart(
     epic_check = await db.execute(
         select(Epic).where(Epic.id == epic_id)
     )
-    epic = epic_check.scalar_one_or_none()
-    if not epic:
+    if not epic_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Épica con ID {epic_id} no encontrada"
         )
 
-    # Obtener los tickets de esta épica
-    result = await db.execute(
-        select(Ticket.created_at, Ticket.completed_at)
-        .where(Ticket.epic_id == epic_id)
-    )
-    tickets = result.all()
-    total_tickets = len(tickets)
-
-    # Si no hay tickets, enviamos gráfico vacío
-    if total_tickets == 0:
-        return {"epic_id": epic_id, "burndown": {"dates": [], "ideal": [], "actual": []}}
-
-    # Determinar el rango de tiempo (Eje X)
-    now = datetime.now(timezone.utc)
-    start_date = epic.created_at or (now - timedelta(days=14))
-    end_date = epic.due_date or now
-
-    # Convertir a datetime si vienen como date puro
-    if isinstance(start_date, date) and not isinstance(start_date, datetime):
-        start_date = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-    if isinstance(end_date, date) and not isinstance(end_date, datetime):
-        end_date = datetime.combine(end_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-
-    total_days = max((end_date - start_date).days, 1) # Evitar división por cero
-
-    dates, ideal_data, actual_data = [], [], []
-
-    # Generar la curva día por día
-    for i in range(total_days + 1):
-        current_day = start_date + timedelta(days=i)
-        dates.append(current_day.strftime("%d %b")) # Ej: "15 May"
-
-        # Curva Ideal: Baja como escalera recta desde Total hasta 0
-        ideal_val = max(0, round(total_tickets - (total_tickets / total_days) * i, 1))
-        ideal_data.append(ideal_val)
-
-        # Curva Real: Si el día aún no llega (futuro), no hay dato
-        if current_day.date() > now.date():
-            actual_data.append(None)
-        else:
-            # Contamos cuántos tickets se habían completado hasta ese día
-            completed = sum(1 for t in tickets if t.completed_at and t.completed_at.date() <= current_day.date())
-            actual_data.append(total_tickets - completed)
+    # Usar servicio de analíticas
+    burndown_data = await analytics_service.get_burndown_chart(epic_id, db)
 
     return {
         "epic_id": epic_id,
-        "burndown": {
-            "dates": dates,
-            "ideal": ideal_data,
-            "actual": actual_data
-        }
+        "burndown": burndown_data
     }
 
 
@@ -518,8 +278,8 @@ async def get_burndown_chart(
     description="Exporta datos de desempeño de una aplicación en formato CSV"
 )
 async def export_performance_csv(
-    app_id: UUID,
-    current_user = Depends(require_role([UserRole.ADMIN, UserRole.TEAM_LEADER])),
+    app_id: int,
+    current_user = Depends(require_role(UserRole.TEAM_LEADER)),
     db: AsyncSession = Depends(get_db)
 ) -> StreamingResponse:
     """

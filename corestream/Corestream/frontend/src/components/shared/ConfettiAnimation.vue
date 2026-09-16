@@ -6,7 +6,8 @@
   <!-- Se dispara cuando se completa un ticket -->
   <!-- Proporciona función fireConfetti() exportada via defineExpose -->
   <!-- ================================================================ -->
-  <Teleport to="body">
+
+  <div>
     <!-- ================================================================ -->
     <!-- CANVAS: Elemento para animación -->
     <!-- ================================================================ -->
@@ -14,10 +15,9 @@
     <!-- ================================================================ -->
     <canvas
       ref="canvasRef"
-      class="fixed inset-0 w-full h-full pointer-events-none"
-      style="z-index: 99999;"
+      class="fixed inset-0 pointer-events-none"
     />
-  </Teleport>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -83,9 +83,13 @@ const fireConfetti = () => {
   // Configuración de la explosión
   const duration = 2500 // 2.5 segundos de animación
   const animationEnd = Date.now() + duration
-  // Colores corporativos
-  const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6']
 
+  // Función para generar confeti recursivamente
+  const randomInRange = (min: number, max: number): number => {
+    return Math.random() * (max - min) + min
+  }
+
+  // Lanzar confeti desde múltiples puntos
   const interval = setInterval(() => {
     const timeLeft = animationEnd - Date.now()
 
@@ -94,30 +98,59 @@ const fireConfetti = () => {
       return
     }
 
-    const particleCount = 20 * (timeLeft / duration) // Va disminuyendo suavemente
-
-    // Disparo Izquierdo
-    confetti({
-      particleCount,
-      angle: 60,
-      spread: 80,        // Más dispersión lateral
-      origin: { x: 0, y: 1 },
-      colors: colors,
-      scalar: 1.4,       // ¡Papelitos 40% más grandes!
-      zIndex: 99999      // Prioridad máxima
+    // Disparar confeti desde el centro hacia arriba
+    confettiInstance({
+      // Particulas desde el centro
+      particleCount: 100,
+      // Ángulo de dispersión: arriba
+      angle: 90,
+      // Spread en grados
+      spread: 45,
+      // Origen: centro de la pantalla
+      origin: {
+        x: 0.5,
+        y: 0.5
+      },
+      // Velocidad de las partículas
+      velocity: randomInRange(25, 45),
+      // Colores de confeti
+      colors: [
+        '#10b981', // Verde (para éxito)
+        '#3b82f6', // Azul
+        '#f59e0b', // Ámbar
+        '#ec4899', // Rosa
+        '#8b5cf6'  // Púrpura
+      ],
+      // Duración de caída
+      decay: randomInRange(0.9, 0.95),
+      // Rotación
+      gravity: 1,
+      // Escala de las partículas
+      scalar: randomInRange(0.5, 1)
     })
 
-    // Disparo Derecho
-    confetti({
-      particleCount,
-      angle: 120,
-      spread: 80,
-      origin: { x: 1, y: 1 },
-      colors: colors,
-      scalar: 1.4,
-      zIndex: 99999
+    // También lanzar desde los lados para más efecto
+    confettiInstance({
+      particleCount: 50,
+      angle: randomInRange(0, 360),
+      spread: 360,
+      origin: {
+        x: Math.random(),
+        y: Math.random() * 0.5
+      },
+      velocity: randomInRange(15, 35),
+      colors: [
+        '#10b981',
+        '#3b82f6',
+        '#f59e0b',
+        '#ec4899',
+        '#8b5cf6'
+      ],
+      decay: randomInRange(0.85, 0.95),
+      gravity: 1,
+      scalar: randomInRange(0.4, 0.8)
     })
-  }, 250)
+  }, 50) // Actualizar cada 50ms
 }
 
 // =====================================================================

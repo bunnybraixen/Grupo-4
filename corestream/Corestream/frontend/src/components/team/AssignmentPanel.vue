@@ -83,7 +83,7 @@
                     />
                   </svg>
                   <!-- Fecha formateada -->
-                  <span>{{ formatDate(ticket.dueDate || '') }}</span>
+                  <span>{{ formatDate(ticket.dueDate) }}</span>
                 </div>
 
                 <!-- Botón de asignación -->
@@ -153,12 +153,12 @@
                   class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
                 >
                   <!-- Iniciales del nombre del desarrollador -->
-                  {{ getInitials(developer.fullName || developer.name || '') }}
+                  {{ getInitials(developer.name) }}
                 </div>
                 <!-- Nombre del desarrollador -->
                 <div class="flex-1">
                   <h3 class="font-semibold text-gray-900">
-                    {{ developer.fullName || developer.name || 'Desarrollador' }}
+                    {{ developer.name }}
                   </h3>
                 </div>
                 <!-- Contador de tickets asignados -->
@@ -295,12 +295,12 @@
                   class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
                 >
                   <!-- Iniciales del desarrollador -->
-                  {{ getInitials(developer.fullName || developer.name || '') }}
+                  {{ getInitials(developer.name) }}
                 </div>
                 <!-- Nombre e información de carga -->
                 <div class="flex-1 min-w-0">
                   <p class="font-semibold text-gray-900">
-                    {{ developer.fullName || developer.name || 'Desarrollador' }}
+                    {{ developer.name }}
                   </p>
                   <p class="text-xs text-gray-600">
                     {{ developer.assignedTickets.length }} ticket{{ developer.assignedTickets.length !== 1 ? 's' : '' }} asignado{{ developer.assignedTickets.length !== 1 ? 's' : '' }}
@@ -353,24 +353,28 @@
 
 import { ref, computed, onMounted } from 'vue'
 import type { Ref, ComputedRef } from 'vue'
-import type { Ticket as TicketType } from '@/types'
 import { useTeamStore } from '@/stores/team'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
-import { UserRole } from '@/types'
 
 /**
  * Interfaz para un ticket del sistema
  */
-type Ticket = TicketType
+interface Ticket {
+  id: string
+  title: string
+  epicName?: string
+  priority: 'low' | 'medium' | 'high' | 'critical'
+  dueDate: string
+  assignedTo?: string
+}
 
 /**
  * Interfaz para un desarrollador con su información de carga
  */
 interface Developer {
   id: string
-  name?: string
-  fullName?: string
+  name: string
   assignedTickets: Ticket[]
 }
 
@@ -416,7 +420,7 @@ const authStore = useAuthStore()
  * Filtra solo aquellos tickets que no tienen desarrollador asignado
  */
 const unassignedTickets: ComputedRef<Ticket[]> = computed(() => {
-  return ticketsStore.tickets.filter((ticket) => !ticket.assigneeId)
+  return ticketsStore.tickets.filter((ticket) => !ticket.assignedTo)
 })
 
 /**
@@ -425,12 +429,12 @@ const unassignedTickets: ComputedRef<Ticket[]> = computed(() => {
  */
 const developerWorkload: ComputedRef<Developer[]> = computed(() => {
   return teamStore.members
-    .filter((member) => member.role === UserRole.DEVELOPER)
+    .filter((member) => member.role === 'developer')
     .map((developer) => ({
       id: developer.id,
-      fullName: developer.fullName,
+      name: developer.name,
       assignedTickets: ticketsStore.tickets.filter(
-        (ticket) => ticket.assigneeId === developer.id
+        (ticket) => ticket.assignedTo === developer.id
       )
     }))
 })
@@ -564,7 +568,7 @@ async function assignTicket(developerId: string): Promise<void> {
 
   try {
     // Llamar acción del store para asignar ticket
-    await ticketsStore.update(selectedTicket.value.id, { assigneeId: developerId })
+    await ticketsStore.assignTicket(selectedTicket.value.id, developerId)
     // Cerrar modal después de asignación exitosa
     closeAssignmentModal()
   } catch (error) {
@@ -582,7 +586,7 @@ async function assignTicket(developerId: string): Promise<void> {
 async function handleUnassign(ticketId: string, developerId: string): Promise<void> {
   try {
     // Llamar acción del store para desasignar ticket
-    await ticketsStore.update(ticketId, { assigneeId: undefined })
+    await ticketsStore.unassignTicket(ticketId)
   } catch (error) {
     console.error('Error al desasignar ticket:', error)
   }
@@ -600,7 +604,7 @@ async function handleUnassign(ticketId: string, developerId: string): Promise<vo
 onMounted(async () => {
   try {
     // Verificar que el usuario actual sea líder de grupo
-    if (authStore.user?.role !== UserRole.TEAM_LEADER) {
+    if (authStore.currentUser?.role !== 'leader') {
       console.warn('Solo líderes de grupo pueden acceder a este panel')
       return
     }
@@ -610,10 +614,7 @@ onMounted(async () => {
       await teamStore.fetchMembers()
     }
     if (ticketsStore.tickets.length === 0) {
-      // Fetch tickets para el epic seleccionado si existe
-      if (selectedTicket.value?.epicId) {
-        await ticketsStore.fetchByEpic(selectedTicket.value.epicId)
-      }
+      await ticketsStore.fetchTickets()
     }
   } catch (error) {
     console.error('Error en inicialización del panel:', error)

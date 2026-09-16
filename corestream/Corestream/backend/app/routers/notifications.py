@@ -12,22 +12,19 @@ Maneja el sistema de notificaciones para usuarios:
   * Menciones de otros usuarios
 """
 
-from datetime import datetime
-from typing import List
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
-from sqlalchemy import delete as sa_delete
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_
+from typing import List
+from datetime import datetime
 
 from app.database import get_db
-from app.middleware.auth import get_current_user
-from app.models import Notification, User
+from app.models import Notification, User, NotificationType
 from app.schemas import NotificationResponse
+from app.middleware.auth import get_current_user
 
 # Router para notificaciones
-router = APIRouter(tags=["Notificaciones"])
+router = APIRouter(prefix="/notifications", tags=["Notificaciones"])
 
 
 @router.get(
@@ -61,12 +58,9 @@ async def get_user_notifications(
         Notification.user_id == current_user.id
     )
 
-    # Filtrar por estado de lectura si se solicita.
-    # `not Notification.is_read` evaluaba a un bool de Python (False) en tiempo
-    # de construcción de la query, no a una condición SQL — el filtro no hacía
-    # nada. Se usa `~` (NOT SQL) sobre la columna.
+    # Filtrar por estado de lectura si se solicita
     if unread_only:
-        query = query.where(~Notification.is_read)
+        query = query.where(Notification.is_read == False)
 
     # Ordenar por fecha de creación descendente (más recientes primero)
     result = await db.execute(
@@ -103,7 +97,7 @@ async def get_unread_count(
         select(func.count(Notification.id)).where(
             and_(
                 Notification.user_id == current_user.id,
-                ~Notification.is_read
+                Notification.is_read == False
             )
         )
     )
@@ -209,7 +203,7 @@ async def mark_all_notifications_as_read(
             select(Notification).where(
                 and_(
                     Notification.user_id == current_user.id,
-                    ~Notification.is_read
+                    Notification.is_read == False
                 )
             )
         )
@@ -235,59 +229,3 @@ async def mark_all_notifications_as_read(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al marcar todas las notificaciones: {str(e)}"
         )
-
-
-@router.delete(
-    "/read",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Eliminar notificaciones leídas",
-    description="Elimina todas las notificaciones ya leídas del usuario actual",
-)
-async def delete_read_notifications(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    """
-    Ruta fija /read: debe registrarse ANTES de /{notification_id} para que
-    FastAPI no intente interpretar "read" como un UUID.
-    """
-    await db.execute(
-        sa_delete(Notification).where(
-            and_(
-                Notification.user_id == current_user.id,
-                Notification.is_read,
-            )
-        )
-    )
-    await db.commit()
-
-
-@router.delete(
-    "/{notification_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Eliminar una notificación",
-    description="Elimina una notificación específica del usuario actual",
-)
-async def delete_notification(
-    notification_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    result = await db.execute(
-        select(Notification).where(
-            and_(
-                Notification.id == notification_id,
-                Notification.user_id == current_user.id,
-            )
-        )
-    )
-    notification = result.scalar_one_or_none()
-
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Notificación con ID {notification_id} no encontrada",
-        )
-
-    await db.delete(notification)
-    await db.commit()

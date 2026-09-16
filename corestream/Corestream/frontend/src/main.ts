@@ -30,32 +30,11 @@ import router from '@/router'
 import { createPinia } from 'pinia'
 
 /**
- * Theme Store: gestión de tema claro/oscuro
- * Se importa aquí para inicializar antes de montar la app
- */
-import { useThemeStore } from '@/stores/theme'
-
-/**
  * Vue i18n: internacionalización
  * Proporciona soporte multiidioma
  * Permite cambiar entre idiomas sin recargar la página
  */
-import i18n from '@/i18n'
-import { vCan } from '@/directives'
-
-/**
- * Iconos (Iconify): registro offline
- *
- * @iconify/vue por defecto, si un icono no está precargado, lo busca en
- * APIs públicas (api.iconify.design, api.unisvg.com, api.simplesvg.com) —
- * viola connect-src 'self' de la CSP del contenedor y deja el ícono roto en
- * producción (sin acceso a internet saliente). mdi-subset.json contiene los
- * datos de los ~33 íconos "mdi:*" que usa la app (generados una vez desde
- * @iconify-json/mdi, ver git log), registrados aquí antes de montar.
- */
-import { addCollection } from '@iconify/vue'
-import mdiSubset from '@/assets/icons/mdi-subset.json'
-addCollection(mdiSubset as any)
+import { createI18n } from 'vue-i18n'
 
 /**
  * Estilos globales: Tailwind CSS
@@ -67,6 +46,138 @@ addCollection(mdiSubset as any)
  * - Estilos personalizados de CoreStream (colores, temas, etc.)
  */
 import '@/assets/styles/global.css'
+
+/**
+ * ========================================
+ * CONFIGURACIÓN DE i18n (INTERNACIONALIZACIÓN)
+ * ========================================
+ * 
+ * Define los idiomas soportados y los mensajes de traducción.
+ * En una aplicación real, los mensajes se cargarían desde archivos JSON separados.
+ */
+const i18n = createI18n({
+  /**
+   * Idioma por defecto de la aplicación
+   * Se usa si el idioma del navegador no es soportado
+   */
+  locale: 'es',
+
+  /**
+   * Fallback: idioma alternativo si una traducción no existe
+   */
+  fallbackLocale: 'es',
+
+  /**
+   * Mensajes de traducción
+   * Estructura: { idioma: { clave: valor } }
+   * En una aplicación real, esto estaría en archivos separados:
+   * - src/locales/es.json
+   * - src/locales/en.json
+   * - etc.
+   */
+  messages: {
+    /**
+     * Textos en español (es)
+     * Son los textos por defecto de la aplicación
+     */
+    es: {
+      /**
+       * Etiquetas comunes
+       */
+      common: {
+        save: 'Guardar',
+        cancel: 'Cancelar',
+        delete: 'Eliminar',
+        edit: 'Editar',
+        create: 'Crear',
+        loading: 'Cargando...',
+        error: 'Error',
+        success: 'Éxito',
+        close: 'Cerrar'
+      },
+
+      /**
+       * Mensajes de navegación
+       */
+      navigation: {
+        dashboard: 'Dashboard',
+        projects: 'Proyectos',
+        team: 'Equipo',
+        analytics: 'Analítica',
+        settings: 'Configuración'
+      },
+
+      /**
+       * Mensajes de autenticación
+       */
+      auth: {
+        login: 'Iniciar Sesión',
+        logout: 'Cerrar Sesión',
+        register: 'Registrarse',
+        email: 'Correo Electrónico',
+        password: 'Contraseña',
+        rememberMe: 'Recuérdame',
+        forgotPassword: 'Olvidé mi contraseña'
+      },
+
+      /**
+       * Mensajes de validación
+       */
+      validation: {
+        required: 'Este campo es requerido',
+        email: 'Ingresa un correo electrónico válido',
+        passwordTooShort: 'La contraseña debe tener al menos 8 caracteres',
+        passwordsDoNotMatch: 'Las contraseñas no coinciden'
+      }
+    },
+
+    /**
+     * Textos en inglés (en)
+     * Traducción de los textos al inglés
+     */
+    en: {
+      common: {
+        save: 'Save',
+        cancel: 'Cancel',
+        delete: 'Delete',
+        edit: 'Edit',
+        create: 'Create',
+        loading: 'Loading...',
+        error: 'Error',
+        success: 'Success',
+        close: 'Close'
+      },
+      navigation: {
+        dashboard: 'Dashboard',
+        projects: 'Projects',
+        team: 'Team',
+        analytics: 'Analytics',
+        settings: 'Settings'
+      },
+      auth: {
+        login: 'Sign In',
+        logout: 'Sign Out',
+        register: 'Sign Up',
+        email: 'Email',
+        password: 'Password',
+        rememberMe: 'Remember me',
+        forgotPassword: 'Forgot password'
+      },
+      validation: {
+        required: 'This field is required',
+        email: 'Enter a valid email address',
+        passwordTooShort: 'Password must be at least 8 characters',
+        passwordsDoNotMatch: 'Passwords do not match'
+      }
+    }
+  },
+
+  /**
+   * Configuración global de i18n
+   */
+  globalInjection: true,
+  legacy: false
+})
 
 /**
  * ========================================
@@ -85,21 +196,6 @@ const app = createApp(App)
 app.use(createPinia())
 
 /**
- * ========================================
- * INICIALIZACIÓN DEL TEMA
- * ========================================
- *
- * Inicializa el theme store para aplicar el tema al documento
- * Se hace ANTES de montar la app para evitar flash de tema incorrecto
- * El store se encarga de:
- * - Leer preferencia de localStorage
- * - Aplicar data-theme="light|dark" al <html>
- * - Default: 'light' (modo claro como muestra el manual de usuario)
- */
-const themeStore = useThemeStore()
-themeStore.applyTheme(themeStore.getTheme())
-
-/**
  * Instala Vue Router
  * Habilita sistema de enrutamiento e inyecta router global
  */
@@ -112,19 +208,13 @@ app.use(router)
 app.use(i18n)
 
 /**
- * Directiva global RBAC
- * Uso: v-can="['ADMIN', 'TEAM_LEADER']" o v-can="'ADMIN'"
- */
-app.directive('can', vCan)
-
-/**
  * ========================================
  * MONTAJE DE LA APLICACIÓN
  * ========================================
- *
+ * 
  * Monta la aplicación en el elemento DOM con id="app"
  * Este elemento está definido en index.html
- *
+ * 
  * A partir de este punto, Vue toma el control de toda la interfaz
  * y actualiza reactivamente los cambios
  */
