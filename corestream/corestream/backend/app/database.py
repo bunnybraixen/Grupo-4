@@ -1,124 +1,68 @@
-# Configuración de SQLAlchemy para operaciones de base de datos.
-#
-# IMPORTANTE: este módulo NO debe tener efectos secundarios al importarse.
-# El engine se crea de forma perezosa en la primera llamada a get_engine().
-#
-# Antes, el engine se construía a nivel de módulo con pool_size/max_overflow,
-# lo que hacía imposible importar la aplicación sin un PostgreSQL disponible y
-# obligaba a los tests a sustituir el módulo entero por un mock
-# (sys.modules["app.database"] = MagicMock()). Eso dejaba la capa de acceso a
-# datos sin cobertura real. Con la factoría perezosa, importar la app es
-# gratis y los tests pueden inyectar su propia URL.
+# Archivo de configuración de SQLAlchemy para operaciones de base de datos
+# Proporciona el motor async, sesiones y funciones de inyección de dependencias
 
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
-    async_sessionmaker,
     create_async_engine,
+    async_sessionmaker,
 )
+from sqlalchemy.orm import declarative_base
 
 from app.config import get_settings
 
-# Instancias perezosas. No se tocan al importar el módulo.
-_engine: Optional[AsyncEngine] = None
-_session_maker: Optional[async_sessionmaker[AsyncSession]] = None
+# Obtener la URL de conexión de la configuración
+settings = get_settings()
 
+# Crear el motor SQLAlchemy asincrónico
+# El motor maneja la conexión a la base de datos con soporte para operaciones async/await
+# echo=True imprime las sentencias SQL en logs (desactivar en producción)
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    future=True,
+    pool_size=20,  # Número de conexiones a mantener en el pool
+    max_overflow=10,  # Conexiones adicionales que se pueden crear cuando pool está lleno
+)
 
-def _build_engine(database_url: str) -> AsyncEngine:
-    """
-    Construye el engine asíncrono con las opciones adecuadas al dialecto.
+# Crear una fábrica de sesiones asincrónicas
+# AsyncSessionLocal se utiliza para crear sesiones para cada solicitud HTTP
+async_session_maker = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,  # No expira objetos después de un commit
+    autoflush=False,  # Control manual de flush para mejor rendimiento
+)
 
-    Las opciones de pool (pool_size, max_overflow, pool_pre_ping) solo aplican a
-    backends con pool real. SQLite en memoria, usado por los tests unitarios,
-    las rechaza, así que se omiten.
-    """
-    settings = get_settings()
-
-    kwargs: dict = {
-        "echo": settings.SQL_ECHO,
-        "future": True,
-    }
-
-    if not database_url.startswith("sqlite"):
-        kwargs.update(
-            pool_size=settings.DB_POOL_SIZE,
-            max_overflow=settings.DB_MAX_OVERFLOW,
-            # Verifica la conexión antes de usarla. Imprescindible cuando la
-            # base de datos es remota o compartida y puede cerrar conexiones
-            # ociosas por su cuenta: sin esto, la primera petición tras un
-            # corte devuelve un 500 en lugar de reconectar.
-            pool_pre_ping=True,
-            pool_recycle=settings.DB_POOL_RECYCLE,
-        )
-
-    return create_async_engine(database_url, **kwargs)
-
-
-def get_engine() -> AsyncEngine:
-    """Devuelve el engine global, creándolo en la primera llamada."""
-    global _engine
-
-    if _engine is None:
-        _engine = _build_engine(get_settings().DATABASE_URL)
-
-    return _engine
-
-
-def get_session_maker() -> async_sessionmaker[AsyncSession]:
-    """Devuelve la fábrica de sesiones global, creándola en la primera llamada."""
-    global _session_maker
-
-    if _session_maker is None:
-        _session_maker = async_sessionmaker(
-            get_engine(),
-            class_=AsyncSession,
-            expire_on_commit=False,  # No expira objetos después de un commit
-            autoflush=False,  # Control manual de flush
-        )
-
-    return _session_maker
-
-
-def configure_engine(database_url: str) -> AsyncEngine:
-    """
-    Reemplaza el engine global por uno apuntando a `database_url`.
-
-    Pensado para los tests de integración, que necesitan dirigir la aplicación
-    a una base de datos efímera antes de levantarla. En producción no se usa:
-    el engine se deriva de la configuración.
-    """
-    global _engine, _session_maker
-
-    _engine = _build_engine(database_url)
-    _session_maker = None  # se reconstruye contra el nuevo engine
-
-    return _engine
-
-
-async def dispose_engine() -> None:
-    """Cierra el engine global y libera el pool. Se llama en el shutdown."""
-    global _engine, _session_maker
-
-    if _engine is not None:
-        await _engine.dispose()
-
-    _engine = None
-    _session_maker = None
+# Crear la clase base para todos los modelos ORM
+# Todos los modelos de la base de datos heredarán de esta clase
+Base = declarative_base()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Dependencia de FastAPI que proporciona una sesión de base de datos por petición.
-
-    Garantiza que la sesión se cierra al terminar la petición, incluso si el
-    endpoint lanza una excepción.
-
+    Generador asincrónico que proporciona sesiones de base de datos para inyección de dependencias.
+    
+    Esta función se utiliza como dependencia en endpoints FastAPI para proporcionar
+    una sesión de base de datos. Garantiza que la sesión se crea al principio de la
+    solicitud y se cierra correctamente al finalizar, incluso si ocurren errores.
+    
+    La sesión proporciona operaciones CRUD y transacciones para interactuar con
+    la base de datos PostgreSQL.
+    
+    Yields:
+        AsyncSession: Sesión de base de datos asincrónica para la solicitud actual
+        
     Ejemplo en un endpoint:
         @app.get("/users/{user_id}")
         async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
-            return await db.get(User, user_id)
+            user = await db.get(User, user_id)
+            return user
     """
-    async with get_session_maker()() as session:
-        yield session
+    async with async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            # La sesión se cierra automáticamente al salir del contexto
+            await session.close()

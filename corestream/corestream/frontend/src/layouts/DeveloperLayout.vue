@@ -4,58 +4,35 @@
   Proporciona navegación sidebar y estructura común para todas las vistas de desarrollo.
 -->
 <template>
-  <div class="flex h-screen bg-[var(--bg-app)] overflow-hidden">
-    <!-- Overlay para móvil -->
-    <div v-if="isSidebarOpen" @click="toggleSidebar" class="fixed inset-0 bg-black/50 z-40 md:hidden"></div>
-
+  <div class="flex h-screen bg-gray-100 dark:bg-gray-950">
     <!-- Sidebar -->
-    <aside 
-      id="dev-sidebar"
-      :class="[
-      'bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] z-50 fixed md:relative h-full transition-transform duration-300 w-64',
-      isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-    ]"
-    aria-label="Navegación principal de desarrollo"
-    >
+    <aside class="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
       <nav class="p-6 space-y-4">
-        <h2 class="font-bold text-lg text-[var(--text-primary)] mb-6">
-          {{ t('nav.development') }}
+        <h2 class="font-bold text-lg text-gray-900 dark:text-white mb-6">
+          Desarrollo
         </h2>
-
+        
         <router-link
           to="/dev/workbench"
-          class="block px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]"
-          active-class="bg-[var(--bg-panel)] text-[var(--teal)] font-bold shadow-sm"
+          class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          {{ t('nav.workbench') }}
+          Workbench
         </router-link>
-
+        
         <router-link
           to="/dev/uploads"
-          class="block px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]"
-          active-class="bg-[var(--bg-panel)] text-[var(--teal)] font-bold shadow-sm"
+          class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          {{ t('nav.myUploads') }}
+          Mis Cargas
         </router-link>
-
-        <!-- Solo visible para líderes de equipo -->
+        
+        <!-- Solo visible para líderes de grupo -->
         <router-link
-          v-if="authStore.isTeamLeader"
           to="/dev/team-assignment"
-          class="block px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]"
-          active-class="bg-[var(--bg-panel)] text-[var(--teal)] font-bold shadow-sm"
+          class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          {{ t('nav.teamAssignment') }}
+          Asignación de Equipo
         </router-link>
-
-        <router-link
-          to="/dev/support"
-          class="block px-4 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]"
-          active-class="bg-[var(--bg-panel)] text-[var(--teal)] font-bold shadow-sm"
-        >
-          {{ t('nav.support') }}
-        </router-link>
-
       </nav>
     </aside>
 
@@ -70,21 +47,4 @@
 /**
  * DeveloperLayout - Componente de estructura para vistas de desarrollo
  */
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useAuthStore } from '@/stores'
-import { eventBus } from '@/utils/eventBus'
-
-const authStore = useAuthStore()
-const { t } = useI18n()
-
-const isSidebarOpen = ref(false)
-const toggleSidebar = () => {
-  isSidebarOpen.value = !isSidebarOpen.value
-}
-
-// El botón hamburguesa vive en AppHeader (cada vista de desarrollo lo renderiza),
-// así que el toggle del sidebar de este layout se coordina por eventBus.
-onMounted(() => eventBus.on('toggle-sidebar', toggleSidebar))
-onUnmounted(() => eventBus.off('toggle-sidebar', toggleSidebar))
 </script>

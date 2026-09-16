@@ -1,11 +1,11 @@
 <template>
   <!-- Barra lateral izquierda para la vista Builder (Admin) -->
   <!-- Muestra lista de aplicaciones con insignias de estado y opciones de ordenamiento -->
-  <aside class="w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] flex flex-col h-screen">
+  <aside class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 flex flex-col h-screen">
     
     <!-- Encabezado de la barra lateral -->
-    <div class="p-4 border-b border-[var(--border-subtle)]">
-      <h2 class="text-sm font-semibold text-[var(--text-primary)] mb-3">{{ t('sidebar.applications') }}</h2>
+    <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+      <h2 class="text-sm font-semibold text-slate-900 dark:text-white mb-3">Aplicaciones</h2>
       
       <!-- Controles de ordenamiento -->
       <!-- Permite ordenar las aplicaciones por nombre, tickets pendientes o tickets retrasados -->
@@ -17,8 +17,8 @@
           :class="[
             'px-2 py-1 text-xs rounded-md font-medium transition-colors',
             currentSort === sort.id
-              ? 'bg-lime/20 text-lime'
-              : 'bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+              ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
           ]"
           :title="`Ordenar por ${sort.label}`"
         >
@@ -38,8 +38,8 @@
         :class="[
           'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group relative',
           selectedAppId === app.id
-            ? 'bg-lime/10'
-            : 'hover:bg-[var(--bg-panel)]'
+            ? 'bg-blue-50 dark:bg-blue-900'
+            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
         ]"
       >
         <!-- Indicador de color de la aplicación -->
@@ -55,8 +55,8 @@
           <p :class="[
             'text-sm font-medium truncate',
             selectedAppId === app.id
-              ? 'text-lime'
-              : 'text-[var(--text-primary)]'
+              ? 'text-blue-900 dark:text-blue-100'
+              : 'text-slate-900 dark:text-slate-100'
           ]">
             {{ app.name }}
           </p>
@@ -96,64 +96,64 @@
 
       <!-- Estado vacío -->
       <!-- Se muestra cuando no hay aplicaciones disponibles -->
-      <div v-if="sortedApplications.length === 0" class="text-center py-8 text-[var(--text-muted)]">
-        <p class="text-sm">{{ t('sidebar.noApps') }}</p>
+      <div v-if="sortedApplications.length === 0" class="text-center py-8 text-slate-500 dark:text-slate-400">
+        <p class="text-sm">No hay aplicaciones</p>
       </div>
     </div>
 
     <!-- Pie de la barra lateral -->
-    <div class="p-4 border-t border-[var(--border-subtle)]">
+    <div class="p-4 border-t border-slate-200 dark:border-slate-700">
       <!-- Botón para crear nueva aplicación -->
       <!-- Abre un diálogo modal para la creación de una nueva aplicación -->
       <button
         @click="showCreateAppModal = true"
-        class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-lime hover:bg-lime-90 dark:bg-lime dark:hover:bg-lime-90 text-dark-gray rounded-lg font-medium transition-colors text-sm"
+        class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium transition-colors text-sm"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
         </svg>
-        {{ t('sidebar.newApp') }}
+        Nueva aplicación
       </button>
 
       <!-- Modal para crear nueva aplicación (se abre cuando showCreateAppModal es true) -->
       <!-- Incluye campos para nombre, descripción y selección de color -->
       <div v-if="showCreateAppModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div class="bg-[var(--bg-modal)] rounded-lg shadow-lg w-full max-w-md">
-          <div class="p-6 border-b border-[var(--border-subtle)]">
-            <h3 class="text-lg font-semibold text-[var(--text-primary)]">{{ t('sidebar.newApp') }}</h3>
+        <div class="bg-white dark:bg-slate-800 rounded-lg shadow-lg w-full max-w-md">
+          <div class="p-6 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Nueva aplicación</h3>
           </div>
           
           <div class="p-6 space-y-4">
             <!-- Campo de nombre -->
             <div>
-              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                {{ t('sidebar.applicationName') }}
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Nombre de la aplicación
               </label>
               <input
                 v-model="newAppForm.name"
                 type="text"
-                class="w-full px-3 py-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-lime"
-                :placeholder="t('sidebar.applicationExample')"
+                class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ej: Sistema de Autenticación"
               />
             </div>
 
             <!-- Campo de descripción -->
             <div>
-              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                {{ t('sidebar.description') }}
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Descripción
               </label>
               <textarea
                 v-model="newAppForm.description"
-                class="w-full px-3 py-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-lime resize-none"
+                class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 rows="3"
-                :placeholder="t('sidebar.descriptionPlaceholder')"
+                placeholder="Descripción breve de la aplicación"
               ></textarea>
             </div>
 
             <!-- Selector de color -->
             <div>
-              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-3">
-                {{ t('sidebar.distinctiveColor') }}
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                Color distintivo
               </label>
               <div class="flex gap-2">
                 <button
@@ -171,24 +171,24 @@
           </div>
 
           <!-- Botones de acción -->
-          <div class="p-6 border-t border-[var(--border-subtle)] flex gap-3">
+          <div class="p-6 border-t border-slate-200 dark:border-slate-700 flex gap-3">
             <button
               @click="showCreateAppModal = false"
-              class="flex-1 px-4 py-2 border border-[var(--border-subtle)] rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] font-medium transition-colors"
+              class="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-colors"
             >
-              {{ t('common.cancel') }}
+              Cancelar
             </button>
             <button
               @click="createApplication"
               :disabled="!newAppForm.name.trim()"
               :class="[
-                'flex-1 px-4 py-2 rounded-lg font-medium transition-colors text-dark-gray',
+                'flex-1 px-4 py-2 rounded-lg font-medium transition-colors text-white',
                 newAppForm.name.trim()
-                  ? 'bg-lime hover:bg-lime-90 dark:bg-lime dark:hover:bg-lime-90'
-                  : 'bg-slate-300 dark:bg-[var(--bg-card)] cursor-not-allowed'
+                  ? 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600'
+                  : 'bg-slate-300 dark:bg-slate-600 cursor-not-allowed'
               ]"
             >
-              {{ t('sidebar.create') }}
+              Crear
             </button>
           </div>
         </div>
@@ -215,10 +215,6 @@
  */
 
 import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-import { useAuthStore, useThemeStore } from '@/stores'
-import { useDialogStore } from '@/stores/dialog'
 
 // ============================================================================
 // INTERFACES Y TIPOS
@@ -285,7 +281,7 @@ const newAppForm = ref({
  */
 const applications = ref<Application[]>([
   {
-    id: '550e8400-e29b-41d4-a716-446655440001',
+    id: 'app-1',
     name: 'Sistema de Autenticación',
     color: '#3B82F6',
     description: 'Gestión de usuarios y autenticación',
@@ -293,7 +289,7 @@ const applications = ref<Application[]>([
     delayedCount: 2
   },
   {
-    id: '550e8400-e29b-41d4-a716-446655440002',
+    id: 'app-2',
     name: 'Panel de Administración',
     color: '#10B981',
     description: 'Dashboard para administradores',
@@ -301,7 +297,7 @@ const applications = ref<Application[]>([
     delayedCount: 0
   },
   {
-    id: '550e8400-e29b-41d4-a716-446655440003',
+    id: 'app-3',
     name: 'Base de Datos',
     color: '#F59E0B',
     description: 'Optimización y mantenimiento',
@@ -309,7 +305,7 @@ const applications = ref<Application[]>([
     delayedCount: 1
   },
   {
-    id: '550e8400-e29b-41d4-a716-446655440004',
+    id: 'app-4',
     name: 'Integraciones API',
     color: '#EF4444',
     description: 'Conexiones con servicios externos',
@@ -317,7 +313,7 @@ const applications = ref<Application[]>([
     delayedCount: 3
   },
   {
-    id: '550e8400-e29b-41d4-a716-446655440005',
+    id: 'app-5',
     name: 'Frontend Web',
     color: '#8B5CF6',
     description: 'Interfaz de usuario principal',
@@ -327,13 +323,13 @@ const applications = ref<Application[]>([
 ])
 
 /**
- * Opciones de ordenamiento disponibles - computed para soporte i18n
+ * Opciones de ordenamiento disponibles
  */
-const sortOptions = computed<SortOption[]>(() => [
-  { id: 'name', label: t('sidebar.sortByName') },
-  { id: 'pending', label: t('sidebar.sortByPending') },
-  { id: 'delayed', label: t('sidebar.sortByDelayed') }
-])
+const sortOptions: SortOption[] = [
+  { id: 'name', label: 'Nombre' },
+  { id: 'pending', label: 'Pendientes' },
+  { id: 'delayed', label: 'Retrasados' }
+]
 
 /**
  * Colores disponibles para las nuevas aplicaciones
@@ -387,72 +383,51 @@ const sortedApplications = computed(() => {
  * Selecciona una aplicación
  * En una aplicación real, esto emitiría un evento al componente padre
  * para que cargue los epics de esa aplicación
- *
+ * 
  * @param appId - ID de la aplicación a seleccionar
  */
-const { t } = useI18n()
-const router = useRouter()
-const route = useRoute()
-const authStore = useAuthStore()
-const themeStore = useThemeStore()
-const dialogStore = useDialogStore()
 const selectApplication = (appId: string) => {
   selectedAppId.value = appId
-  // Navegamos a la misma ruta pero con el ID en el query param
-  router.push({ query: { appId } })
+  // Aquí se emitiría: emit('app-selected', appId)
+  console.log(`Aplicación seleccionada: ${appId}`)
 }
 
 /**
  * Crear una nueva aplicación
- * Envía al servidor y actualiza la lista local
+ * Agrega la nueva aplicación a la lista (en una aplicación real, se enviaría al servidor)
+ * Limpia el formulario y cierra el modal
  */
-const createApplication = async () => {
+const createApplication = () => {
   if (!newAppForm.value.name.trim()) {
     return
   }
 
-  try {
-    // Importar API service
-    const { api } = await import('@/services/api')
-    
-    // Crear aplicación en el backend
-    const response = await api.applications.create({
-      name: newAppForm.value.name,
-      description: newAppForm.value.description,
-      color: newAppForm.value.color,
-      icon: 'star',
-      isActive: true
-    } as any)
-
-    // Convertir respuesta al formato local
-    const newApp: Application = {
-      id: response.id,
-      name: response.name,
-      color: response.color,
-      description: response.description || '',
-      pendingCount: 0,
-      delayedCount: 0
-    }
-
-    // Agregar a la lista
-    applications.value.push(newApp)
-
-    // Limpiar formulario y cerrar modal
-    newAppForm.value = {
-      name: '',
-      description: '',
-      color: '#3B82F6'
-    }
-    showCreateAppModal.value = false
-
-    // Seleccionar automáticamente la nueva aplicación
-    selectApplication(newApp.id)
-
-    console.log('Nueva aplicación creada exitosamente:', newApp)
-  } catch (error) {
-    console.error('Error al crear aplicación:', error)
-    dialogStore.alert('Error al crear aplicación. Por favor intenta nuevamente.')
+  // Crear nueva aplicación
+  const newApp: Application = {
+    id: `app-${Date.now()}`,
+    name: newAppForm.value.name,
+    color: newAppForm.value.color,
+    description: newAppForm.value.description,
+    pendingCount: 0,
+    delayedCount: 0
   }
+
+  // Agregar a la lista
+  applications.value.push(newApp)
+
+  // Limpiar formulario y cerrar modal
+  newAppForm.value = {
+    name: '',
+    description: '',
+    color: '#3B82F6'
+  }
+  showCreateAppModal.value = false
+
+  // Seleccionar automáticamente la nueva aplicación
+  selectApplication(newApp.id)
+
+  // Aquí se emitiría: emit('app-created', newApp)
+  console.log('Nueva aplicación creada:', newApp)
 }
 </script>
 
@@ -471,7 +446,7 @@ const createApplication = async () => {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-300 dark:bg-dark-gray-60 rounded-full hover:bg-slate-400 dark:hover:bg-[var(--border-color)];
+  @apply bg-slate-300 dark:bg-slate-600 rounded-full hover:bg-slate-400 dark:hover:bg-slate-500;
 }
 
 /* Animación suave para transiciones */

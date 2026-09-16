@@ -8,31 +8,46 @@
   <!-- ================================================================ -->
 
   <div
-    class="flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--teal)] text-white"
+    class="flex items-center gap-2 px-3 py-2 rounded-lg"
     :class="[
-      'transition-colors duration-200'
+      'transition-colors duration-200',
+      isPaused
+        ? 'bg-orange-900 bg-opacity-30 border border-orange-700'
+        : 'bg-slate-700 border border-slate-600'
     ]"
     :title="getTooltip"
   >
     <!-- Ícono de reloj -->
     <Icon
       icon="mdi:clock-outline"
-      class="text-lg flex-shrink-0 text-white"
+      :class="[
+        'text-lg flex-shrink-0',
+        isPaused ? 'text-orange-400 animate-pulse' : 'text-slate-400'
+      ]"
     />
 
     <!-- Mostrador de tiempo HH:MM:SS -->
-    <span class="font-mono text-base font-bold text-white">
+    <span
+      :class="[
+        'font-mono text-sm font-semibold',
+        isPaused
+          ? 'text-orange-300'
+          : isRunning
+            ? 'text-white'
+            : 'text-slate-400'
+      ]"
+    >
       {{ formattedTime }}
     </span>
 
     <!-- Indicador visual de estado (punto pulsante) -->
     <span
       v-if="isRunning"
-      class="w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0"
+      class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0"
     />
     <span
       v-else-if="isPaused"
-      class="w-2 h-2 rounded-full bg-white/60 animate-pulse flex-shrink-0"
+      class="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse flex-shrink-0"
     />
   </div>
 </template>
@@ -116,4 +131,3 @@ const getTooltip = computed(() => {
 /* El componente usa Tailwind CSS para todos los estilos */
 /* No se requieren estilos personalizados adicionales */
 </style>
-

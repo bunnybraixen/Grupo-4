@@ -11,7 +11,6 @@
  * - Feedback visual con clases CSS dinámicas
  * - Prevención de comportamiento por defecto del navegador
  * - Métodos helper para obtener clases CSS según estado
- * - Soporte para eventos dragenter/dragleave para evitar parpadeos
  * - Limpieza automática al desmontar
  * 
  * Flujo de uso:
@@ -51,16 +50,6 @@ interface DropResult {
   targetId: string
 }
 
-// =========================================================================
-// ESTADO GLOBAL COMPARTIDO (Singleton)
-// =========================================================================
-const isDraggingGlobal = ref(false)
-const dragItemGlobal = ref<DraggableItem | null>(null)
-const dragTypeGlobal = ref<'epic' | 'ticket' | null>(null)
-const dragOverTargetGlobal = ref<string | null>(null)
-let dragDataGlobal: Record<string, any> = {}
-let dragOverCountGlobal = 0
-
 /**
  * Composable para gestionar drag & drop
  * Proporciona control completo sobre arrastres en la aplicación
@@ -71,12 +60,35 @@ export function useDragDrop() {
   // =========================================================================
   // ESTADO REACTIVO - Variables para rastrear el estado del arrastre
   // =========================================================================
-  
-  // Mapeamos a las variables globales para que la reactividad sea compartida
-  const isDragging = isDraggingGlobal
-  const dragItem = dragItemGlobal
-  const dragType = dragTypeGlobal
-  const dragOverTarget = dragOverTargetGlobal
+
+  /**
+   * Indica si actualmente hay un arrastre en progreso
+   * true = algo está siendo arrastrado, false = no hay arrastre
+   */
+  const isDragging: Ref<boolean> = ref(false)
+
+  /**
+   * El item (épica o ticket) que está siendo arrastrado actualmente
+   * null si no hay arrastre en progreso
+   */
+  const dragItem: Ref<DraggableItem | null> = ref(null)
+
+  /**
+   * Tipo del item siendo arrastrado ('epic' o 'ticket')
+   * null si no hay arrastre en progreso
+   */
+  const dragType: Ref<'epic' | 'ticket' | null> = ref(null)
+
+  /**
+   * ID del elemento sobre el cual se está arrastrando actualmente
+   * Se usa para mostrar feedback visual de zona de drop válida
+   * null si no se está sobre ningún elemento válido
+   */
+  const dragOverTarget: Ref<string | null> = ref(null)
+
+  // =========================================================================
+  // VARIABLES PRIVADAS - Para control del arrastre
+  // =========================================================================
 
   /**
    * Datos de transferencia del arrastre (dataTransfer del evento)
@@ -99,19 +111,19 @@ export function useDragDrop() {
    * Clase CSS para elementos siendo arrastrados
    * Aplicada al elemento origen del arrastre
    */
-  const DRAGGING_CLASS = 'opacity-40 ring-2 ring-primary/50 shadow-inner scale-[0.98] transition-all duration-200 cursor-grabbing'
+  const DRAGGING_CLASS = 'opacity-50 bg-gray-200 cursor-move'
 
   /**
    * Clase CSS para zonas de drop válidas
    * Aplicada al elemento sobre el cual se arrastra
    */
-  const DROP_ZONE_CLASS = 'border-2 border-primary/50 bg-primary/10'
+  const DROP_ZONE_CLASS = 'border-2 border-blue-400 bg-blue-50'
 
   /**
    * Clase CSS para elementos siendo eliminados
    * Aplicada cuando el arrastre indica una eliminación
    */
-  const DROP_DELETE_CLASS = 'border-2 border-red-500/50 bg-red-500/10'
+  const DROP_DELETE_CLASS = 'border-2 border-red-400 bg-red-50'
 
   // =========================================================================
   // MÉTODOS PÚBLICOS - API del composable de drag & drop
@@ -124,36 +136,23 @@ export function useDragDrop() {
    * 
    * @param item - Item a arrastrar (épica o ticket)
    * @param type - Tipo del item ('epic' o 'ticket')
-   * @param event - Evento de arrastre del navegador
    */
-  function dragStart(item: DraggableItem, type: 'epic' | 'ticket', event?: DragEvent): void {
-    // Retrasar la aplicación de la clase visual para que el navegador capture
-    // el elemento original sin la opacidad para su "ghost image".
-    // Usamos requestAnimationFrame para evitar parpadeos y ghosting en vez de setTimeout(..., 0)
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        isDraggingGlobal.value = true
-      })
-    })
+  function dragStart(item: DraggableItem, type: 'epic' | 'ticket'): void {
+    // Registrar que hay arrastre en progreso
+    isDragging.value = true
 
     // Guardar el item y su tipo para posterior referencia
-    dragItemGlobal.value = item
-    dragTypeGlobal.value = type
+    dragItem.value = item
+    dragType.value = type
 
     // Resetear contador de dragover
-    dragOverCountGlobal = 0
+    dragOverCount = 0
 
     // Guardar datos para posible transferencia
-    dragDataGlobal = {
+    dragData = {
       itemId: item.id,
       itemType: type,
       timestamp: Date.now()
-    }
-
-    // Configurar DataTransfer para compatibilidad con navegadores
-    if (event?.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', item.id)
     }
 
     console.log(`Iniciando arrastre de ${type}:`, item.id)
@@ -169,45 +168,16 @@ export function useDragDrop() {
    */
   function dragEnd(): void {
     // Limpiar estado completamente
-    isDraggingGlobal.value = false
-    dragItemGlobal.value = null
-    dragTypeGlobal.value = null
-    dragOverTargetGlobal.value = null
-    dragOverCountGlobal = 0
+    isDragging.value = false
+    dragItem.value = null
+    dragType.value = null
+    dragOverTarget.value = null
+    dragOverCount = 0
 
     // Limpiar datos de transferencia
-    dragDataGlobal = {}
+    dragData = {}
 
     console.log('Arrastre finalizado y estado limpiado')
-  }
-
-  /**
-   * Maneja el evento dragenter para marcar el destino actual.
-   * Se usa un contador para manejar correctamente elementos anidados.
-   * 
-   * @param e - Evento DragEvent
-   * @param targetId - ID del destino
-   */
-  function dragEnter(e: DragEvent, targetId: string): void {
-    e.preventDefault()
-    dragOverCountGlobal++
-    
-    // Solo actualizamos si estamos arrastrando algo válido
-    if (isDraggingGlobal.value) {
-      dragOverTargetGlobal.value = targetId
-    }
-  }
-
-  /**
-   * Maneja el evento dragleave.
-   * Limpia el target solo si salimos realmente del elemento (contador a 0).
-   */
-  function dragLeave(): void {
-    dragOverCountGlobal--
-    if (dragOverCountGlobal <= 0) {
-      dragOverTargetGlobal.value = null
-      dragOverCountGlobal = 0
-    }
   }
 
   /**
@@ -227,7 +197,7 @@ export function useDragDrop() {
     e.stopPropagation()
 
     // Actualizar destino actual
-    dragOverTargetGlobal.value = targetId
+    dragOverTarget.value = targetId
 
     // Indicar que el drop es permitido
     if (e.dataTransfer) {
@@ -257,13 +227,13 @@ export function useDragDrop() {
     e.stopPropagation()
 
     // Validar que hay un item siendo arrastrado
-    if (!dragItemGlobal.value || !dragTypeGlobal.value) {
+    if (!dragItem.value || !dragType.value) {
       console.warn('No hay item siendo arrastrado')
       return null
     }
 
     // Validar que no estamos soltando sobre el mismo elemento
-    if (dragItemGlobal.value.id === targetId) {
+    if (dragItem.value.id === targetId) {
       console.warn('No se puede soltar sobre el mismo elemento')
       dragEnd()
       return null
@@ -273,7 +243,7 @@ export function useDragDrop() {
     const isValidDrop = validateDropTarget(targetType)
     if (!isValidDrop) {
       console.warn(
-        `Drop inválido: no se puede soltar ${dragTypeGlobal.value} en ${targetType}`
+        `Drop inválido: no se puede soltar ${dragType.value} en ${targetType}`
       )
       dragEnd()
       return null
@@ -281,8 +251,8 @@ export function useDragDrop() {
 
     // Crear resultado del drop
     const result: DropResult = {
-      item: dragItemGlobal.value as DraggableItem,
-      type: dragTypeGlobal.value as 'epic' | 'ticket',
+      item: dragItem.value,
+      type: dragType.value,
       targetId: targetId
     }
 
@@ -309,12 +279,12 @@ export function useDragDrop() {
    */
   function validateDropTarget(targetType: string): boolean {
     // Si estamos arrastrando una épica, solo puede soltarse en otra épica
-    if (dragTypeGlobal.value === 'epic') {
+    if (dragType.value === 'epic') {
       return targetType === 'epic'
     }
 
     // Si estamos arrastrando un ticket, puede soltarse en épica
-    if (dragTypeGlobal.value === 'ticket') {
+    if (dragType.value === 'ticket') {
       return targetType === 'epic'
     }
 
@@ -334,18 +304,17 @@ export function useDragDrop() {
     const classes: string[] = []
 
     // Si este elemento es el que se está arrastrando, marcar como tal
-    if (isDraggingGlobal.value && dragItemGlobal.value?.id === elementId) {
+    if (isDragging.value && dragItem.value?.id === elementId) {
       classes.push(DRAGGING_CLASS)
     }
 
     // Si este elemento es el destino del arrastre, mostrar zona de drop
-    // Evitar aplicarlo al elemento que se está arrastrando
-    if (dragOverTargetGlobal.value === elementId && isDraggingGlobal.value && dragItemGlobal.value?.id !== elementId) {
+    if (dragOverTarget.value === elementId && isDragging.value) {
       // Evaluar tipo de drop para mostrar color apropiado
-      if (dragTypeGlobal.value === 'ticket') {
+      if (dragType.value === 'ticket') {
         // Para tickets, mostrar zona válida (azul)
         classes.push(DROP_ZONE_CLASS)
-      } else if (dragTypeGlobal.value === 'epic') {
+      } else if (dragType.value === 'epic') {
         // Para épicas, mostrar zona de reorden (azul también)
         classes.push(DROP_ZONE_CLASS)
       }
@@ -362,11 +331,11 @@ export function useDragDrop() {
    */
   function getDragInfo() {
     return {
-      isDragging: isDraggingGlobal.value,
-      dragItem: dragItemGlobal.value,
-      dragType: dragTypeGlobal.value,
-      dragOverTarget: dragOverTargetGlobal.value,
-      dragData: dragDataGlobal
+      isDragging: isDragging.value,
+      dragItem: dragItem.value,
+      dragType: dragType.value,
+      dragOverTarget: dragOverTarget.value,
+      dragData: dragData
     }
   }
 
@@ -388,8 +357,10 @@ export function useDragDrop() {
    * Garantiza la limpieza del estado de arrastre
    * Evita estado inconsistente si el componente se desmonta durante arrastre
    */
-  // Nota: No usamos onUnmounted para limpiar el estado porque es global.
-  // El estado se limpia explícitamente en dragEnd() tras un drop o cancelación.
+  onUnmounted(() => {
+    dragEnd()
+    console.log('Composable useDragDrop desmontado')
+  })
 
   // =========================================================================
   // RETORNO DEL COMPOSABLE - API pública
@@ -405,8 +376,6 @@ export function useDragDrop() {
     // Métodos principales para eventos drag
     dragStart,  // Iniciar arrastre
     dragEnd,    // Finalizar arrastre
-    dragEnter,  // Entrar en zona de drop
-    dragLeave,  // Salir de zona de drop
     dragOver,   // Manejar dragover
     drop,       // Manejar drop
 

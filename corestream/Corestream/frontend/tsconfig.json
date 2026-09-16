@@ -86,8 +86,7 @@
     "src/**/*.ts",
     "src/**/*.d.ts",
     "src/**/*.tsx",
-    "src/**/*.vue",
-    "*.spec.ts"
+    "src/**/*.vue"
   ],
 
   /**

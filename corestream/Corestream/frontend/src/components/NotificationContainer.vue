@@ -6,7 +6,12 @@
 -->
 <template>
   <div class="fixed top-4 right-4 space-y-4 z-50">
-    <!-- Aquí se renderizan las notificaciones toast -->
+    <!-- Aquí se renderizan las notificaciones -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 min-w-sm">
+      <p class="text-gray-900 dark:text-white">
+        Notificaciones globales
+      </p>
+    </div>
   </div>
 </template>
 

@@ -7,20 +7,20 @@
   <!-- Muestra: título, épica, estado, prioridad, fecha, tiempo transcurrido -->
   <!-- ================================================================ -->
 
-  <div class="flex flex-col h-full bg-[var(--bg-app)] border-r border-[var(--border-subtle)]">
+  <div class="flex flex-col h-full bg-slate-900 border-r border-slate-700">
     <!-- ================================================================ -->
     <!-- SECCIÓN: Encabezado -->
     <!-- ================================================================ -->
     <!-- Título y opciones de filtrado -->
     <!-- ================================================================ -->
-    <div class="p-4 border-b border-[var(--border-subtle)] space-y-4">
-      <h2 class="text-lg font-bold text-[var(--text-primary)]">Mis Tickets</h2>
+    <div class="p-4 border-b border-slate-700 space-y-4">
+      <h2 class="text-lg font-bold text-white">Mis Tickets</h2>
 
       <!-- ================================================================ -->
       <!-- FILA DE FILTROS: Estado -->
       <!-- ================================================================ -->
       <div>
-        <label class="block text-xs font-semibold text-[var(--text-secondary)] mb-2">
+        <label class="block text-xs font-semibold text-slate-300 mb-2">
           Estado
         </label>
         <div class="flex gap-2 flex-wrap">
@@ -29,8 +29,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               statusFilter === null
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Todos
@@ -40,8 +40,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               statusFilter === 'IN_PROGRESS'
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             En Curso
@@ -51,8 +51,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               statusFilter === 'TODO'
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Por Hacer
@@ -64,7 +64,7 @@
       <!-- FILA DE FILTROS: Fecha -->
       <!-- ================================================================ -->
       <div>
-        <label class="block text-xs font-semibold text-[var(--text-secondary)] mb-2">
+        <label class="block text-xs font-semibold text-slate-300 mb-2">
           Fecha
         </label>
         <div class="flex gap-2 flex-wrap">
@@ -73,8 +73,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               dateFilter === null
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Todas
@@ -84,8 +84,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               dateFilter === 'overdue'
-                ? 'bg-red-600 text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-red-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Atrasados
@@ -95,8 +95,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               dateFilter === 'today'
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Hoy
@@ -106,8 +106,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               dateFilter === 'week'
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Esta Semana
@@ -117,8 +117,8 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               dateFilter === 'later'
-                ? 'bg-[var(--teal)] text-[var(--text-primary)]'
-                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)]'
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             ]"
           >
             Después
@@ -135,7 +135,7 @@
     <div class="flex-1 overflow-y-auto">
       <div
         v-if="filteredTickets.length === 0"
-        class="p-8 text-center text-[var(--text-muted)]"
+        class="p-8 text-center text-slate-400"
       >
         <Icon icon="mdi:inbox-outline" class="text-5xl mx-auto mb-3 opacity-50" />
         <p class="text-sm font-medium">No hay tickets asignados</p>
@@ -146,23 +146,20 @@
         <button
           v-for="ticket in filteredTickets"
           :key="ticket.id"
-          draggable="true"
-          @dragstart="dragStart(ticket, 'ticket', $event)"
-          @dragend="dragEnd"
           @click="selectTicket(ticket)"
           :class="[
             'w-full p-3 text-left rounded-lg border transition-all duration-200',
             'hover:shadow-lg hover:border-blue-500',
             selectedTicketId === ticket.id
-              ? 'bg-[var(--bg-panel)] border-blue-500 shadow-lg'
-              : 'bg-[var(--bg-card)] border-[var(--border-subtle)] hover:bg-slate-750'
+              ? 'bg-slate-700 border-blue-500 shadow-lg'
+              : 'bg-slate-800 border-slate-700 hover:bg-slate-750'
           ]"
         >
           <!-- ================================================================ -->
           <!-- FILA 1: Título y Estado -->
           <!-- ================================================================ -->
           <div class="flex items-start justify-between gap-2 mb-2">
-            <h4 class="text-sm font-medium text-[var(--text-primary)] flex-1 line-clamp-2">
+            <h4 class="text-sm font-medium text-white flex-1 line-clamp-2">
               {{ ticket.title }}
             </h4>
             <span
@@ -178,7 +175,7 @@
           <!-- ================================================================ -->
           <!-- FILA 2: Épica (breadcrumb) -->
           <!-- ================================================================ -->
-          <div class="flex items-center gap-2 mb-2 text-xs text-[var(--text-muted)]">
+          <div class="flex items-center gap-2 mb-2 text-xs text-slate-400">
             <Icon icon="mdi:folder-outline" class="flex-shrink-0" />
             <span class="truncate">{{ ticket.epicName || 'Sin épica' }}</span>
           </div>
@@ -201,7 +198,7 @@
               v-if="ticket.dueDate"
               :class="[
                 'text-xs flex items-center gap-1 flex-shrink-0',
-                isTicketOverdue(ticket) ? 'text-[var(--priority-urg-bg)] font-semibold' : 'text-[var(--text-muted)]'
+                isTicketOverdue(ticket) ? 'text-red-400 font-semibold' : 'text-slate-400'
               ]"
             >
               <Icon
@@ -211,9 +208,9 @@
             </div>
 
             <!-- Indicador de tiempo transcurrido -->
-            <div v-if="ticket.timeSpentSeconds" class="text-xs text-[var(--text-muted)] flex items-center gap-1 flex-shrink-0">
+            <div v-if="ticket.timeTracked" class="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
               <Icon icon="mdi:clock-outline" />
-              {{ formatTime(ticket.timeSpentSeconds) }}
+              {{ formatTime(ticket.timeTracked) }}
             </div>
           </div>
 
@@ -222,7 +219,7 @@
           <!-- ================================================================ -->
           <div
             v-if="isTicketOverdue(ticket)"
-            class="mt-2 text-xs font-semibold text-[var(--priority-urg-bg)] flex items-center gap-1"
+            class="mt-2 text-xs font-semibold text-red-400 flex items-center gap-1"
           >
             <Icon icon="mdi:close-circle" />
             {{ getDaysOverdue(ticket) }} días atrasado
@@ -241,8 +238,20 @@
 import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useTicketsStore } from '@/stores/tickets'
-import { useDragDrop } from '@/composables/useDragDrop'
-import type { Ticket } from '@/types'
+
+// =====================================================================
+// DEFINICIÓN DE TIPOS
+// =====================================================================
+
+interface Ticket {
+  id: string
+  title: string
+  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  epicName?: string
+  dueDate?: string
+  timeTracked?: number // segundos
+}
 
 // =====================================================================
 // ESTADO LOCAL
@@ -264,9 +273,6 @@ const selectedTicketId = ref<string | null>(null)
 // Acceso al store de tickets
 const ticketsStore = useTicketsStore()
 
-// Drag & Drop composable
-const { dragStart, dragEnd } = useDragDrop()
-
 // =====================================================================
 // PROPIEDADES COMPUTADAS
 // =====================================================================
@@ -276,11 +282,11 @@ const { dragStart, dragEnd } = useDragDrop()
  * Combina filtro de estado y filtro de fecha
  */
 const filteredTickets = computed(() => {
-  let filtered: Ticket[] = ticketsStore.myWorkbench
+  let filtered = ticketsStore.assignedTickets
 
   // Aplicar filtro de estado si está seleccionado
   if (statusFilter.value) {
-    filtered = filtered.filter((t: Ticket) => t.status === statusFilter.value)
+    filtered = filtered.filter(t => t.status === statusFilter.value)
   }
 
   // Aplicar filtro de fecha si está seleccionado
@@ -288,7 +294,7 @@ const filteredTickets = computed(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    filtered = filtered.filter((ticket: Ticket) => {
+    filtered = filtered.filter(ticket => {
       if (!ticket.dueDate) return dateFilter.value === 'later'
 
       const dueDate = new Date(ticket.dueDate)
@@ -313,7 +319,7 @@ const filteredTickets = computed(() => {
   }
 
   // Ordenar por fecha de vencimiento (más próximas primero)
-  return filtered.sort((a: Ticket, b: Ticket) => {
+  return filtered.sort((a, b) => {
     if (!a.dueDate) return 1
     if (!b.dueDate) return -1
     return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
@@ -332,11 +338,11 @@ const getStatusColor = (status: string): string => {
     case 'TODO':
       return 'bg-gray-600 text-gray-100'
     case 'IN_PROGRESS':
-      return 'bg-[var(--teal)] text-[var(--text-primary)]'
+      return 'bg-blue-600 text-blue-100'
     case 'BLOCKED':
-      return 'bg-[var(--priority-high-bg)] text-[var(--text-primary)]'
+      return 'bg-orange-600 text-orange-100'
     case 'DONE':
-      return 'bg-[var(--status-done-bg)] text-[var(--text-primary)]'
+      return 'bg-green-600 text-green-100'
     default:
       return 'bg-slate-600 text-slate-100'
   }
@@ -353,7 +359,6 @@ const getStatusLabel = (status: string): string => {
       return 'En Curso'
     case 'BLOCKED':
       return 'Bloqueado'
-    case 'COMPLETED':
     case 'DONE':
       return 'Completado'
     default:
@@ -367,15 +372,15 @@ const getStatusLabel = (status: string): string => {
 const getPriorityColor = (priority: string): string => {
   switch (priority) {
     case 'LOW':
-      return 'bg-[var(--priority-low-bg)]'
+      return 'bg-green-500'
     case 'MEDIUM':
-      return 'bg-[var(--priority-med-bg)]'
+      return 'bg-yellow-500'
     case 'HIGH':
-      return 'bg-[var(--priority-high-bg)]'
-    case 'URGENT':
-      return 'bg-[var(--priority-urg-bg)]'
+      return 'bg-orange-500'
+    case 'CRITICAL':
+      return 'bg-red-500'
     default:
-      return 'bg-[var(--text-muted)]'
+      return 'bg-slate-500'
   }
 }
 
@@ -442,5 +447,3 @@ const emit = defineEmits<{
 <style scoped>
 /* Estilos personalizados si es necesario */
 </style>
-
-

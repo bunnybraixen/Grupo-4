@@ -8,12 +8,11 @@
  * - Seleccionar aplicación activa
  * - Ordenar aplicaciones por diferentes criterios
  */
- 
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Application } from '@/types'
 import { api } from '@/services/api'
-import { useAuthStore } from './auth'
 
 export const useApplicationsStore = defineStore('applications', () => {
   // ========== ESTADO REACTIVO ==========
@@ -62,8 +61,8 @@ export const useApplicationsStore = defineStore('applications', () => {
    */
   const sortedByPending = computed((): Application[] => {
     return [...applications.value].sort((a, b) => {
-      const pendingA = a.pendingCount || 0
-      const pendingB = b.pendingCount || 0
+      const pendingA = (a.totalTickets || 0) - (a.completedTickets || 0)
+      const pendingB = (b.totalTickets || 0) - (b.completedTickets || 0)
       return pendingB - pendingA
     })
   })
@@ -74,8 +73,8 @@ export const useApplicationsStore = defineStore('applications', () => {
    */
   const sortedByDelayed = computed((): Application[] => {
     return [...applications.value].sort((a, b) => {
-      const delayedA = a.delayedCount || 0
-      const delayedB = b.delayedCount || 0
+      const delayedA = a.delayedTickets || 0
+      const delayedB = b.delayedTickets || 0
       return delayedB - delayedA
     })
   })
@@ -85,17 +84,18 @@ export const useApplicationsStore = defineStore('applications', () => {
    * Porcentaje de tickets completados sobre el total
    */
   const overallProgress = computed((): number => {
-    const totalTickets = applications.value.reduce((sum, app) => sum + (app.ticketCount || 0), 0)
-    const notCompleted = applications.value.reduce((sum, app) => sum + (app.pendingCount || 0) + (app.delayedCount || 0), 0)
+    const totalTickets = applications.value.reduce((sum, app) => sum + (app.totalTickets || 0), 0)
+    const completedTickets = applications.value.reduce((sum, app) => sum + (app.completedTickets || 0), 0)
+    
     if (totalTickets === 0) return 0
-    return Math.round(((totalTickets - notCompleted) / totalTickets) * 100)
+    return Math.round((completedTickets / totalTickets) * 100)
   })
 
   /**
    * Retorna el número total de tickets atrasados en todas las apps
    */
   const totalDelayedTickets = computed((): number => {
-    return applications.value.reduce((sum, app) => sum + (app.delayedCount || 0), 0)
+    return applications.value.reduce((sum, app) => sum + (app.delayedTickets || 0), 0)
   })
 
   // ========== ACCIONES ==========
@@ -112,12 +112,8 @@ export const useApplicationsStore = defineStore('applications', () => {
 
     try {
       const data = await api.applications.list()
-      const normalized = Array.isArray(data)
-        ? data
-        : ((data as any)?.items || (data as any)?.data || [])
-
-      applications.value = normalized
-      return normalized
+      applications.value = data
+      return data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener aplicaciones'
       error.value = message
@@ -144,15 +140,7 @@ export const useApplicationsStore = defineStore('applications', () => {
     error.value = null
 
     try {
-      const authStore = useAuthStore()
-      const created = await api.applications.create({
-        ...data,
-        color: data.color || '#000000',
-        icon: data.icon || '📦',
-        description: data.description || '',
-        isActive: true,
-        ownerId: authStore.user?.id || ''
-      })
+      const created = await api.applications.create(data)
       applications.value.push(created)
       return created
     } catch (err) {
@@ -289,7 +277,7 @@ export const useApplicationsStore = defineStore('applications', () => {
    */
   const refreshApplication = async (id: string): Promise<Application> => {
     try {
-      const updated = await api.applications.getById(id)
+      const updated = await api.applications.get(id)
       
       const index = applications.value.findIndex(app => app.id === id)
       if (index !== -1) {

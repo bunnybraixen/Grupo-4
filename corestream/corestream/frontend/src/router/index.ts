@@ -11,10 +11,9 @@
  * Las rutas utilizan layout anidados para mantener consistencia visual
  * en diferentes secciones de la aplicación.
  */
- 
-import { createRouter, createWebHashHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
+
+import { createRouter, createWebHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
 import type { UserRole } from '@/types'
-import { useAuthStore } from '@/stores/auth'
 
 /**
  * ========================================
@@ -25,25 +24,23 @@ import { useAuthStore } from '@/stores/auth'
  * - / : Raíz (redirige a login o dashboard)
  * - /login : Autenticación (pública)
  * - /admin/* : Panel de administración (requiere rol ADMIN)
- * - /dev/* : Área de desarrollo (requiere rol DEVELOPER o TEAM_LEADER)
+ * - /dev/* : Área de desarrollo (requiere rol DEVELOPER o GROUP_LEADER)
  */
 const routes: RouteRecordRaw[] = [
   {
     /**
-     * Ruta raíz. Antes resolvía el destino con un `redirect(to)` síncrono
-     * que leía accessToken de localStorage — funcionaba porque el token
-     * estaba disponible de inmediato al cargar la página.
-     *
-     * Ya no: el access token vive solo en memoria y se restaura de forma
-     * asíncrona (authStore.ensureInitialized(), que espera a /auth/refresh).
-     * Un `redirect` de ruta debe resolver de forma síncrona, así que no
-     * puede esperar nada — por eso esta ruta ya no decide el destino por sí
-     * misma: se queda "en blanco" y el guard beforeEach (que sí es async)
-     * es quien decide a dónde ir una vez conoce el estado real de sesión.
+     * Ruta raíz
+     * Redirige al dashboard apropiado basado en el rol del usuario
      */
     path: '/',
-    name: 'Root',
-    component: { render: () => null },
+    redirect: () => {
+      /**
+       * La redirección real ocurre en el guard de navegación
+       * que valida la autenticación primero
+       */
+      const userRole = localStorage.getItem('userRole')
+      return userRole === 'ADMIN' ? '/admin' : '/dev'
+    }
   },
 
   /**
@@ -79,20 +76,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
-  {
-    /**
-     * Aceptación de invitación (plan 3.7). Pública: el invitado todavía no
-     * tiene cuenta, no puede haber autenticación que exigirle.
-     */
-    path: '/invite/:token',
-    name: 'InvitationAccept',
-    component: () => import('@/views/InvitationAcceptView.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'Aceptar invitación - CoreStream'
-    }
-  },
-
   /**
    * ========================================
    * RUTAS DE ADMINISTRACIÓN
@@ -112,17 +95,11 @@ const routes: RouteRecordRaw[] = [
      */
     component: () => import('@/layouts/AdminLayout.vue'),
     /**
-     * Guards de navegación específicos para rutas admin.
-     * ADMIN entra a todo este layout. TEAM_LEADER es quien gestiona el
-     * día a día del equipo (builder, analytics, incidents, meetings), así
-     * que también entra a esas rutas hijas — cada una trae su propio
-     * requiredRoles explícito. team/uploads/code-docs/settings/support
-     * quedan ['ADMIN'] porque son administración de la plataforma en sí
-     * (gestión de usuarios/roles, configuración del sistema).
+     * Guards de navegación específicos para rutas admin
      */
     meta: {
       requiresAuth: true,
-      requiredRoles: ['ADMIN', 'TEAM_LEADER'],
+      requiredRoles: ['ADMIN'],
       title: 'Administración - CoreStream'
     },
     /**
@@ -135,8 +112,7 @@ const routes: RouteRecordRaw[] = [
          * Redirige a /admin/builder
          */
         path: '',
-        name: 'AdminHome',
-        redirect: '/admin/builder'
+        redirect: 'builder'
       },
 
       {
@@ -149,7 +125,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/BuilderView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['ADMIN', 'TEAM_LEADER'],
+          requiredRoles: ['ADMIN'],
           title: 'Constructor - CoreStream Admin'
         }
       },
@@ -164,36 +140,8 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/AnalyticsView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['ADMIN', 'TEAM_LEADER'],
+          requiredRoles: ['ADMIN'],
           title: 'Analítica - CoreStream Admin'
-        }
-      },
-
-      {
-        /**
-         * Panel de control de Incidentes (P1, P2, P3)
-         */
-        path: 'incidents',
-        name: 'AdminIncidents',
-        component: () => import('@/views/admin/IncidentsView.vue'),
-        meta: {
-          requiresAuth: true,
-          requiredRoles: ['ADMIN', 'TEAM_LEADER'],
-          title: 'Incidentes - CoreStream Admin'
-        }
-      },
-
-      {
-        /**
-         * Calendario y Ceremonias
-         */
-        path: 'meetings',
-        name: 'AdminMeetings',
-        component: () => import('@/views/admin/MeetingsView.vue'),
-        meta: {
-          requiresAuth: true,
-          requiredRoles: ['ADMIN', 'TEAM_LEADER'],
-          title: 'Reuniones - CoreStream Admin'
         }
       },
 
@@ -229,42 +177,18 @@ const routes: RouteRecordRaw[] = [
 
       {
         /**
-         * Vista de carga de documentos y código
-         * Gestión de archivos para el equipo (código, documentación)
+         * Vista de gestión de incidentes (Admin)
+         * Tablero Kanban por categoría, filtros, creación y asignación de incidentes.
+         * Permite al administrador priorizar, agrupar y dar seguimiento a todos
+         * los incidentes del sistema organizados por categoría.
          */
-        path: 'uploads',
-        name: 'DocumentsUpload',
-        component: () => import('@/views/admin/DocumentsUploadView.vue'),
+        path: 'incidents',
+        name: 'Incidents',
+        component: () => import('@/views/admin/IncidentsView.vue'),
         meta: {
           requiresAuth: true,
           requiredRoles: ['ADMIN'],
-          title: 'Carga de Documentos - CoreStream Admin'
-        }
-      },
-
-      {
-        path: 'settings',
-        name: 'AdminSettings',
-        component: () => import('@/views/shared/SettingsView.vue'),
-        meta: {
-          requiresAuth: true,
-          requiredRoles: ['ADMIN'],
-          title: 'Configuración - CoreStream Admin'
-        }
-      },
-
-      {
-        /**
-         * Vista de tickets de soporte para Admin
-         * Permite gestionar bugs de producción reportados por el equipo
-         */
-        path: 'support',
-        name: 'AdminSupport',
-        component: () => import('@/views/dev/SupportView.vue'),
-        meta: {
-          requiresAuth: true,
-          requiredRoles: ['ADMIN'],
-          title: 'Soporte - CoreStream Admin'
+          title: 'Incidentes - CoreStream Admin'
         }
       }
     ]
@@ -286,11 +210,11 @@ const routes: RouteRecordRaw[] = [
     name: 'DeveloperLayout',
     component: () => import('@/layouts/DeveloperLayout.vue'),
     /**
-     * Guards: requiere autenticación y rol DEVELOPER o TEAM_LEADER
+     * Guards: requiere autenticación y rol DEVELOPER o GROUP_LEADER
      */
     meta: {
       requiresAuth: true,
-      requiredRoles: ['DEVELOPER', 'TEAM_LEADER'],
+      requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
       title: 'Área de Desarrollo - CoreStream'
     },
     /**
@@ -303,8 +227,7 @@ const routes: RouteRecordRaw[] = [
          * Redirige a /dev/workbench
          */
         path: '',
-        name: 'DevHome',
-        redirect: '/dev/workbench'
+        redirect: 'workbench'
       },
 
       {
@@ -318,7 +241,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dev/WorkbenchView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['DEVELOPER', 'TEAM_LEADER'],
+          requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
           title: 'Mi Workbench - CoreStream'
         }
       },
@@ -333,26 +256,15 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dev/UploadsView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['DEVELOPER', 'TEAM_LEADER'],
-          title: 'Mis Archivos - CoreStream'
-        }
-      },
-
-      {
-        path: 'settings',
-        name: 'DevSettings',
-        component: () => import('@/views/shared/SettingsView.vue'),
-        meta: {
-          requiresAuth: true,
-          requiredRoles: ['DEVELOPER', 'TEAM_LEADER'],
-          title: 'Configuración - CoreStream'
+          requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
+          title: 'Mis Cargas - CoreStream'
         }
       },
 
       {
         /**
          * Vista de asignación de tareas del equipo
-         * Solo disponible para líderes de grupo (TEAM_LEADER)
+         * Solo disponible para líderes de grupo (GROUP_LEADER)
          * Permite asignar tareas a miembros del equipo
          */
         path: 'team-assignment',
@@ -360,23 +272,25 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dev/TeamAssignmentView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['TEAM_LEADER'],
+          requiredRoles: ['GROUP_LEADER'],
           title: 'Asignación de Equipo - CoreStream'
         }
       },
 
       {
         /**
-         * Vista de tickets de soporte para Developer y Team Leader
-         * Permite crear, ver y gestionar bugs de producción
+         * Vista de incidentes del desarrollador
+         * Muestra los incidentes asignados al usuario actual agrupados por estado.
+         * Permite acciones rápidas (iniciar, enviar a revisión, etc.)
+         * y un panel lateral de detalle completo.
          */
-        path: 'support',
-        name: 'DevSupport',
-        component: () => import('@/views/dev/SupportView.vue'),
+        path: 'my-incidents',
+        name: 'MyIncidents',
+        component: () => import('@/views/dev/MyIncidentsView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['DEVELOPER', 'TEAM_LEADER'],
-          title: 'Soporte - CoreStream'
+          requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
+          title: 'Mis Incidentes - CoreStream'
         }
       }
     ]
@@ -404,16 +318,15 @@ const routes: RouteRecordRaw[] = [
 /**
  * Crea la instancia de Router
  * Configuración:
- * - Modo hash: URLs con # que no requieren configuración de servidor
+ * - Modo history: URLs limpias sin # (requiere configuración en servidor)
  * - Base URL: '/' (raíz del dominio)
  */
 const router = createRouter({
   /**
-   * Modo hash: usa # en las URLs para routing sin requerer servidor especial
-   * URLs se ven como /#/admin/builder
-   * Esto funciona sin necesidad de reescritura de URL en servidor
+   * Modo de historial: usa History API del navegador
+   * URLs se ven como /admin/builder en lugar de /#/admin/builder
    */
-  history: createWebHashHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes
 })
 
@@ -451,39 +364,31 @@ router.beforeEach(
     next: NavigationGuardNext
   ): Promise<void> => {
     /**
-     * El access token ya no vive en localStorage (plan 3.2): vive en memoria
-     * en el store de Pinia, y se restaura de forma asíncrona en la primera
-     * carga de página vía /auth/refresh (cookie httpOnly). ensureInitialized()
-     * dispara esa restauración una sola vez y la memoiza — si App.vue ya la
-     * inició, esto solo espera la misma promesa; si esta es la primera
-     * navegación tras recargar la página, la dispara aquí.
+     * Obtiene el token de autenticación almacenado
+     * Normalmente se guardaría en el store de Pinia
+     * Aquí se simplifca extrayéndolo del localStorage
      */
-    const authStore = useAuthStore()
-    await authStore.ensureInitialized()
-
-    const isAuthenticated = authStore.isAuthenticated
-    const userRole = authStore.userRole as UserRole | undefined
-    const dashboardPath = userRole === 'ADMIN' ? '/admin' : '/dev'
+    const token = localStorage.getItem('accessToken')
+    const userRole = localStorage.getItem('userRole') as UserRole | null
 
     /**
-     * CASO 0: Ruta raíz — antes tenía su propio redirect() síncrono leyendo
-     * localStorage; ahora que el estado de sesión se conoce de forma async,
-     * la decisión se toma aquí, después de esperar ensureInitialized().
+     * Meta información de la ruta
      */
-    if (to.path === '/') {
-      next({ path: isAuthenticated ? dashboardPath : '/login' })
-      return
-    }
-
     const requiresAuth = to.meta.requiresAuth as boolean | undefined
     const requiredRoles = to.meta.requiredRoles as string[] | undefined
 
     /**
-     * CASO 1: Ruta requiere autenticación pero el usuario no tiene sesión
+     * CASO 1: Ruta requiere autenticación pero usuario no tiene token
      */
-    if (requiresAuth && !isAuthenticated) {
+    if (requiresAuth && !token) {
+      /**
+       * Redirige a login y guarda la ruta destino para volver después
+       */
       next({
         name: 'Login',
+        /**
+         * Parámetro query: ruta a la que ir después de autenticarse
+         */
         query: { redirect: to.path }
       })
       return
@@ -492,29 +397,25 @@ router.beforeEach(
     /**
      * CASO 2: Usuario intenta acceder a login pero ya está autenticado
      */
-    /**
-     * CASO 3: Ruta requiere un rol específico y usuario no lo tiene
-     */
-    if (requiredRoles && userRole && !requiredRoles.includes(userRole)) {
-      next({
-        path: dashboardPath === '/admin' ? '/admin/builder' : '/dev/workbench'
-      })
+    if (to.name === 'Login' && token) {
+      /**
+       * Redirige al dashboard apropiado basado en rol
+       */
+      const targetPath = userRole === 'ADMIN' ? '/admin' : '/dev'
+      next(targetPath)
       return
     }
 
     /**
-     * CASO 3.5: la contraseña actual la fijó un admin al resetearla
-     * (plan 3.8) — se fuerza el cambio antes de dejar navegar a cualquier
-     * otro sitio que no sea la propia pantalla de ajustes o el login.
+     * CASO 3: Ruta requiere un rol específico y usuario no lo tiene
      */
-    if (
-      isAuthenticated &&
-      authStore.mustChangePassword &&
-      to.name !== 'AdminSettings' &&
-      to.name !== 'DevSettings' &&
-      to.name !== 'Login'
-    ) {
-      next({ path: `${dashboardPath}/settings`, query: { forcePasswordChange: '1' } })
+    if (requiredRoles && userRole && !requiredRoles.includes(userRole)) {
+      /**
+       * Redirige a la página de acceso denegado o al dashboard principal
+       */
+      next({
+        name: userRole === 'ADMIN' ? 'AdminLayout' : 'DeveloperLayout'
+      })
       return
     }
 

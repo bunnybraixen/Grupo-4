@@ -1,4 +1,4 @@
- /**
+/**
  * Store de Tickets - CoreStream
  * ¡LA TIENDA MÁS IMPORTANTE DE CORESTREAM!
  * 
@@ -15,11 +15,10 @@
  * - Redireccionamiento de tickets
  * - Movimiento entre épicos (drag & drop)
  */
- 
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Ticket, Subtask } from '@/types'
-import { TicketStatus, TicketPriority } from '@/types'
+import type { Ticket, TicketStatus } from '@/types'
 import { api } from '@/services/api'
 
 /**
@@ -98,11 +97,11 @@ export const useTicketsStore = defineStore('tickets', () => {
       result = result.filter(ticket => {
         const statusMap: Record<StatusFilter, TicketStatus | TicketStatus[]> = {
           'all': ticket.status,
-          'todo': TicketStatus.TODO,
-          'in_progress': TicketStatus.IN_PROGRESS,
-          'completed': TicketStatus.COMPLETED,
-          'blocked': [TicketStatus.BLOCKED, TicketStatus.BLOCKED_QUESTION],
-          'closed': TicketStatus.COMPLETED,
+          'todo': 'TODO',
+          'in_progress': 'IN_PROGRESS',
+          'completed': 'COMPLETED',
+          'blocked': 'BLOCKED',
+          'closed': 'CLOSED',
         }
         const allowedStatus = statusMap[statusFilter.value]
         return Array.isArray(allowedStatus)
@@ -175,7 +174,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * Retorna todos los tickets completados o cerrados
    */
   const completedTickets = computed((): Ticket[] => {
-    return tickets.value.filter(t => t.status === TicketStatus.COMPLETED)
+    return tickets.value.filter(t => t.status === 'COMPLETED' || t.status === 'CLOSED')
   })
 
   /**
@@ -223,7 +222,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    */
   const sortedByPriority = computed((): Ticket[] => {
     const priorityOrder: Record<string, number> = {
-      'URGENT': 0,
+      'CRITICAL': 0,
       'HIGH': 1,
       'MEDIUM': 2,
       'LOW': 3,
@@ -271,7 +270,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * 
    * @returns Promise<Ticket[]>
    */
-  const fetchMyWorkbench = async (): Promise<Ticket[] | undefined> => {
+  const fetchMyWorkbench = async (): Promise<Ticket[]> => {
     isLoading.value = true
     error.value = null
 
@@ -282,8 +281,8 @@ export const useTicketsStore = defineStore('tickets', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener workbench personal'
       error.value = message
-      myWorkbench.value = []
       console.error('Error en fetchMyWorkbench:', err)
+      throw err
     } finally {
       isLoading.value = false
     }
@@ -307,15 +306,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     error.value = null
 
     try {
-      const created = await api.tickets.create({
-        ...data,
-        description: data.description || '',
-        priority: (data.priority as TicketPriority) || TicketPriority.MEDIUM,
-        status: TicketStatus.TODO,
-        orderIndex: 0,
-        timeSpentSeconds: 0,
-        blockedTimeSeconds: 0
-      })
+      const created = await api.tickets.create(data)
       tickets.value.push(created)
       return created
     } catch (err) {
@@ -410,7 +401,7 @@ export const useTicketsStore = defineStore('tickets', () => {
 
     try {
       const updated = await api.tickets.moveToEpic({ ticketId, newEpicId })
-
+      
       const index = tickets.value.findIndex(t => t.id === ticketId)
       if (index !== -1) {
         tickets.value[index] = updated
@@ -425,40 +416,6 @@ export const useTicketsStore = defineStore('tickets', () => {
       const message = err instanceof Error ? err.message : 'Error al mover ticket'
       error.value = message
       console.error('Error en moveToEpic:', err)
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * Reordena un ticket dentro de su épica actual
-   *
-   * @param ticketId - ID del ticket a reordenar
-   * @param newIndex - Nueva posición dentro de la épica
-   * @returns Promise<Ticket>
-   */
-  const reorderTicket = async (ticketId: string, newIndex: number): Promise<Ticket> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const updated = await api.tickets.reorder(ticketId, newIndex)
-
-      const index = tickets.value.findIndex(t => t.id === ticketId)
-      if (index !== -1) {
-        tickets.value[index] = updated
-      }
-
-      if (selectedTicket.value?.id === ticketId) {
-        selectedTicket.value = updated
-      }
-
-      return updated
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al reordenar ticket'
-      error.value = message
-      console.error('Error en reorderTicket:', err)
       throw err
     } finally {
       isLoading.value = false
@@ -530,7 +487,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    */
   const startWorking = async (ticketId: string): Promise<Ticket> => {
     try {
-      const updated = await api.tickets.updateStatus(ticketId, TicketStatus.IN_PROGRESS)
+      const updated = await api.tickets.updateStatus(ticketId, 'IN_PROGRESS')
       
       const index = tickets.value.findIndex(t => t.id === ticketId)
       if (index !== -1) {
@@ -736,121 +693,6 @@ export const useTicketsStore = defineStore('tickets', () => {
     error.value = null
   }
 
-  // ========== ACCIONES DE SUBTAREAS ==========
-
-  /**
-   * Función auxiliar interna para actualizar los subtasks en todas las listas (Workbench, Epic, Selected)
-   */
-  const _mutateTicketSubtasks = (ticketId: string, mutator: (ticket: Ticket) => void) => {
-    if (selectedTicket.value?.id === ticketId) mutator(selectedTicket.value)
-    const index = tickets.value.findIndex(t => t.id === ticketId)
-    if (index !== -1) mutator(tickets.value[index])
-    const wbIndex = myWorkbench.value.findIndex(t => t.id === ticketId)
-    if (wbIndex !== -1) mutator(myWorkbench.value[wbIndex])
-  }
-
-  /**
-   * Crea una nueva subtarea
-   */
-  const createSubtask = async (ticketId: string, title: string): Promise<Subtask> => {
-    error.value = null
-    try {
-      // El backend asignará el orderIndex y isCompleted = false
-      const newSubtask = await api.subtasks.create(ticketId, { 
-        title, 
-        isCompleted: false, 
-        orderIndex: 0 
-      })
-      
-      _mutateTicketSubtasks(ticketId, (ticket) => {
-        if (!ticket.subtasks) ticket.subtasks = []
-        ticket.subtasks.push(newSubtask)
-      })
-
-      return newSubtask
-    } catch (err) {
-      error.value = 'Error al crear subtarea'
-      console.error(error.value, err)
-      throw err
-    }
-  }
-
-  /**
-   * Actualiza una subtarea (completar, cambiar título, etc)
-   */
-  const updateSubtask = async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<Subtask> => {
-    error.value = null
-    try {
-      const updatedSubtask = await api.subtasks.update(ticketId, subtaskId, data)
-      
-      _mutateTicketSubtasks(ticketId, (ticket) => {
-        if (!ticket.subtasks) return
-        const subIndex = ticket.subtasks.findIndex(st => st.id === subtaskId)
-        if (subIndex !== -1) {
-          ticket.subtasks[subIndex] = updatedSubtask
-        }
-      })
-
-      return updatedSubtask
-    } catch (err) {
-      error.value = 'Error al actualizar subtarea'
-      console.error(error.value, err)
-      throw err
-    }
-  }
-
-  /**
-   * Elimina una subtarea
-   */
-  const deleteSubtask = async (ticketId: string, subtaskId: string): Promise<void> => {
-    error.value = null
-    try {
-      await api.subtasks.delete(ticketId, subtaskId)
-      
-      _mutateTicketSubtasks(ticketId, (ticket) => {
-        if (!ticket.subtasks) return
-        ticket.subtasks = ticket.subtasks.filter(st => st.id !== subtaskId)
-      })
-    } catch (err) {
-      error.value = 'Error al eliminar subtarea'
-      console.error(error.value, err)
-      throw err
-    }
-  }
-
-  /**
-   * Reordena el checklist (Drag & Drop)
-   */
-  const reorderSubtasks = async (ticketId: string, subtaskIds: string[]): Promise<Subtask[]> => {
-    error.value = null
-    try {
-      const reordered = await api.subtasks.reorder(ticketId, subtaskIds)
-      
-      _mutateTicketSubtasks(ticketId, (ticket) => {
-        ticket.subtasks = reordered
-      })
-
-      return reordered
-    } catch (err) {
-      error.value = 'Error al reordenar subtareas'
-      console.error(error.value, err)
-      throw err
-    }
-  }
-
-  /**
-   * Consigue la información de eventos relacionados a un ticket
-   */
-  const getTicketEvents = async (ticketId: string) => {
-    try {
-      const data = await api.tickets.getEvents(ticketId)
-      return data
-    } catch (error) {
-      console.error('Error al obtener eventos:', error)
-      return []
-    }
-  }
-
   return {
     // Estado
     tickets,
@@ -890,12 +732,5 @@ export const useTicketsStore = defineStore('tickets', () => {
     setStatusFilter,
     setDateFilter,
     clear,
-    // Nuevas acciones de subtareas
-    createSubtask,
-    updateSubtask,
-    deleteSubtask,
-    reorderSubtasks,
-    // Actividad de Ticket
-    getTicketEvents,
   }
 })

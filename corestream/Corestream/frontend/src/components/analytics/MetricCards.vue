@@ -20,7 +20,7 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.totalTickets') }}</p>
-          <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ summary ? summary.totalCompleted + summary.totalActive + summary.totalPending + summary.totalBlocked : 0 }}</p>
+          <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ summary?.total_tickets ?? 0 }}</p>
           <div class="flex items-center mt-3 gap-1">
             <span v-if="weekChange >= 0" class="text-green-500 flex items-center gap-1">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -52,7 +52,7 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.completed') }}</p>
-          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ summary?.totalCompleted ?? 0 }}</p>
+          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ summary?.completed ?? 0 }}</p>
           <div class="flex items-center mt-3 gap-1">
             <span class="text-green-500 flex items-center gap-1">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -77,7 +77,7 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.blocked') }}</p>
-          <p class="text-3xl font-bold text-orange-600 dark:text-orange-400 mt-2">{{ summary?.totalBlocked ?? 0 }}</p>
+          <p class="text-3xl font-bold text-orange-600 dark:text-orange-400 mt-2">{{ summary?.blocked ?? 0 }}</p>
           <div class="flex items-center mt-3 gap-2">
             <!-- Etiqueta CRÍTICA -->
             <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200">
@@ -102,7 +102,7 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.avgTime') }}</p>
-          <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.teamVelocity ?? 0 }}h</p>
+          <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.avg_time ?? 0 }}h</p>
           <div class="flex items-center mt-3 gap-1">
             <span v-if="timeChange <= 0" class="text-green-500 flex items-center gap-1">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -144,7 +144,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useI18n } from 'vue-i18n'
-import type { AnalyticsSummary } from '@/types'
+
+// TIPOS: Interfaz para los datos de resumen
+interface SummaryData {
+  total_tickets: number
+  completed: number
+  blocked: number
+  avg_time: number
+}
 
 // INICIALIZACIÓN DE STORES Y COMPOSABLES
 const analyticsStore = useAnalyticsStore()
@@ -156,7 +163,7 @@ const weekChange = ref(0)
 const timeChange = ref(-5) // Cambio negativo es bueno (menos tiempo)
 
 // COMPUTED: Propiedades derivadas que se actualizan automáticamente
-const summary = computed<AnalyticsSummary | null>(() => analyticsStore.summary)
+const summary = computed<SummaryData | null>(() => analyticsStore.summary)
 
 /**
  * CICLO DE VIDA: onMounted
@@ -170,7 +177,7 @@ onMounted(async () => {
   isLoading.value = true
   try {
     // Llamar a la acción del store para obtener datos de resumen
-    await analyticsStore.fetchSummary('')
+    await analyticsStore.fetchSummary()
     
     // Calcular cambios comparativos (simulado)
     weekChange.value = Math.floor(Math.random() * 20 - 5)

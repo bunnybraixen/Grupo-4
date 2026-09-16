@@ -9,24 +9,11 @@
  * - Recibir nuevas notificaciones desde WebSocket
  * - Contar notificaciones sin leer
  */
- 
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Notification } from '@/types'
-import { NotificationType } from '@/types'
 import { api } from '@/services/api'
-
-const toNotification = (raw: any): Notification => ({
-  id: raw.id,
-  userId: raw.userId ?? raw.user_id ?? '',
-  title: raw.title ?? '',
-  message: raw.message ?? '',
-  type: (raw.type ?? raw.notification_type ?? 'SYSTEM') as NotificationType,
-  isRead: raw.isRead ?? raw.is_read ?? false,
-  ticketId: raw.ticketId ?? raw.ticket_id ?? undefined,
-  createdAt: raw.createdAt ?? raw.created_at ?? '',
-  readAt: raw.readAt ?? raw.read_at ?? undefined,
-})
 
 export const useNotificationsStore = defineStore('notifications', () => {
   // ========== ESTADO REACTIVO ==========
@@ -76,7 +63,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
    * Retorna las notificaciones que aún no han sido leídas
    */
   const unreadNotifications = computed((): Notification[] => {
-    return notifications.value.filter(n => !n.isRead)
+    return notifications.value.filter(n => !n.read)
   })
 
   /**
@@ -165,27 +152,22 @@ export const useNotificationsStore = defineStore('notifications', () => {
     pageSize.value = limit
 
     try {
-      const skip = (page - 1) * limit
-      const response = await api.notifications.list({ skip, limit } as any)
-      const rawItems: any[] = Array.isArray(response)
-        ? response
-        : ((response as any)?.data?.items ?? (response as any)?.items ?? (response as any)?.data ?? [])
-      const items: Notification[] = rawItems.map(toNotification)
-      const total: number = Array.isArray(response)
-        ? response.length
-        : ((response as any)?.data?.total ?? (response as any)?.total ?? rawItems.length)
-
+      const offset = (page - 1) * limit
+      const response = await api.notifications.list({ offset, limit })
+      
+      // Si es la primera página, reemplazar; si no, agregar
       if (page === 1) {
-        notifications.value = items
+        notifications.value = response.data
       } else {
-        notifications.value.push(...items)
+        notifications.value.push(...response.data)
       }
 
-      totalNotifications.value = total
+      totalNotifications.value = response.total
 
+      // Actualizar contador de no leídas
       await fetchUnreadCount()
 
-      return items
+      return response.data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener notificaciones'
       error.value = message
@@ -204,8 +186,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
    */
   const fetchUnreadCount = async (): Promise<number> => {
     try {
-      const res = await api.notifications.getUnreadCount()
-      const count: number = (res as any)?.data?.unread_count ?? (res as any)?.unread_count ?? (res as any)?.data?.count ?? (res as any)?.count ?? 0
+      const count = await api.notifications.getUnreadCount()
       unreadCount.value = count
       return count
     } catch (err) {
@@ -225,12 +206,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
     error.value = null
 
     try {
-      await Promise.all(ids.map(id => api.notifications.markRead(id)))
+      await api.notifications.markAsRead(ids)
 
       // Actualizar estado local
       notifications.value = notifications.value.map(notif => {
         if (ids.includes(notif.id)) {
-          return { ...notif, isRead: true }
+          return { ...notif, read: true }
         }
         return notif
       })
@@ -257,12 +238,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
     error.value = null
 
     try {
-      await api.notifications.markAllRead()
+      await api.notifications.markAllAsRead()
 
       // Actualizar todas las notificaciones locales
       notifications.value = notifications.value.map(notif => ({
         ...notif,
-        isRead: true,
+        read: true,
       }))
 
       unreadCount.value = 0
@@ -288,7 +269,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     notifications.value.unshift(notification)
     
     // Si la notificación no es leída, incrementar contador
-    if (!notification.isRead) {
+    if (!notification.read) {
       unreadCount.value++
     }
   }
@@ -330,7 +311,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     try {
       await api.notifications.deleteAllRead()
       
-      notifications.value = notifications.value.filter(n => !n.isRead)
+      notifications.value = notifications.value.filter(n => !n.read)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al eliminar notificaciones leídas'
       error.value = message

@@ -1,46 +1,26 @@
 # Archivo principal de la aplicación FastAPI
 # Configura la aplicación, middleware, rutas, eventos de startup/shutdown y WebSockets
 
-import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 
-from arq import create_pool
-from arq.connections import RedisSettings
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
-from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import dispose_engine, get_session_maker
-from app.logging_config import configure_logging
-from app.middleware.request_id import RequestIDMiddleware, get_request_id
-from app.redis_client import ARQ_QUEUE_NAME, close_redis, get_redis, init_redis
+from app.database import engine, Base, get_db
+from app.redis_client import (
+    init_redis,
+    close_redis,
+    subscribe_channel,
+    publish_message,
+)
+from app.middleware import get_current_user
+from app.schemas import TokenPayload
 
 # Importar routers (estos se crearían en carpetas routers/)
-# Mantenemos las importaciones individuales para asegurar que cada módulo cargue bien
-from app.routers import (
-    analytics,
-    applications,
-    auth,
-    documents,
-    epics,
-    incidents,
-    invitations,
-    meetings,
-    notifications,
-    subtasks,
-    support_tickets,
-    ticket_redirection,
-    tickets,
-    uploads,
-    users,
-    websocket,
-)
-from app.services.notification_service import set_arq_pool
-
-logger = logging.getLogger("corestream")
+# from app.routers import auth, users, applications, epics, tickets, subtasks, analytics, documents, notifications
 
 # Obtener configuración
 settings = get_settings()
@@ -63,140 +43,91 @@ async def lifespan(app: FastAPI):
         Control a FastAPI durante la ejecución
     """
     # Evento de STARTUP - Ejecuta cuando la aplicación inicia
-    configure_logging(settings.LOG_LEVEL)
-    logger.info("Iniciando aplicación CoreStream...")
-
+    print("Iniciando aplicación CoreStream...")
+    
     try:
         # Inicializar conexión a Redis para sistema de notificaciones
         await init_redis()
-        logger.info("Redis inicializado correctamente")
-    except Exception:
-        logger.exception("Redis no disponible al arrancar")
-
-    try:
-        # Inicializar pool ARQ para encolar notificaciones.
-        # default_queue_name debe coincidir con queue_name de WorkerSettings
-        # (worker/settings.py) — de lo contrario el worker nunca ve estos jobs.
-        arq_pool = await create_pool(
-            RedisSettings.from_dsn(settings.REDIS_URL),
-            default_queue_name=ARQ_QUEUE_NAME,
-        )
-        set_arq_pool(arq_pool)
-        logger.info("ARQ pool inicializado correctamente")
-    except Exception:
-        logger.exception("ARQ pool no disponible")
-
-    # El esquema lo gestiona SOLO Alembic (el comando del contenedor corre
-    # "alembic upgrade head" antes de levantar uvicorn). Antes había DOS
-    # mecanismos compitiendo: create_all() aquí Y las migraciones — con
-    # --reload, cada recarga por un cambio de código volvía a ejecutar
-    # create_all() contra el Postgres ya migrado, y en cuanto una migración
-    # nueva intentaba crear una tabla que create_all ya había creado por su
-    # cuenta, Alembic fallaba con "relation ya existe" en el SIGUIENTE
-    # arranque limpio. Ocurrió de verdad al añadir la tabla invitations de
-    # esta misma fase — no es hipotético.
-
-    # Antes de aquí (plan 3.6) el arranque creaba SIEMPRE, sin condición, un
-    # ADMIN con contraseña conocida (admin@example.com / Admin123!@#) —
-    # publicada en este mismo repositorio. Ya no existe ningún seed de
-    # usuarios en el arranque: el primer ADMIN se crea a mano, una vez, con
-    # `python -m app.scripts.create_admin` (ver ese fichero). El resto de
-    # usuarios se crean por invitación (POST /api/invitations).
-
-    logger.info("Aplicación CoreStream iniciada")
-
+        print("Redis inicializado correctamente")
+        
+        # Crear tablas de base de datos si no existen
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            print("Tablas de base de datos inicializadas")
+        
+        print("Aplicación CoreStream iniciada exitosamente")
+        
+    except Exception as e:
+        print(f"Error durante startup: {e}")
+        raise
+    
     # Ceder control a FastAPI
     yield
-
+    
     # Evento de SHUTDOWN - Ejecuta cuando la aplicación se detiene
-    logger.info("Cerrando aplicación CoreStream...")
-
+    print("Cerrando aplicación CoreStream...")
+    
     try:
-        # Cerrar pool ARQ
-        from app.services.notification_service import get_arq_pool
-        pool = get_arq_pool()
-        if pool:
-            await pool.close()
-            logger.info("ARQ pool cerrado correctamente")
-
         # Cerrar conexión a Redis
         await close_redis()
-        logger.info("Redis cerrado correctamente")
-
+        print("Redis cerrado correctamente")
+        
         # Cerrar conexión a la base de datos
-        await dispose_engine()
-        logger.info("Base de datos desconectada")
+        await engine.dispose()
+        print("Base de datos desconectada")
+        
+        print("Aplicación CoreStream cerrada correctamente")
+        
+    except Exception as e:
+        print(f"Error durante shutdown: {e}")
 
-        logger.info("Aplicación CoreStream cerrada correctamente")
-
-    except Exception:
-        logger.exception("Error durante shutdown")
-
-
-# Documentación de la API abierta y sin autenticar (plan fase 9): en
-# producción se deshabilita del todo — no es información que deba quedar
-# expuesta al dominio público.
-_docs_enabled = settings.ENVIRONMENT != "production"
 
 # Crear instancia de la aplicación FastAPI
 app = FastAPI(
     title=settings.APP_NAME,
     description="API RESTful para gestión de aplicaciones, épicas, tickets y analítica de equipo",
     version="1.0.0",
-    docs_url="/api/docs" if _docs_enabled else None,
-    redoc_url="/api/redoc" if _docs_enabled else None,
-    openapi_url="/api/openapi.json" if _docs_enabled else None,
+    docs_url="/api/docs",  # Documentación Swagger UI
+    redoc_url="/api/redoc",  # Documentación ReDoc
+    openapi_url="/api/openapi.json",  # Esquema OpenAPI JSON
     lifespan=lifespan,
 )
 
-# request_id primero: los middlewares se ejecutan en orden inverso al de
-# registro para la fase de request, así que registrarlo antes que CORS
-# asegura que el id ya existe para cualquier log emitido más adentro.
-app.add_middleware(RequestIDMiddleware)
 
 # Configurar CORS (Cross-Origin Resource Sharing)
 # Permite solicitudes desde el frontend en localhost:5173
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["*"],  # Permitir todos los métodos HTTP
+    allow_headers=["*"],  # Permitir todos los headers
 )
-
-# Métricas Prometheus en /metrics (plan fase 8). No debe quedar expuesto por
-# el Nginx público — solo accesible dentro de la red interna/VM (ver
-# docs/DEPLOYMENT.md, que no debe incluir una location para /metrics).
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 # Incluir routers con prefijos de API
 # Cada router maneja un dominio específico de la aplicación
 # Estos routers se crearían en carpeta app/routers/
 
-app.include_router(auth.router, prefix="/api/auth")
-app.include_router(users.router, prefix="/api/users")
-app.include_router(invitations.router)  # prefijo embebido en el router: /api/invitations
-app.include_router(applications.router, prefix="/api/applications")
-app.include_router(epics.router, prefix="/api/epics") # Resulta en /api/epics/...
-app.include_router(ticket_redirection.router)  # Ticket redirection endpoints: /api/tickets/... — MUST come before tickets.router
-app.include_router(tickets.router, prefix="/api/tickets")
-app.include_router(subtasks.router, prefix="/api/tickets/{ticket_id}/subtasks")
-app.include_router(analytics.router, prefix="/api/analytics")
-app.include_router(documents.router, prefix="/api/documents")
-app.include_router(notifications.router, prefix="/api/notifications")
-app.include_router(websocket.router, prefix="/api")  # WebSocket endpoints: /api/ws/...
-app.include_router(uploads.router)  # prefijo embebido en el router: /api/uploads
-app.include_router(support_tickets.router, prefix="/api/support-tickets")
-app.include_router(incidents.router, prefix="/api")
-app.include_router(meetings.router, prefix="/api")
+# router_auth = APIRouter(prefix="/api/auth", tags=["auth"])
+# router_users = APIRouter(prefix="/api/users", tags=["users"])
+# router_applications = APIRouter(prefix="/api/applications", tags=["applications"])
+# router_epics = APIRouter(prefix="/api/epics", tags=["epics"])
+# router_tickets = APIRouter(prefix="/api/tickets", tags=["tickets"])
+# router_subtasks = APIRouter(prefix="/api/subtasks", tags=["subtasks"])
+# router_analytics = APIRouter(prefix="/api/analytics", tags=["analytics"])
+# router_documents = APIRouter(prefix="/api/documents", tags=["documents"])
+# router_notifications = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
-
-# Endpoint raíz de salud — Railway lo usa como healthcheck en /health
-@app.get("/health", tags=["Health"], include_in_schema=False)
-async def health_check_root():
-    return {"status": "ok", "service": "CoreStream API"}
+# app.include_router(router_auth)
+# app.include_router(router_users)
+# app.include_router(router_applications)
+# app.include_router(router_epics)
+# app.include_router(router_tickets)
+# app.include_router(router_subtasks)
+# app.include_router(router_analytics)
+# app.include_router(router_documents)
+# app.include_router(router_notifications)
 
 
 # Endpoint de salud para verificar que la API está funcionando
@@ -204,47 +135,25 @@ async def health_check_root():
     "/api/health",
     tags=["Health"],
     summary="Verificar salud de la API",
-    description=(
-        "Sonda de disponibilidad (readiness): comprueba PostgreSQL y Redis "
-        "de verdad, no solo que el proceso esté vivo. Devuelve 503 si alguno "
-        "de los dos falla, para que el orquestador pueda dejar de enrutar "
-        "tráfico a esta instancia en vez de servir peticiones que van a fallar."
-    ),
+    description="Endpoint para monitoreo que verifica si la API está funcionando correctamente"
 )
-async def health_check() -> JSONResponse:
+async def health_check():
     """
-    Antes este endpoint devolvía {"status": "ok"} sin comprobar nada — un
-    contenedor con Postgres o Redis caídos pasaba por "sano" indefinidamente,
-    y con --restart unless-stopped eso significa que solo se reinicia un
-    proceso muerto, nunca uno que está vivo pero no puede servir peticiones.
+    Verifica el estado de la API.
+    
+    Retorna un estado OK si la aplicación está funcionando correctamente.
+    Se utiliza típicamente para health checks en orquestadores como Kubernetes.
+    
+    Returns:
+        dict: Mensaje de estado con timestamp
     """
-    from datetime import datetime, timezone
-
-    checks: dict[str, str] = {}
-    ok = True
-
-    try:
-        async with get_session_maker()() as db:
-            await db.execute(text("SELECT 1"))
-        checks["database"] = "ok"
-    except Exception as exc:
-        checks["database"] = f"error: {exc}"
-        ok = False
-
-    try:
-        redis_client = await get_redis()
-        await redis_client.ping()
-        checks["redis"] = "ok"
-    except Exception as exc:
-        checks["redis"] = f"error: {exc}"
-        ok = False
-
-    body = {
-        "status": "ok" if ok else "degraded",
-        "checks": checks,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+    from datetime import datetime
+    
+    return {
+        "status": "ok",
+        "message": "API CoreStream funcionando correctamente",
+        "timestamp": datetime.now().isoformat(),
     }
-    return JSONResponse(status_code=200 if ok else 503, content=body)
 
 
 # Endpoint raíz con información de la API
@@ -271,28 +180,101 @@ async def root():
     }
 
 
+# WebSocket para notificaciones en tiempo real
+@app.websocket("/api/ws/notifications/{user_id}")
+async def websocket_notifications(websocket: WebSocket, user_id: str):
+    """
+    Endpoint WebSocket para recibir notificaciones en tiempo real.
+    
+    Los clientes se conectan a este endpoint y reciben notificaciones cuando se
+    producen eventos relevantes (tickets asignados, preguntas, etc.).
+    
+    El cliente debe proporcionar un token JWT válido en la querystring:
+    ws://localhost:8000/api/ws/notifications/user-id?token=jwt-token
+    
+    Args:
+        websocket: Conexión WebSocket del cliente
+        user_id: ID del usuario para el cual recibir notificaciones
+        
+    Raises:
+        WebSocketDisconnect: Cuando el cliente desconecta
+        
+    Ejemplo de cliente JavaScript:
+        const token = localStorage.getItem('access_token');
+        const ws = new WebSocket(
+            `ws://localhost:8000/api/ws/notifications/${userId}?token=${token}`
+        );
+        ws.onmessage = (event) => {
+            const notification = JSON.parse(event.data);
+            console.log('Notificación:', notification);
+        };
+    """
+    # Extraer token del query string
+    token = websocket.query_params.get("token")
+    
+    if not token:
+        # Cerrar la conexión si no se proporciona token
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
+    try:
+        # Validar el token JWT
+        from app.middleware import verify_token
+        
+        token_data = verify_token(token)
+        
+        # Verificar que el usuario está accediendo sus propias notificaciones
+        if token_data.sub != user_id:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # Aceptar la conexión WebSocket
+        await websocket.accept()
+        
+        # Suscribirse al canal de notificaciones del usuario
+        channel = f"notifications:{user_id}"
+        pubsub = await subscribe_channel(channel)
+        
+        try:
+            # Escuchar mensajes del canal Redis
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    # Enviar el mensaje al cliente WebSocket
+                    await websocket.send_text(message["data"])
+                    
+        except WebSocketDisconnect:
+            # Cliente desconectó
+            await pubsub.unsubscribe(channel)
+            print(f"Usuario {user_id} desconectado de notificaciones")
+            
+    except Exception as e:
+        # Error en validación o suscripción
+        print(f"Error en WebSocket: {e}")
+        await websocket.close(code=status.WS_1011_SERVER_ERROR)
+
+
 # Manejo de errores global para excepciones no capturadas
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     """
     Manejador global de excepciones para cualquier error no capturado.
-
-    Antes: logging.error(f"...: {exc}") sin exc_info — un 500 no dejaba
-    traza alguna en los logs, solo el mensaje de la excepción. Los tres 500
-    de MissingGreenlet de la fase 2 solo se vieron porque uvicorn los
-    imprime por su cuenta; nuestro propio logging no ayudaba a diagnosticar.
+    
+    Registra la excepción y retorna una respuesta JSON con estado 500.
+    
+    Args:
+        request: Solicitud HTTP que causó el error
+        exc: Excepción no capturada
+        
+    Returns:
+        JSONResponse: Respuesta con detalles del error
     """
-    logger.error(
-        "Error no manejado en %s %s", request.method, request.url,
-        exc_info=exc,
-    )
-
+    print(f"Error no manejado: {exc}")
+    
     return JSONResponse(
         status_code=500,
         content={
             "detail": "Error interno del servidor",
-            "error": "Se ha producido un error inesperado.",
-            "request_id": get_request_id(),
+            "error": str(exc) if settings.DEBUG else "Error interno",
         }
     )
 

@@ -28,7 +28,7 @@ export enum UserRole {
    * Líder de grupo
    * Puede gestionar miembros del equipo, asignar tareas y ver análisis del equipo
    */
-  TEAM_LEADER = 'TEAM_LEADER',
+  GROUP_LEADER = 'GROUP_LEADER',
 
   /**
    * Desarrollador estándar
@@ -58,11 +58,6 @@ export enum TicketStatus {
   BLOCKED = 'BLOCKED',
 
   /**
-   * Tarea bloqueada esperando respuesta del admin a una pregunta del desarrollador
-   */
-  BLOCKED_QUESTION = 'BLOCKED_QUESTION',
-
-  /**
    * Tarea redirigida a otro desarrollador o equipo
    */
   REDIRECTED = 'REDIRECTED',
@@ -70,30 +65,7 @@ export enum TicketStatus {
   /**
    * Tarea completada satisfactoriamente
    */
-  COMPLETED = 'COMPLETED',
-
-  // Workflow de soporte (tickets de producción)
-  REPORTED = 'REPORTED',
-  INVESTIGATING = 'INVESTIGATING',
-  RESOLVED = 'RESOLVED'
-}
-
-/**
- * Tipo de ticket: desarrollo normal o soporte/bug de producción
- */
-export enum TicketType {
-  DEVELOPMENT = 'DEVELOPMENT',
-  SUPPORT = 'SUPPORT'
-}
-
-/**
- * Severidad de un ticket de soporte
- */
-export enum SupportSeverity {
-  CRITICAL = 'CRITICAL',
-  HIGH = 'HIGH',
-  MEDIUM = 'MEDIUM',
-  LOW = 'LOW'
+  DONE = 'DONE'
 }
 
 /**
@@ -193,12 +165,30 @@ export enum EventType {
  * Categoriza las notificaciones por tipo de evento
  */
 export enum NotificationType {
-  TICKET_ASSIGNED   = 'TICKET_ASSIGNED',
-  STATUS_CHANGED    = 'STATUS_CHANGED',
-  TICKET_REDIRECTED = 'TICKET_REDIRECTED',
-  TICKET_COMPLETED  = 'TICKET_COMPLETED',
-  QUESTION_RAISED   = 'QUESTION_RAISED',
-  SYSTEM            = 'SYSTEM',
+  /**
+   * Notificación sobre cambios en asignación de tareas
+   */
+  ASSIGNMENT = 'ASSIGNMENT',
+
+  /**
+   * Notificación sobre cambio de estado
+   */
+  STATUS_CHANGE = 'STATUS_CHANGE',
+
+  /**
+   * Notificación de comentario o pregunta
+   */
+  COMMENT = 'COMMENT',
+
+  /**
+   * Notificación de tarea bloqueada
+   */
+  BLOCKED = 'BLOCKED',
+
+  /**
+   * Notificación general del sistema
+   */
+  SYSTEM = 'SYSTEM'
 }
 
 /**
@@ -233,17 +223,7 @@ export enum DocumentType {
   /**
    * Otro tipo de documento
    */
-  OTHER = 'OTHER',
-
-  /**
-   * Archivo de código (valor real del backend CS-037/CS-040)
-   */
-  CODE = 'CODE',
-
-  /**
-   * Documento de documentación (valor real del backend CS-037/CS-040)
-   */
-  DOCUMENTATION = 'DOCUMENTATION'
+  OTHER = 'OTHER'
 }
 
 /**
@@ -272,7 +252,7 @@ export interface User {
   fullName: string
 
   /**
-   * Rol del usuario en el sistema (ADMIN, TEAM_LEADER, DEVELOPER)
+   * Rol del usuario en el sistema (ADMIN, GROUP_LEADER, DEVELOPER)
    */
   role: UserRole
 
@@ -293,11 +273,6 @@ export interface User {
   isActive: boolean
 
   /**
-   * Configuraciones y preferencias del usuario (Notificaciones, UI, etc.)
-   */
-  preferences?: Record<string, any>
-
-  /**
    * Timestamp de cuando se creó la cuenta
    */
   createdAt?: string
@@ -306,12 +281,6 @@ export interface User {
    * Timestamp de la última actualización
    */
   updatedAt?: string
-
-  /**
-   * True si un ADMIN reseteó la contraseña de este usuario (plan 3.8): el
-   * frontend debe forzar el cambio antes de dejarlo navegar.
-   */
-  mustChangePassword?: boolean
 }
 
 /**
@@ -358,13 +327,6 @@ export interface UserPerformance {
    * Puntuación general de rendimiento (0-100)
    */
   performanceScore: number
-
-  efficiency?: number
-  blocking_index?: number
-  churn_index?: number
-  redirections?: number
-  questions_raised?: number
-  tickets_processed?: number
 }
 
 /**
@@ -584,12 +546,6 @@ export interface Ticket {
   timeSpentSeconds: number
 
   /**
-   * ISO timestamp de cuando arrancó el timer en la sesión actual (desde Redis).
-   * Presente solo cuando el ticket está IN_PROGRESS con timer activo.
-   */
-  timerStartedAt?: string
-
-  /**
    * Tiempo total bloqueado en segundos
    * Representa el tiempo durante el cual la tarea estuvo en estado BLOCKED
    */
@@ -626,35 +582,9 @@ export interface Ticket {
   epicTitle?: string
 
   /**
-   * Nombre de la épica a la que pertenece (alias de epicTitle)
-   */
-  epicName?: string
-
-  /**
    * Nombre de la aplicación (cargado opcionalmente)
    */
   appName?: string
-
-  /**
-   * Pregunta bloqueadora del desarrollador (si status === BLOCKED_QUESTION)
-   */
-  blockedQuestion?: string
-
-  /**
-   * Timestamp de cuando el ticket pasó a estado BLOCKED_QUESTION
-   */
-  blockedAt?: string
-
-  // Campos de soporte (presentes solo cuando ticketType === SUPPORT)
-  ticketType?: TicketType
-  severity?: SupportSeverity
-  stackTrace?: string
-  reproductionSteps?: string
-  browser?: string
-  operatingSystem?: string
-  linkedTicketId?: string
-  linkedTicketTitle?: string
-  originEpicTitle?: string
 }
 
 /**
@@ -847,11 +777,6 @@ export interface Document {
   uploadedById: string
 
   /**
-   * Datos del usuario que cargó el documento (eager-loaded)
-   */
-  uploadedBy?: { id: string; fullName?: string; email: string }
-
-  /**
    * Categoría/tipo de documento
    */
   docType: DocumentType
@@ -865,26 +790,6 @@ export interface Document {
    * Timestamp de última actualización
    */
   updatedAt?: string
-}
-
-/** Respuesta del endpoint POST /documents/{id}/translate (CS-040) */
-export interface TranslateResponse {
-  documentId: string
-  originalFilename: string
-  targetLanguage: string
-  translatedText: string
-}
-
-/** Idiomas soportados para traducción automática (CS-040) */
-export const SUPPORTED_LANGUAGES: Record<string, string> = {
-  es: 'Español',
-  en: 'English',
-  fr: 'Français',
-  de: 'Deutsch',
-  pt: 'Português',
-  it: 'Italiano',
-  zh: '中文',
-  ar: 'العربية',
 }
 
 /**
@@ -1022,105 +927,28 @@ export interface AnalyticsSummary {
 }
 
 /**
- * Resumen agregado de tickets de soporte.
- * Independiente de aplicación/épica (los tickets de soporte tienen epic_id = NULL).
- */
-export interface SupportSummary {
-  /** Conteo por estado: { REPORTED, INVESTIGATING, RESOLVED } */
-  by_status: Record<string, number>
-
-  /** Conteo por severidad: { CRITICAL, HIGH, MEDIUM, LOW } */
-  by_severity: Record<string, number>
-
-  /** Tiempo promedio de resolución en horas (completed_at - created_at de los RESOLVED) */
-  avg_resolution_time_hours: number
-}
-
-/**
- * Representa un Incidente Crítico (P1, P2, P3)
- */
-export interface Incident {
-  id: string
-  title: string
-  description: string
-  applicationId?: string
-  status: TicketStatus
-  severity: string
-  affectedEnvironment: string
-  createdAt: string
-  updatedAt: string
-  createdById: string
-  assignedToId?: string
-  mitigationTimeSeconds?: number
-  mitigationState?: string
-  isMitigated: boolean
-  mitigatedAt?: string
-  rootCauseAnalysis?: string
-  postMortemLink?: string
-}
-
-/**
- * Tipos de reuniones (Ceremonias ágiles)
- */
-export enum MeetingType {
-  DAILY = 'DAILY',
-  PLANNING = 'PLANNING',
-  RETROSPECTIVE = 'RETROSPECTIVE',
-  REFINEMENT = 'REFINEMENT',
-  OTHER = 'OTHER'
-}
-
-/**
- * Representa la asistencia de un usuario a una reunión
- */
-export interface MeetingAttendance {
-  id: string
-  meetingId: string
-  userId: string
-  status: 'PRESENT' | 'ABSENT' | 'JUSTIFIED'
-  notes?: string
-  createdAt: string
-  updatedAt: string
-  user?: User
-}
-
-/**
- * Representa una reunión (Ceremonia)
- */
-export interface Meeting {
-  id: string
-  title: string
-  meetingType: MeetingType
-  applicationId?: string
-  scheduledAt: string
-  durationMinutes: number
-  summaryMarkdown?: string
-  createdAt: string
-  updatedAt: string
-  createdById: string
-  attendances?: MeetingAttendance[]
-}
-
-/**
  * ENTIDADES DE AUTENTICACIÓN
  * ==========================
  */
 
 /**
- * Tokens de autenticación utilizados para validar requests.
- *
- * Ya NO incluye refreshToken (antes viajaba aquí y se guardaba en
- * localStorage). El backend lo entrega como cookie HttpOnly, invisible para
- * JavaScript — así un XSS no puede robar una sesión de 7 días, solo el
- * accessToken de vida corta que ya está en memoria.
+ * Tokens de autenticación utilizados para validar requests
+ * El accessToken se envía en cada request autorizado
+ * El refreshToken se utiliza para obtener un nuevo accessToken cuando expira
  */
 export interface AuthTokens {
   /**
-   * Token JWT utilizado para autenticar requests.
-   * Se envía en el header Authorization: Bearer <accessToken>.
-   * Vive solo en memoria (el store de Pinia), nunca en localStorage.
+   * Token JWT utilizado para autenticar requests
+   * Se envía en el header Authorization: Bearer <accessToken>
+   * Tiene una vida útil corta (típicamente 15-30 minutos)
    */
   accessToken: string
+
+  /**
+   * Token utilizado para obtener un nuevo accessToken
+   * Tiene una vida útil más larga (típicamente días o semanas)
+   */
+  refreshToken: string
 
   /**
    * Tipo de token (generalmente 'Bearer')
@@ -1131,12 +959,6 @@ export interface AuthTokens {
    * Segundos hasta que el accessToken expira
    */
   expiresIn?: number
-
-  /**
-   * Si es true, el usuario debe cambiar su contraseña antes de continuar
-   * (la fijó un admin mediante un reseteo).
-   */
-  mustChangePassword?: boolean
 }
 
 /**

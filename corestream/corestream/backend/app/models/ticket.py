@@ -1,181 +1,225 @@
-from __future__ import annotations
+"""
+Modelo de Ticket para CoreStream.
+Define la estructura de los tickets que representan tareas dentro de un épico.
+Los tickets incluyen seguimiento de estado, asignaciones, prioridades y tiempo.
+"""
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING
 from uuid import UUID as PyUUID
-
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Integer, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-if TYPE_CHECKING:
-    from app.models.document import Document
-    from app.models.epic import Epic
-    from app.models.subtask import Subtask
-    from app.models.ticket_event import TicketEvent
-    from app.models.user import User
-
+from sqlalchemy.dialects.postgresql import UUID, ENUM
 
 from .base import Base, BaseEntity
 
 
 class TicketStatus(str, Enum):
-    # Workflow de desarrollo
+    """
+    Enumeración de estados posibles de un ticket en CoreStream.
+    
+    Estados:
+        TODO: Ticket no iniciado, pendiente de asignación o inicio
+        IN_PROGRESS: Ticket actualmente en desarrollo/resolución
+        BLOCKED: Ticket bloqueado por dependencias o restricciones externas
+        REDIRECTED: Ticket redirigido a otro usuario o equipo
+        DONE: Ticket completado y listo para revisión/despliegue
+    """
     TODO = "TODO"
     IN_PROGRESS = "IN_PROGRESS"
     BLOCKED = "BLOCKED"
-    BLOCKED_QUESTION = "BLOCKED_QUESTION"
     REDIRECTED = "REDIRECTED"
-    COMPLETED = "COMPLETED"
-    # Workflow de soporte
-    REPORTED = "REPORTED"
-    INVESTIGATING = "INVESTIGATING"
-    RESOLVED = "RESOLVED"
+    DONE = "DONE"
 
 
 class TicketPriority(str, Enum):
+    """
+    Enumeración de niveles de prioridad para tickets en CoreStream.
+    
+    Prioridades:
+        LOW: Prioridad baja, trabajo no urgente
+        MEDIUM: Prioridad media, trabajo regular
+        HIGH: Prioridad alta, trabajo importante
+        URGENT: Prioridad urgente, requiere atención inmediata
+    """
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     URGENT = "URGENT"
 
 
-class TicketType(str, Enum):
-    DEVELOPMENT = "DEVELOPMENT"
-    SUPPORT = "SUPPORT"
-
-
-class SupportSeverity(str, Enum):
-    CRITICAL = "CRITICAL"
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-
-
 class Ticket(Base, BaseEntity):
+    """
+    Entidad que representa un Ticket en CoreStream.
+    
+    Un Ticket es una unidad de trabajo dentro de un Épico.
+    Puede tener Subtareas, seguimiento de tiempo, y eventos de cambio de estado.
+    
+    Atributos principales:
+        title: Título descriptivo del ticket
+        description: Descripción detallada de los requisitos y alcance
+        epic_id: Referencia al épico contenedor
+        assignee_id: Usuario asignado al ticket (puede estar sin asignar)
+        status: Estado actual del ticket (máquina de estados)
+        priority: Nivel de prioridad del ticket
+        order_index: Índice para reordenamiento mediante drag-and-drop
+        due_date: Fecha límite de completitud
+        pr_link: Enlace al pull request/merge request asociado
+        time_spent_seconds: Tiempo total gastado en el ticket
+        blocked_time_seconds: Tiempo que el ticket ha estado bloqueado
+        created_by_id: Usuario que creó el ticket
+    
+    Relaciones:
+        epic: Épico contenedor del ticket
+        assignee: Usuario asignado al ticket
+        created_by: Usuario que creó el ticket
+        subtasks: Lista de subtareas del ticket
+        events: Lista de eventos de auditoría del ticket
+    
+    Índices:
+        epic_id: Búsqueda rápida de tickets por épico
+        assignee_id: Búsqueda de tickets asignados a usuario
+        status: Filtrado por estado
+        created_by_id: Búsqueda de tickets creados por usuario
+    """
+    
     __tablename__ = "tickets"
-
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(3000), nullable=True)
-    status: Mapped[TicketStatus] = mapped_column(
-        SQLEnum(TicketStatus, name="ticket_status_enum"),
-        default=TicketStatus.TODO,
+    
+    # Título descriptivo del ticket
+    title: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
-        index=True,
+        doc="Título descriptivo que resume la tarea del ticket"
     )
-    priority: Mapped[TicketPriority] = mapped_column(
-        SQLEnum(TicketPriority, name="ticket_priority_enum"),
-        default=TicketPriority.MEDIUM,
-        nullable=False,
-        index=True,
-    )
-    order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False, index=True)
-    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    pr_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    time_spent_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    blocked_time_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
-    # Nuevos campos para soportar el Wireframe del Frontend
-    block_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    blocked_question: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    estimated_time_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    timer_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # Campos específicos de tickets de soporte (null para tickets de desarrollo)
-    ticket_type: Mapped[TicketType] = mapped_column(
-        SQLEnum(TicketType, name="ticket_type_enum"),
-        default=TicketType.DEVELOPMENT,
-        nullable=False,
-        index=True,
-    )
-    stack_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reproduction_steps: Mapped[str | None] = mapped_column(Text, nullable=True)
-    browser: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    operating_system: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    severity: Mapped[SupportSeverity | None] = mapped_column(
-        SQLEnum(SupportSeverity, name="support_severity_enum"),
+    
+    # Descripción detallada de requisitos, contexto y aceptación
+    description: Mapped[str | None] = mapped_column(
+        String(3000),
         nullable=True,
+        doc="Descripción detallada de requisitos, criterios de aceptación y contexto"
     )
-    linked_ticket_id: Mapped[PyUUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("tickets.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    epic_id: Mapped[PyUUID | None] = mapped_column(
+    
+    # Clave foránea al épico contenedor
+    epic_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("epics.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
         index=True,
+        doc="Referencia al épico contenedor de este ticket"
     )
+    
+    # Clave foránea al usuario asignado (puede ser NULL)
     assignee_id: Mapped[PyUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+        doc="Referencia al usuario asignado para resolver este ticket"
     )
-    created_by_id: Mapped[PyUUID | None] = mapped_column(
+    
+    # Estado actual del ticket en la máquina de estados
+    status: Mapped[TicketStatus] = mapped_column(
+        ENUM(TicketStatus, name="ticket_status_enum"),
+        default=TicketStatus.TODO,
+        nullable=False,
+        index=True,
+        doc="Estado actual del ticket: TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE"
+    )
+    
+    # Nivel de prioridad del ticket
+    priority: Mapped[TicketPriority] = mapped_column(
+        ENUM(TicketPriority, name="ticket_priority_enum"),
+        default=TicketPriority.MEDIUM,
+        nullable=False,
+        doc="Nivel de prioridad: LOW, MEDIUM, HIGH, URGENT"
+    )
+    
+    # Índice de orden para reordenamiento mediante drag-and-drop
+    order_index: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        doc="Índice de orden del ticket para reordenamiento tipo drag-and-drop"
+    )
+    
+    # Fecha límite de completitud del ticket
+    due_date: Mapped[datetime | None] = mapped_column(
+        nullable=True,
+        doc="Fecha límite de completitud del ticket"
+    )
+    
+    # Enlace al pull request o merge request asociado
+    pr_link: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+        doc="URL del pull request o merge request asociado con este ticket"
+    )
+    
+    # Tiempo total gastado en el ticket en segundos
+    time_spent_seconds: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        doc="Tiempo total gastado en el ticket, acumulado en segundos"
+    )
+    
+    # Tiempo que el ticket ha estado bloqueado en segundos
+    blocked_time_seconds: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        doc="Tiempo acumulado que el ticket ha estado en estado BLOCKED, en segundos"
+    )
+    
+    # Clave foránea al usuario que creó el ticket
+    created_by_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+        doc="Referencia al usuario que creó originalmente este ticket"
     )
-
-    epic: Mapped["Epic | None"] = relationship(lazy="raise_on_sql", back_populates="tickets")
-    linked_ticket: Mapped["Ticket | None"] = relationship(
-        "Ticket",
-        foreign_keys=[linked_ticket_id],
-        remote_side="Ticket.id",
-        lazy="raise_on_sql",
+    
+    # Relaciones hacia otras entidades
+    
+    epic = relationship(
+        "Epic",
+        back_populates="tickets",
+        foreign_keys=[epic_id],
+        doc="Épico contenedor de este ticket"
     )
-    assignee: Mapped["User | None"] = relationship(
-        lazy="raise_on_sql",
+    
+    assignee = relationship(
+        "User",
         back_populates="assigned_tickets",
         foreign_keys=[assignee_id],
+        doc="Usuario asignado a este ticket"
     )
-    created_by: Mapped["User | None"] = relationship(
-        lazy="raise_on_sql",
+    
+    created_by = relationship(
+        "User",
         back_populates="created_tickets",
         foreign_keys=[created_by_id],
+        doc="Usuario que creó este ticket"
     )
-
-    subtasks: Mapped[list["Subtask"]] = relationship(
-        lazy="raise_on_sql",
+    
+    subtasks = relationship(
+        "Subtask",
         back_populates="ticket",
         cascade="all, delete-orphan",
+        doc="Lista de subtareas pertenecientes a este ticket"
     )
-    events: Mapped[list["TicketEvent"]] = relationship(
-        lazy="raise_on_sql",
+    
+    events = relationship(
+        "TicketEvent",
         back_populates="ticket",
         cascade="all, delete-orphan",
+        doc="Lista de eventos de auditoría del ticket"
     )
-    documents: Mapped[list["Document"]] = relationship(
-        lazy="raise_on_sql",
-        back_populates="ticket",
-        cascade="all, delete-orphan",
-        foreign_keys="Document.ticket_id",
+    
+    __table_args__ = (
+        Index('ix_tickets_epic_id', 'epic_id'),
+        Index('ix_tickets_assignee_id', 'assignee_id'),
+        Index('ix_tickets_status', 'status'),
+        Index('ix_tickets_created_by_id', 'created_by_id'),
     )
-
-    @property
-    def epic_title(self) -> str | None:
-        return self.epic.title if self.epic else None
-
-    @property
-    def app_name(self) -> str | None:
-        if self.epic and self.epic.application:
-            return self.epic.application.name
-        return None
-
-    @property
-    def linked_ticket_title(self) -> str | None:
-        return self.linked_ticket.title if self.linked_ticket else None
-
-    @property
-    def origin_epic_title(self) -> str | None:
-        if self.linked_ticket and self.linked_ticket.epic:
-            return self.linked_ticket.epic.title
-        return None

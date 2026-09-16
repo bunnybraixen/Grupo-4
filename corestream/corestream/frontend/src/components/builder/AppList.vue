@@ -7,14 +7,14 @@
   <!-- Incluye: filtrado, búsqueda, indicadores de estado, y crear nueva -->
   <!-- ================================================================ -->
   
-  <div class="flex flex-col h-full bg-[var(--bg-app)] border-r border-[var(--border-subtle)]">
+  <div class="flex flex-col h-full bg-slate-900 border-r border-slate-700">
     <!-- ================================================================ -->
     <!-- SECCIÓN: Encabezado -->
     <!-- ================================================================ -->
     <!-- Título y opciones de ordenamiento de aplicaciones -->
     <!-- ================================================================ -->
-    <div class="p-4 border-b border-[var(--border-subtle)]">
-      <h2 class="text-lg font-bold text-[var(--text-primary)] mb-3">Aplicaciones</h2>
+    <div class="p-4 border-b border-slate-700">
+      <h2 class="text-lg font-bold text-white mb-3">Aplicaciones</h2>
       
       <!-- Barra de búsqueda y filtrado -->
       <div class="relative mb-3">
@@ -22,10 +22,10 @@
           v-model="searchQuery"
           type="text"
           placeholder="Buscar aplicación..."
-          class="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-cold-2)] transition-colors"
+          class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
         />
         <!-- Icono de búsqueda -->
-        <Icon icon="mdi:magnify" class="absolute right-3 top-2.5 text-[var(--text-secondary)]" />
+        <Icon icon="mdi:magnify" class="absolute right-3 top-2.5 text-slate-400" />
       </div>
 
       <!-- Opciones de ordenamiento -->
@@ -35,8 +35,8 @@
           :class="[
             'px-2 py-1 rounded transition-colors',
             sortBy === 'name'
-              ? 'bg-[var(--accent-cold-2)] text-white'
-              : 'bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           ]"
         >
           Por Nombre
@@ -46,8 +46,8 @@
           :class="[
             'px-2 py-1 rounded transition-colors',
             sortBy === 'pending'
-              ? 'bg-[var(--accent-cold-2)] text-white'
-              : 'bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           ]"
         >
           Por Pendientes
@@ -57,8 +57,8 @@
           :class="[
             'px-2 py-1 rounded transition-colors',
             sortBy === 'delayed'
-              ? 'bg-[var(--accent-cold-2)] text-white'
-              : 'bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
+              ? 'bg-blue-600 text-white'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           ]"
         >
           Por Atrasados
@@ -73,7 +73,7 @@
     <!-- Cada aplicación es un botón seleccionable -->
     <!-- ================================================================ -->
     <div class="flex-1 overflow-y-auto">
-      <div v-if="filteredAndSortedApps.length === 0" class="p-4 text-center text-[var(--text-secondary)]">
+      <div v-if="filteredAndSortedApps.length === 0" class="p-4 text-center text-slate-400">
         <Icon icon="mdi:inbox-outline" class="text-4xl mx-auto mb-2" />
         <p>No hay aplicaciones</p>
       </div>
@@ -84,10 +84,10 @@
           :key="app.id"
           @click="selectApp(app)"
           :class="[
-            'w-full px-4 py-3 border-l-4 transition-all duration-200 hover:bg-[var(--bg-panel)]',
+            'w-full px-4 py-3 border-l-4 transition-all duration-200 hover:bg-slate-800',
             selectedAppId === app.id
-              ? 'border-l-[var(--accent-cold-2)] bg-[var(--bg-panel)]'
-              : 'border-l-transparent bg-[var(--bg-app)] hover:bg-[var(--bg-panel)]'
+              ? 'border-l-blue-500 bg-slate-800'
+              : 'border-l-transparent bg-slate-900 hover:bg-slate-800'
           ]"
         >
           <!-- Contenedor flex para alineación de contenido -->
@@ -102,8 +102,8 @@
 
             <!-- Nombre y meta-información de la aplicación -->
             <div class="flex-1 text-left min-w-0">
-              <p class="text-[var(--text-primary)] font-medium truncate">{{ app.name }}</p>
-              <p class="text-xs text-[var(--text-secondary)]">{{ app.epicCount }} épicas</p>
+              <p class="text-white font-medium truncate">{{ app.name }}</p>
+              <p class="text-xs text-slate-400">{{ app.epicCount }} épicas</p>
             </div>
 
             <!-- Indicadores de estado: tickets pendientes y atrasados -->
@@ -134,11 +134,11 @@
     <!-- ================================================================ -->
     <!-- Botón para crear nueva aplicación -->
     <!-- ================================================================ -->
-    <div class="p-4 border-t border-[var(--border-subtle)]">
+    <div class="p-4 border-t border-slate-700">
       <button
         v-if="!isCreatingApp"
         @click="isCreatingApp = true"
-        class="w-full px-4 py-2 bg-[var(--accent-cold-2)] hover:bg-[var(--accent-cold-1)] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+        class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
       >
         <Icon icon="mdi:plus" />
         Nueva Aplicación
@@ -153,17 +153,17 @@
           type="text"
           placeholder="Nombre..."
           autofocus
-          class="flex-1 px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-cold-2)]"
+          class="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
         />
         <button
           @click="createNewApp"
-          class="px-3 py-2 bg-[var(--lime)] hover:bg-[var(--lime-90)] text-[var(--dark-gray)] rounded-lg transition-colors"
+          class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
         >
           <Icon icon="mdi:check" />
         </button>
         <button
           @click="isCreatingApp = false"
-          class="px-3 py-2 bg-[var(--bg-panel)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] rounded-lg transition-colors"
+          class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
         >
           <Icon icon="mdi:close" />
         </button>
@@ -178,7 +178,7 @@
 // =====================================================================
 
 import { ref, computed } from 'vue'
-// import { Icon } from '@iconify/vue' // @TODO: install @iconify/vue
+import { Icon } from '@iconify/vue'
 import { useApplicationsStore } from '@/stores/applications'
 
 // =====================================================================
@@ -276,7 +276,7 @@ const createNewApp = () => {
   }
 
   // Llamar al store para crear la aplicación
-  applicationsStore.create({ name: newAppName.value })
+  applicationsStore.createApplication(newAppName.value)
 
   // Limpiar estado de creación
   newAppName.value = ''
@@ -296,4 +296,3 @@ const emit = defineEmits<{
 <style scoped>
 /* Estilos personalizados si es necesario */
 </style>
-

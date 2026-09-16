@@ -9,7 +9,7 @@
  * - Asignar y desasignar tickets
  * - Obtener tickets sin asignar
  */
- 
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, Ticket, UserRole } from '@/types'
@@ -53,11 +53,11 @@ export const useTeamStore = defineStore('team', () => {
   // ========== GETTERS COMPUTADOS ==========
 
   /**
-   * Retorna los miembros que tienen rol de líder de equipo
+   * Retorna los miembros que tienen rol de líder de grupo
    * Son los que pueden aprobar cambios y tomar decisiones
    */
   const leaders = computed((): User[] => {
-    return members.value.filter(m => m.role === 'TEAM_LEADER')
+    return members.value.filter(m => m.role === 'GROUP_LEADER' || m.role === 'ADMIN')
   })
 
   /**
@@ -105,7 +105,7 @@ export const useTeamStore = defineStore('team', () => {
   const groupedByRole = computed((): Record<UserRole, User[]> => {
     const groups: Record<string, User[]> = {
       'ADMIN': [],
-      'TEAM_LEADER': [],
+      'GROUP_LEADER': [],
       'DEVELOPER': [],
     }
 
@@ -130,7 +130,7 @@ export const useTeamStore = defineStore('team', () => {
    */
   const unassignedSortedByPriority = computed((): Ticket[] => {
     const priorityOrder: Record<string, number> = {
-      'URGENT': 0,
+      'CRITICAL': 0,
       'HIGH': 1,
       'MEDIUM': 2,
       'LOW': 3,
@@ -178,33 +178,32 @@ export const useTeamStore = defineStore('team', () => {
   }
 
   /**
-   * Invita a un nuevo miembro al equipo (plan 3.7).
-   *
-   * Ya no crea la cuenta directamente — antes lo hacía llamando a
-   * /auth/register con una contraseña fija ('TemporaryPassword123!') para
-   * todo el mundo, lo cual quedaba eliminado junto con el registro público.
-   * Ahora genera un enlace de invitación de un solo uso; el invitado elige
-   * su propia contraseña al aceptarlo. El miembro NO aparece en `members`
-   * hasta que acepta — no hay cuenta todavía.
-   *
-   * @returns el enlace completo para copiar y entregar al invitado
+   * Añade un nuevo miembro al equipo
+   * 
+   * @param data - Datos del nuevo miembro {email, fullName, role, department?}
+   * @returns Promise<User>
    */
-  const inviteMember = async (data: { email: string; role: UserRole }): Promise<string> => {
+  const addMember = async (data: {
+    email: string
+    fullName: string
+    role: UserRole
+    department?: string
+  }): Promise<User> => {
     isLoading.value = true
     error.value = null
 
     try {
-      const invitation = await api.invitations.create({ email: data.email, role: data.role })
-      // El router usa hash history (router/index.ts) — la ruta real es
-      // /#/invite/:token. Sin el '#' el navegador pide /invite/<token> al
-      // servidor; nginx cae al fallback de index.html (sirve la SPA igual),
-      // pero vue-router lee location.hash para decidir la ruta, lo ve vacío,
-      // y el guard beforeEach termina mandando a /login por no haber sesión.
-      return `${window.location.origin}/#/invite/${invitation.token}`
+      const created = await api.team.addMember({
+        ...data,
+        appId: currentAppId.value,
+      })
+
+      members.value.push(created)
+      return created
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al invitar miembro'
+      const message = err instanceof Error ? err.message : 'Error al añadir miembro'
       error.value = message
-      console.error('Error en inviteMember:', err)
+      console.error('Error en addMember:', err)
       throw err
     } finally {
       isLoading.value = false
@@ -248,13 +247,12 @@ export const useTeamStore = defineStore('team', () => {
    * @param id - ID del usuario
    * @returns Promise<void>
    */
-  const deleteMember = async (id: string, hardDelete: boolean = false): Promise<void> => {
+  const deleteMember = async (id: string): Promise<void> => {
     isLoading.value = true
     error.value = null
 
     try {
-      // Le pasamos el hardDelete a la API
-      await api.team.deleteMember(id, hardDelete)
+      await api.team.deleteMember(id, currentAppId.value)
       
       members.value = members.value.filter(m => m.id !== id)
     } catch (err) {
@@ -493,7 +491,7 @@ export const useTeamStore = defineStore('team', () => {
     unassignedSortedByPriority,
     // Acciones
     fetchMembers,
-    inviteMember,
+    addMember,
     updateMember,
     deleteMember,
     promoteToLeader,
