@@ -184,26 +184,47 @@ class BurndownData(BaseModel):
         return v
 
 
+class SupportSummarySchema(BaseModel):
+    """
+    Esquema con métricas agregadas de tickets de soporte (ticket_type == SUPPORT).
+
+    A diferencia de las métricas por-aplicación/épica, los tickets de soporte
+    tienen epic_id = NULL por diseño y no pertenecen a ninguna aplicación, por lo
+    que se agregan de forma global e independiente.
+
+    Atributos:
+        by_status: Conteo por estado {REPORTED, INVESTIGATING, RESOLVED}
+        by_severity: Conteo por severidad {CRITICAL, HIGH, MEDIUM, LOW}
+        avg_resolution_time_hours: Tiempo promedio de resolución en horas
+            (completed_at - created_at) para los tickets RESOLVED
+    """
+    by_status: dict[str, int]
+    by_severity: dict[str, int]
+    avg_resolution_time_hours: float
+
+
 class AnalyticsSummary(BaseModel):
     """
     Esquema con resumen general de analíticas de un equipo o aplicación.
-    Proporciona métricas consolidadas y cambios respecto a período anterior.
-    
+    Proporciona métricas consolidadas y KPIs calculados.
+
     Atributos:
         total_tickets: Número total de tickets
         completed_tickets: Número de tickets completados
         blocked_tickets: Número de tickets bloqueados
         avg_time_hours: Tiempo promedio en horas para completar tickets
+        efficiency_index: % de tickets completados sobre el total (0-100)
+        block_rate: % de tickets bloqueados sobre el total (0-100)
+        rotation_rate: % de tickets redirigidos sobre el total (0-100)
         week_change: Diccionario con cambios porcentuales respecto a la semana anterior
-            - total: Cambio porcentual en total de tickets
-            - completed: Cambio porcentual en tickets completados
-            - blocked: Cambio porcentual en tickets bloqueados
-            - avgTime: Cambio porcentual en tiempo promedio
     """
     total_tickets: int
     completed_tickets: int
     blocked_tickets: int
     avg_time_hours: float
+    efficiency_index: float = 0.0
+    block_rate: float = 0.0
+    rotation_rate: float = 0.0
     week_change: dict = {
         "total": 0.0,
         "completed": 0.0,

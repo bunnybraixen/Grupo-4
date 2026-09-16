@@ -5,20 +5,20 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SubtaskCreate(BaseModel):
     """
     Esquema para crear una nueva subtarea dentro de un ticket.
     Las subtareas permiten desglosar un ticket en pasos más pequeños.
-    
+
     Atributos:
         title: Título descriptivo de la subtarea (requerido)
-        ticket_id: UUID del ticket padre al que pertenece la subtarea
+        ticket_id: UUID del ticket padre (opcional, se toma del path si no se provee)
     """
-    title: str
-    ticket_id: UUID
+    title: str = Field(..., max_length=255)
+    ticket_id: Optional[UUID] = None
 
     @field_validator("title")
     @classmethod
@@ -50,7 +50,7 @@ class SubtaskUpdate(BaseModel):
         is_completed: Nuevo estado de completación (opcional)
         order_index: Índice para ordenar subtareas dentro del ticket (opcional)
     """
-    title: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=255)
     is_completed: Optional[bool] = None
     order_index: Optional[int] = None
 
@@ -112,3 +112,4 @@ class SubtaskResponse(BaseModel):
     completed_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+

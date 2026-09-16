@@ -73,10 +73,9 @@ export function useTimer(initialSeconds: number = 0) {
   let accumulatedTime: number = initialSeconds
 
   /**
-   * ID del requestAnimationFrame
-   * Se guarda para poder cancelar la animación en cleanup
+   * ID del setInterval — reemplaza rAF para que el timer siga corriendo en tabs ocultos
    */
-  let animationFrameId: number | null = null
+  let intervalId: number | null = null
 
   // =========================================================================
   // CONSTANTES - Configuración del cronómetro
@@ -120,30 +119,12 @@ export function useTimer(initialSeconds: number = 0) {
   // =========================================================================
 
   /**
-   * Función tick del cronómetro usando requestAnimationFrame
-   * Se llama automáticamente en cada frame (aprox 60fps)
-   * Calcula el delta de tiempo desde el último frame y actualiza elapsed
-   * 
-   * @param timestamp - Timestamp en milisegundos proporcionado por rAF
+   * Función tick del cronómetro — se llama cada segundo via setInterval
+   * Usa Date.now() para que funcione aunque la pestaña esté en segundo plano
    */
-  function tick(timestamp: number): void {
-    // Si no es la primera ejecución, calcular delta
-    if (startTimestamp !== 0) {
-      // Delta de tiempo en milisegundos desde el último frame
-      const deltaMs = timestamp - startTimestamp
-
-      // Convertir a segundos y sumar al tiempo total
-      const deltaSeconds = deltaMs / MS_TO_SECONDS
-      elapsed.value = accumulatedTime + deltaSeconds
-    }
-
-    // Actualizar timestamp para el siguiente frame
-    startTimestamp = timestamp
-
-    // Solicitar siguiente frame si sigue corriendo
-    if (isRunning.value) {
-      animationFrameId = requestAnimationFrame(tick)
-    }
+  function tick(): void {
+    const deltaMs = Date.now() - startTimestamp
+    elapsed.value = accumulatedTime + deltaMs / MS_TO_SECONDS
   }
 
   // =========================================================================
@@ -166,11 +147,11 @@ export function useTimer(initialSeconds: number = 0) {
     isRunning.value = true
     isPaused.value = false
 
-    // Resetear timestamp para la primera ejecución
-    startTimestamp = 0
+    // Fijar el timestamp de inicio con Date.now() para precisión en tabs ocultos
+    startTimestamp = Date.now()
 
-    // Solicitar el primer frame de animación
-    animationFrameId = requestAnimationFrame(tick)
+    // Iniciar intervalo de 1 segundo (funciona aunque la pestaña esté minimizada)
+    intervalId = window.setInterval(tick, 1000)
 
     console.log('Cronómetro iniciado')
   }
@@ -191,10 +172,10 @@ export function useTimer(initialSeconds: number = 0) {
     // Guardar tiempo acumulado actual (antes de pausar)
     accumulatedTime = elapsed.value
 
-    // Cancelar la animación en progreso
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+    // Cancelar el intervalo en progreso
+    if (intervalId !== null) {
+      clearInterval(intervalId)
+      intervalId = null
     }
 
     // Marcar como pausado
@@ -231,9 +212,9 @@ export function useTimer(initialSeconds: number = 0) {
    */
   function stop(): number {
     // Detener la ejecución
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+    if (intervalId !== null) {
+      clearInterval(intervalId)
+      intervalId = null
     }
 
     // Resetear estado
@@ -265,10 +246,10 @@ export function useTimer(initialSeconds: number = 0) {
       stop()
     }
 
-    // Cancelar animación si existe
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+    // Cancelar intervalo si existe
+    if (intervalId !== null) {
+      clearInterval(intervalId)
+      intervalId = null
     }
 
     // Resetear completamente
@@ -296,10 +277,10 @@ export function useTimer(initialSeconds: number = 0) {
       stop()
     }
 
-    // Cancelar requestAnimationFrame si existe
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
+    // Cancelar intervalo si existe
+    if (intervalId !== null) {
+      clearInterval(intervalId)
+      intervalId = null
     }
 
     console.log('Cronómetro desmontado y limpiado')

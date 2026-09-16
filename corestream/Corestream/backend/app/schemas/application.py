@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ApplicationCreate(BaseModel):
@@ -19,10 +19,10 @@ class ApplicationCreate(BaseModel):
         color: Código hexadecimal de color para la interfaz (opcional)
         icon: Identificador o URL del ícono de la aplicación (opcional)
     """
-    name: str
-    description: Optional[str] = None
-    color: Optional[str] = None
-    icon: Optional[str] = None
+    name: str = Field(..., max_length=255)
+    description: Optional[str] = Field(None, max_length=5_000)
+    color: Optional[str] = Field(None, max_length=7)
+    icon: Optional[str] = Field(None, max_length=100)
 
     @field_validator("name")
     @classmethod
@@ -80,10 +80,10 @@ class ApplicationUpdate(BaseModel):
         color: Nuevo código de color (opcional)
         icon: Nuevo ícono (opcional)
     """
-    name: Optional[str] = None
-    description: Optional[str] = None
-    color: Optional[str] = None
-    icon: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = Field(None, max_length=5_000)
+    color: Optional[str] = Field(None, max_length=7)
+    icon: Optional[str] = Field(None, max_length=100)
 
     @field_validator("name")
     @classmethod
@@ -141,7 +141,7 @@ class ApplicationResponse(BaseModel):
         description: Descripción de la aplicación
         color: Código de color para la interfaz
         icon: Ícono de la aplicación
-        owner_id: UUID del usuario propietario de la aplicación
+        owner_id: UUID del usuario propietario de la aplicación (opcional)
         is_active: Indica si la aplicación está activa
         created_at: Fecha y hora de creación
         epic_count: Total de épicas en la aplicación
@@ -153,11 +153,11 @@ class ApplicationResponse(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
     icon: Optional[str] = None
-    owner_id: UUID
+    owner_id: Optional[UUID] = None
     is_active: bool
     created_at: datetime
-    epic_count: int
-    pending_count: int
-    delayed_count: int
+    epic_count: int = 0
+    pending_count: int = 0
+    delayed_count: int = 0
 
     model_config = {"from_attributes": True}

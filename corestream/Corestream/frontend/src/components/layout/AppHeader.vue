@@ -1,45 +1,30 @@
 <template>
   <!-- Encabezado superior de la aplicación CoreStream -->
   <!-- Proporciona navegación principal, cambio de rol, notificaciones y opciones de usuario -->
-  <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
+  <header class="bg-[var(--bg-header)] border-b border-[var(--border-subtle)] sticky top-0 z-[100]">
     <div class="px-4 py-3 flex items-center justify-between gap-4">
-      
+
       <!-- Sección izquierda: Logo y cambio de rol (Admin/Developer) -->
       <div class="flex items-center gap-6 min-w-0">
+        <!-- Botón para alternar el sidebar del layout (solo móvil) -->
+        <button
+          @click="eventBus.emit('toggle-sidebar')"
+          class="md:hidden p-2 -ml-2 rounded hover:bg-[var(--bg-panel)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]"
+          aria-label="Alternar menú de navegación"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+
         <!-- Logo y nombre de CoreStream -->
         <div class="flex items-center gap-2 flex-shrink-0">
-          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-            <span class="text-white font-bold text-lg">C</span>
-          </div>
-          <span class="font-bold text-lg text-slate-900 dark:text-white hidden sm:inline">CoreStream</span>
+          <img
+            :src="logoUrl"
+            alt="CoreStream"
+            class="w-8 h-8 rounded-lg object-cover"
+          />
+          <span class="font-bold text-lg text-[var(--text-primary)] hidden sm:inline">CoreStream</span>
         </div>
 
-        <!-- Pestañas de cambio de rol (Admin/Developer) -->
-        <!-- Permite alternar entre vista de Constructor y vista de Workbench -->
-        <div class="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-          <button
-            @click="currentRole = 'admin'"
-            :class="[
-              'px-3 py-1.5 rounded-md text-sm font-medium transition-all',
-              currentRole === 'admin'
-                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            ]"
-          >
-            Builder
-          </button>
-          <button
-            @click="currentRole = 'developer'"
-            :class="[
-              'px-3 py-1.5 rounded-md text-sm font-medium transition-all',
-              currentRole === 'developer'
-                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            ]"
-          >
-            Workbench
-          </button>
-        </div>
       </div>
 
       <!-- Sección central: Se utiliza para expansión futura -->
@@ -48,116 +33,194 @@
       <!-- Sección derecha: Notificaciones, idioma, ajustes, usuario y modo oscuro -->
       <div class="flex items-center gap-3">
         
-        <!-- Icono de campana de notificaciones con insignia -->
-        <div class="relative group">
-          <button 
-            class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            title="Notificaciones"
-          >
-            <svg class="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-            <!-- Insignia de notificaciones no leídas -->
-            <span v-if="unreadNotifications > 0" class="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-              {{ unreadNotifications > 9 ? '9+' : unreadNotifications }}
-            </span>
-          </button>
-          
-          <!-- Panel desplegable de notificaciones (visible en hover) -->
-          <div class="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 hidden group-hover:block p-4 z-50">
-            <div class="space-y-3 max-h-96 overflow-y-auto">
-              <div v-for="notification in notificationsList" :key="notification.id" class="flex gap-3 pb-3 border-b border-slate-100 dark:border-slate-700 last:border-0">
-                <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
-                  <span class="text-sm">{{ notification.avatar }}</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-slate-900 dark:text-white">{{ notification.title }}</p>
-                  <p class="text-xs text-slate-600 dark:text-slate-400">{{ notification.message }}</p>
-                  <p class="text-xs text-slate-500 dark:text-slate-500 mt-1">{{ notification.timestamp }}</p>
-                </div>
-                <div v-if="!notification.read" class="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1"></div>
-              </div>
-            </div>
-            <button class="w-full mt-3 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700 rounded transition-colors">
-              Marcar todo como leído
-            </button>
-          </div>
-        </div>
-
-        <!-- Selector de idioma con banderas -->
-        <!-- Permite cambiar entre 5 idiomas: Español, Inglés, Portugués, Francés, Alemán -->
-        <div class="relative group">
-          <button 
-            class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-lg"
-            title="Idioma"
-          >
-            {{ languageFlags[currentLanguage] }}
-          </button>
-          <div class="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 hidden group-hover:block z-50">
-            <button
-              v-for="(lang, code) in languageOptions"
-              :key="code"
-              @click="currentLanguage = code"
-              :class="[
-                'w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors',
-                currentLanguage === code ? 'bg-blue-50 dark:bg-blue-900 text-blue-600 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300'
-              ]"
-            >
-              <span class="mr-2">{{ languageFlags[code] }}</span>{{ lang }}
-            </button>
-          </div>
-        </div>
+        <!-- Campana de notificaciones -->
+        <NotificationBell />
 
         <!-- Icono de ajustes -->
-        <button 
-          class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+        <button
+          @click="openSettingsModal"
+          class="p-2 hover:bg-[var(--bg-panel)] rounded-lg transition-colors"
           title="Ajustes"
         >
-          <svg class="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </button>
 
         <!-- Divisor visual -->
-        <div class="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
+        <div class="w-px h-6 bg-[var(--border-subtle)]"></div>
 
         <!-- Información del usuario y avatar -->
         <div class="flex items-center gap-3">
           <div class="text-right hidden sm:block">
-            <p class="text-sm font-medium text-slate-900 dark:text-white">{{ userName }}</p>
-            <p class="text-xs text-slate-500 dark:text-slate-400">{{ userRole }}</p>
+            <p class="text-sm font-medium text-[var(--text-primary)]">{{ userName }}</p>
+            <p class="text-xs text-[var(--text-secondary)]">{{ userRole }}</p>
           </div>
-          <!-- Avatar del usuario -->
-          <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all">
+          <!-- Avatar del usuario con badge de líder -->
+          <div class="relative w-8 h-8 bg-gradient-to-br from-teal to-teal-dark rounded-full flex items-center justify-center text-white font-bold text-sm cursor-pointer hover:ring-2 hover:ring-teal-30 transition-all">
             {{ userInitials }}
+            <!-- Badge dorado (👑) para líderes de equipo -->
+            <div v-if="authStore.isTeamLeader" class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center text-xs flex-shrink-0" title="Líder de Equipo">
+              👑
+            </div>
           </div>
         </div>
 
-        <!-- Toggle de modo oscuro -->
-        <!-- Permite cambiar entre tema claro y oscuro -->
-        <button 
-          @click="darkMode = !darkMode"
-          :class="[
-            'p-2 rounded-lg transition-colors',
-            darkMode 
-              ? 'bg-slate-800 text-yellow-400' 
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          ]"
-          title="Cambiar modo"
+        <!-- Divisor visual -->
+        <div class="w-px h-6 bg-[var(--border-subtle)]"></div>
+
+        <!-- Cerrar sesión -->
+        <button
+          type="button"
+          @click="logout"
+          class="px-3 py-2 rounded-lg bg-[var(--priority-urg-bg)] text-white text-sm font-medium hover:opacity-90 transition-colors whitespace-nowrap"
         >
-          <!-- Icono de luna (modo oscuro) -->
-          <svg v-if="!darkMode" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-          </svg>
-          <!-- Icono de sol (modo claro) -->
-          <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v2a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l-2.12-2.12a4 4 0 00 0-5.656 4 4 0 005.656 5.656l2.12-2.12a7 7 0 10-9.9-9.9l2.12 2.12a4 4 0 005.656 0 4 4 0 000-5.656l-2.12 2.12a7 7 0 109.9 9.9z" clip-rule="evenodd"></path>
-          </svg>
+          {{ t('header.logout') }}
         </button>
       </div>
     </div>
   </header>
+  <!-- ========================================== -->
+  <!-- MODAL DE CONFIGURACIÓN (CS-043)            -->
+  <!-- ========================================== -->
+  <div v-if="showSettingsModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" @click="showSettingsModal = false">
+    <div class="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col bg-[var(--bg-app)] rounded-2xl shadow-2xl transform transition-all border border-[var(--border-subtle)]" @click.stop>
+      <!-- Cabecera del Modal -->
+      <div class="p-6 border-b border-[var(--border-subtle)] bg-[var(--bg-header)] flex justify-between items-center">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-[var(--bg-panel)] rounded-xl flex items-center justify-center border border-[var(--border-subtle)]">
+            <span class="text-2xl">⚙️</span>
+          </div>
+          <div>
+            <h2 class="text-xl font-bold text-[var(--text-primary)]">Configuración</h2>
+            <p class="text-sm text-[var(--text-secondary)]">Personaliza tu experiencia en CoreStream</p>
+          </div>
+        </div>
+        <button @click="showSettingsModal = false" class="p-2 rounded-xl hover:bg-[var(--bg-panel)] text-[var(--text-secondary)] transition-colors">
+          <span class="text-xl">✕</span>
+        </button>
+      </div>
+
+      <!-- Contenido scrolleable -->
+      <div class="p-6 overflow-y-auto flex-1 space-y-8">
+        
+        <!-- SECCIÓN 1: PERFIL -->
+        <section>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-[var(--text-muted)] mb-4">Perfil de Usuario</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nombre</label>
+              <input v-model="profileForm.firstName" type="text" class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Apellidos</label>
+              <input v-model="profileForm.lastName" type="text" class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" />
+            </div>
+            <div class="col-span-2">
+              <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Correo Electrónico</label>
+              <input v-model="profileForm.email" type="email" class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" />
+            </div>
+          </div>
+        </section>
+
+        <hr class="border-[var(--border-subtle)]" />
+
+        <!-- SECCIÓN 2: APARIENCIA E IDIOMA -->
+        <section>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-[var(--text-muted)] mb-4">Apariencia e Idioma</h3>
+          <div class="space-y-4">
+            <!-- Tema -->
+            <div class="flex items-center justify-between p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)]">
+              <div class="flex items-center gap-3">
+                <span class="text-2xl">{{ themeStore.isDark() ? '🌙' : '☀️' }}</span>
+                <div>
+                  <p class="text-sm font-semibold text-[var(--text-primary)]">Tema de la Interfaz</p>
+                  <p class="text-xs text-[var(--text-secondary)]">Elige entre modo claro u oscuro</p>
+                </div>
+              </div>
+              <div class="flex bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-1">
+                <button @click="themeStore.previewTheme('light')" :class="[!themeStore.isDark() ? 'bg-[var(--bg-panel)] shadow-sm text-[var(--teal)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]', 'px-4 py-1.5 rounded-md text-sm font-medium transition-all']">Claro</button>
+                <button @click="themeStore.previewTheme('dark')" :class="[themeStore.isDark() ? 'bg-[var(--bg-panel)] shadow-sm text-[var(--teal)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]', 'px-4 py-1.5 rounded-md text-sm font-medium transition-all']">Oscuro</button>
+              </div>
+            </div>
+
+            <!-- Idiomas -->
+            <div class="p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)]">
+              <div class="mb-3">
+                <p class="text-sm font-semibold text-[var(--text-primary)]">{{ t('header.language') }}</p>
+                <p class="text-xs text-[var(--text-secondary)]">Selecciona tu idioma preferido</p>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <button v-for="(lang, code) in languageOptions" :key="code" @click="changeLocale(code)" :class="['px-3 py-2 text-sm rounded-lg border transition-all flex items-center gap-2', locale === code ? 'border-[var(--lime)] bg-[var(--lime)]/10 text-[var(--lime)] font-medium' : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]']">
+                  <span class="text-lg">{{ languageFlags[code as keyof typeof languageFlags] }}</span> {{ lang }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+
+        <!-- SECCIÓN 4: CUENTA -->
+        <section>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-[var(--text-muted)] mb-4">Cuenta</h3>
+          <div class="grid grid-cols-2 gap-3">
+            <button @click="openPasswordModal" type="button" class="group p-4 rounded-xl text-left border border-orange-500/20 bg-orange-500/10 hover:bg-orange-500/20 transition-all flex flex-col">
+              <span class="text-3xl mb-2 block group-hover:scale-110 transition-transform origin-left">🔐</span>
+              <p class="text-sm font-medium text-[var(--text-primary)]">Cambiar Contraseña</p>
+              <p class="text-xs text-[var(--text-secondary)]">Actualiza tus credenciales</p>
+            </button>
+
+            <button @click="exportUserData" type="button" class="group p-4 rounded-xl text-left border border-blue-500/20 bg-blue-500/10 hover:bg-blue-500/20 transition-all flex flex-col">
+              <span class="text-3xl mb-2 block group-hover:scale-110 transition-transform origin-left">📊</span>
+              <p class="text-sm font-medium text-[var(--text-primary)]">Exportar Datos</p>
+              <p class="text-xs text-[var(--text-secondary)]">Descarga tus datos</p>
+            </button>
+          </div>
+        </section>
+
+        <hr class="border-[var(--border-subtle)]" />
+      </div>
+
+      <!-- Footer -->
+      <div class="p-6 border-t border-[var(--border-subtle)] bg-[var(--bg-header)] flex justify-end gap-3">
+        <button @click="cancelSettings" class="px-5 py-2.5 rounded-xl font-medium border border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[var(--text-primary)] hover:bg-[var(--bg-card)]/10 transition-colors">Cancelar</button>
+        <button @click="saveSettings" :disabled="isSaving" class="px-5 py-2.5 rounded-xl font-bold text-[var(--dark-gray)] bg-[var(--lime)] hover:bg-[var(--lime)]/90 transition-colors shadow-lg flex items-center gap-2">
+          <span v-if="isSaving" class="animate-spin">⏳</span>
+          {{ isSaving ? 'Guardando...' : 'Guardar Preferencias' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  <div v-if="showPasswordModal" style="z-index: 9999;" class="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click="showPasswordModal = false">
+    <div class="w-full max-w-md bg-[var(--bg-app)] rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-[var(--border-subtle)] overflow-hidden" @click.stop>
+      <div class="p-5 border-b border-[var(--border-subtle)] bg-[var(--bg-header)] flex justify-between items-center">
+        <h3 class="text-lg font-bold text-[var(--text-primary)]">Cambiar Contraseña</h3>
+        <button @click="showPasswordModal = false" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xl">✕</button>
+      </div>
+      <form @submit.prevent="submitPasswordChange" class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Contraseña Actual</label>
+          <input v-model="passwordForm.oldPassword" type="password" required class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" placeholder="••••••••" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Nueva Contraseña</label>
+          <input v-model="passwordForm.newPassword" type="password" required minlength="8" class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" placeholder="Mínimo 8 caracteres" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-[var(--text-secondary)] mb-1">Confirmar Nueva Contraseña</label>
+          <input v-model="passwordForm.confirmPassword" type="password" required minlength="8" class="w-full px-4 py-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--teal)] outline-none" placeholder="Repite la nueva contraseña" />
+        </div>
+        <div class="pt-4 flex justify-end gap-3">
+          <button type="button" @click="showPasswordModal = false; resetPasswordForm()" class="px-4 py-2 rounded-xl text-sm font-medium border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--bg-card)]/10">Cancelar</button>
+          <button type="submit" :disabled="isChangingPassword" class="px-4 py-2 rounded-xl text-sm font-bold text-[var(--dark-gray)] bg-[var(--lime)] hover:bg-[var(--lime)]/90 disabled:opacity-50 transition-all">
+            {{ isChangingPassword ? 'Guardando...' : 'Actualizar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -166,42 +229,85 @@
  * 
  * Responsabilidades:
  * - Mostrar logo y nombre de CoreStream
- * - Permitir cambio entre rol Admin (Builder) y Developer (Workbench)
  * - Mostrar campana de notificaciones con contador de no leídas
  * - Selector de idioma con soporte a 5 idiomas
  * - Icono de ajustes para configuración
  * - Información del usuario actual con avatar
  * - Toggle para cambiar entre modo claro y oscuro
  * - Diseño responsivo que se adapta a pantallas pequeñas
- * 
- * La navegación del usuario es fundamental para acceder a ambas vistas principales
- * de la aplicación: la vista de Constructor (Admin) para gestionar epics y tickets,
- * y la vista de Workbench (Developer) para trabajar en los tickets asignados.
+ *
+ * La navegación por módulo (Builder / Workbench) se realiza exclusivamente
+ * a través del sidebar de cada layout, separado por rol.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { useAuthStore, useThemeStore } from '@/stores'
+import { useDialogStore } from '@/stores/dialog'
+import type { Theme } from '@/stores/theme'
+import { api } from '@/services/api'
+import NotificationBell from '@/components/shared/NotificationBell.vue'
+import logoUrl from '@/assets/logo-corestream.jpeg'
+import { eventBus } from '@/utils/eventBus'
 
 // ============================================================================
 // ESTADOS REACTIVOS
 // ============================================================================
 
 /**
- * Rol actual del usuario
- * Puede ser 'admin' (vista Builder) o 'developer' (vista Workbench)
+ * Estado para mostrar/ocultar el menú de selección de idioma
  */
-const currentRole = ref<'admin' | 'developer'>('admin')
+const showLanguageMenu = ref(false)
+
+const authStore = useAuthStore()
+const themeStore = useThemeStore()
+const dialogStore = useDialogStore()
+const i18n = useI18n()
+const { t } = i18n
+const router = useRouter()
+
+
 
 /**
- * Idioma actual de la aplicación
- * Soporta: es (Español), en (English), pt (Português), fr (Français), de (Deutsch)
+ * Obtener el idioma actual con tipado correcto
+ * Permite acceder a locale como ref reactiva
  */
-const currentLanguage = ref<'es' | 'en' | 'pt' | 'fr' | 'de'>('es')
+const locale = computed<'es' | 'en' | 'pt' | 'fr' | 'de'>(() =>
+  (i18n.locale.value as 'es' | 'en' | 'pt' | 'fr' | 'de') || 'es'
+)
 
 /**
- * Estado del modo oscuro
- * true = modo oscuro activado, false = modo claro
+ * Inicializar idioma desde localStorage
+ * Si existe un idioma guardado, aplicarlo a i18n
  */
-const darkMode = ref(false)
+const savedLocale = localStorage.getItem('corestream-locale')
+if (savedLocale) {
+  i18n.locale.value = savedLocale
+}
+
+/**
+ * Cambia el idioma de la aplicación y persiste en localStorage
+ */
+function changeLocale(newLocale: string): void {
+  i18n.locale.value = newLocale
+  localStorage.setItem('corestream-locale', newLocale)
+  showLanguageMenu.value = false
+}
+
+/**
+ * Alterna la visibilidad del menú de idioma
+ */
+function toggleLanguageMenu(): void {
+  showLanguageMenu.value = !showLanguageMenu.value
+}
+
+/**
+ * Cierra el menú de idioma al hacer click fuera
+ */
+function closeLanguageMenu(): void {
+  showLanguageMenu.value = false
+}
 
 // ============================================================================
 // DATOS ESTÁTICOS
@@ -231,37 +337,6 @@ const languageOptions = {
   de: 'Deutsch'
 }
 
-/**
- * Lista de notificaciones de ejemplo
- * En una aplicación real, esto vendría de una API o store global
- * Cada notificación tiene: id, avatar, title, message, timestamp, read status
- */
-const notificationsList = ref([
-  {
-    id: 1,
-    avatar: '👤',
-    title: 'Ticket asignado',
-    message: 'Te han asignado un nuevo ticket en el Epic de Autenticación',
-    timestamp: 'hace 5 minutos',
-    read: false
-  },
-  {
-    id: 2,
-    avatar: '✅',
-    title: 'Ticket completado',
-    message: 'Juan completó el ticket #42 - Validación de formulario',
-    timestamp: 'hace 1 hora',
-    read: true
-  },
-  {
-    id: 3,
-    avatar: '❓',
-    title: 'Nueva pregunta',
-    message: 'María tiene una duda en el ticket #38',
-    timestamp: 'hace 3 horas',
-    read: true
-  }
-])
 
 // ============================================================================
 // INFORMACIÓN DEL USUARIO
@@ -269,15 +344,15 @@ const notificationsList = ref([
 
 /**
  * Nombre del usuario actual
- * En una aplicación real, esto vendría del estado global o autenticación
+ * Proviene del estado global de autenticación
  */
-const userName = ref('Carlos Mendez')
+const userName = computed(() => authStore.user?.fullName || 'Usuario')
 
 /**
  * Rol del usuario actual
  * Se muestra debajo del nombre en el header
  */
-const userRole = ref('Project Manager')
+const userRole = computed(() => authStore.user?.role || 'Rol no definido')
 
 /**
  * Iniciales del usuario para el avatar
@@ -291,17 +366,223 @@ const userInitials = computed(() => {
     .toUpperCase()
 })
 
-// ============================================================================
-// NOTIFICACIONES
-// ============================================================================
-
 /**
- * Contador de notificaciones no leídas
- * Se calcula dinámicamente a partir de la lista de notificaciones
+ * Cierra la sesión del usuario y redirige al login
  */
-const unreadNotifications = computed(() => {
-  return notificationsList.value.filter(n => !n.read).length
+const logout = async () => {
+  await authStore.logout()
+  await router.push('/login')
+}
+
+// ============================================================================
+// CONFIGURACIÓN (CS-043)
+// ============================================================================
+const showSettingsModal = ref(false)
+const isSaving = ref(false)
+const showPasswordModal = ref(false)
+const originalTheme = ref<Theme>('light')
+const isChangingPassword = ref(false)
+const passwordForm = reactive({ 
+  oldPassword: '', 
+  newPassword: '', 
+  confirmPassword: ''
 })
+
+const profileForm = reactive({
+  firstName: authStore.user?.fullName?.split(' ')[0] || '',
+  lastName: authStore.user?.fullName?.split(' ').slice(1).join(' ') || '',
+  email: authStore.user?.email || ''
+})
+
+const userPrefs = authStore.user?.preferences || {}
+
+const notifEnabled = reactive({
+  email: true,
+  push: true,
+  mobile: false,
+  reminders: false,
+})
+
+const notifications = computed(() => ({
+  email:     { icon: '📧', title: t('settings.notifEmail'),     desc: t('settings.notifEmailDesc'),     enabled: notifEnabled.email },
+  push:      { icon: '🔔', title: t('settings.notifPush'),      desc: t('settings.notifPushDesc'),      enabled: notifEnabled.push },
+  mobile:    { icon: '📱', title: t('settings.notifMobile'),    desc: t('settings.notifMobileDesc'),    enabled: notifEnabled.mobile },
+  reminders: { icon: '⏰', title: t('settings.notifReminders'), desc: t('settings.notifRemindersDesc'), enabled: notifEnabled.reminders },
+}))
+
+function toggleNotif(key: string) {
+  const k = key as keyof typeof notifEnabled
+  notifEnabled[k] = !notifEnabled[k]
+}
+
+const openSettingsModal = async () => {
+  // Sincronizar con el backend para tener los datos más recientes
+  try { 
+    await authStore.fetchMe(); 
+  } catch (e) { 
+    console.error("Error al sincronizar usuario:", e); 
+  }
+  
+  const user = authStore.user as any;
+
+  if (user) {
+    // Cargar datos del perfil en el formulario
+    const nameParts = user.fullName?.split(' ') || [];
+    profileForm.firstName = nameParts[0] || '';
+    profileForm.lastName = nameParts.slice(1).join(' ') || '';
+    profileForm.email = user.email || '';
+
+    // Obtener preferencias
+    let prefs = user.preferences || {};
+    
+    // Si la BD devuelve un string por accidente, lo convertimos a objeto
+    if (typeof prefs === 'string') {
+      try { 
+        prefs = JSON.parse(prefs); 
+      } catch (e) { 
+        prefs = {}; 
+      }
+    }
+
+    // Función auxiliar para leer booleanos limpios o los objetos antiguos
+    const getBool = (val: any, defaultVal: boolean) => {
+      if (typeof val === 'boolean') return val;
+      if (val && typeof val === 'object' && val.enabled !== undefined) return Boolean(val.enabled);
+      return defaultVal;
+    };
+
+    // Asignar los valores a los switches
+    notifEnabled.email = getBool(prefs.email, true);
+    notifEnabled.push = getBool(prefs.push, true);
+    notifEnabled.mobile = getBool(prefs.mobile, false);
+    notifEnabled.reminders = getBool(prefs.reminders, false);
+  }
+  
+  // 5. Guardar tema actual como referencia para poder revertir en Cancelar
+  originalTheme.value = themeStore.getTheme()
+
+  // 6. Mostrar el modal
+  showSettingsModal.value = true;
+}
+
+const cancelSettings = () => {
+  themeStore.applyTheme(originalTheme.value)
+  showSettingsModal.value = false
+}
+
+const saveSettings = async () => {
+  isSaving.value = true
+  try {
+    // 1. Extraemos los true/false + tema seleccionado
+    const prefsToSave = {
+      email: notifEnabled.email,
+      push: notifEnabled.push,
+      mobile: notifEnabled.mobile,
+      reminders: notifEnabled.reminders,
+      theme: themeStore.getTheme()
+    };
+
+    // 2. Guardamos enviando el objeto limpio
+    const updatedUser = await api.auth.updateSettings({
+      firstName: profileForm.firstName,
+      lastName: profileForm.lastName,
+      email: profileForm.email,
+      preferences: prefsToSave 
+    });
+
+    // Confirmar el tema en localStorage (hasta ahora era solo previsualización)
+    themeStore.applyTheme(themeStore.getTheme())
+
+    authStore.$patch((state) => {
+      if (state.user) {
+        state.user.fullName = updatedUser.fullName;
+        state.user.email = updatedUser.email;
+        state.user.preferences = updatedUser.preferences;
+      }
+    });
+
+    showSettingsModal.value = false;
+    dialogStore.alert('¡Preferencias guardadas exitosamente!');
+  } catch (error) {
+    console.error('Error al guardar:', error);
+    dialogStore.alert('Hubo un error al guardar las preferencias.');
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const openPasswordModal = () => {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  showPasswordModal.value = true
+}
+
+const submitPasswordChange = async () => {
+  // Validación de coincidencia
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    dialogStore.alert('Las nuevas contraseñas no coinciden. Por favor, verifica.')
+    return
+  }
+
+  if (passwordForm.newPassword.length < 8) {
+    dialogStore.alert('Por seguridad, la nueva contraseña debe tener al menos 8 caracteres.')
+    return
+  }
+
+  isChangingPassword.value = true
+  try {
+    await api.auth.changePassword({ 
+      oldPassword: passwordForm.oldPassword, 
+      newPassword: passwordForm.newPassword 
+    })
+    
+    dialogStore.alert('¡Contraseña actualizada con éxito! 🔐')
+
+    resetPasswordForm()
+    showPasswordModal.value = false
+  } catch (error: any) {
+    console.error(error)
+    const mensajeReal = error.response?.data?.detail || error.message || 'Verifica tu contraseña actual.'
+    dialogStore.alert(`Error al cambiar la contraseña: ${mensajeReal}`)
+  } finally {
+    isChangingPassword.value = false
+  }
+}
+
+const resetPasswordForm = () => {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  passwordForm.confirmPassword = ''
+}
+
+
+
+const exportUserData = () => {
+  // Extraemos las preferencias del usuario global
+  const { preferences, ...cleanData } = authStore.user || {}
+
+  // Armamos el paquete
+  const dataToExport = {
+    perfil: profileForm,
+    preferencias: notifEnabled,
+    datosSesion: cleanData,
+    fechaExportacion: new Date().toISOString()
+  }
+
+  const dataStr = JSON.stringify(dataToExport, null, 2)
+  const blob = new Blob([dataStr], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `corestream_datos_${profileForm.firstName || 'usuario'}.json`
+  document.body.appendChild(a)
+  a.click()
+  
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 </script>
 
 <style scoped lang="postcss">

@@ -1,50 +1,83 @@
 # Archivo de importación central para todos los esquemas de Pydantic
 # Este módulo exporta todos los modelos de validación de datos utilizados en la API
 
-from app.schemas.user import (
-    UserBase,
-    UserCreate,
-    UserUpdate,
-    UserResponse,
-    UserLogin,
-    TokenResponse,
-    TokenPayload,
+from app.schemas.analytics import (
+    AnalyticsSummary,
+    BurndownData,
+    BurndownPoint,
+    HeatmapEntry,
+    UserPerformance,
 )
 from app.schemas.application import (
     ApplicationCreate,
-    ApplicationUpdate,
     ApplicationResponse,
+    ApplicationUpdate,
+)
+from app.schemas.document import (
+    DocumentResponse,
 )
 from app.schemas.epic import (
     EpicCreate,
-    EpicUpdate,
     EpicReorder,
     EpicResponse,
+    EpicUpdate,
 )
-from app.schemas.ticket import (
-    TicketCreate,
-    TicketUpdate,
-    TicketMoveEpic,
-    TicketComplete,
-    TicketQuestion,
-    TicketRedirect,
-    TicketResponse,
+from app.schemas.incident import (
+    IncidentCreate,
+    IncidentResponse,
+    IncidentStatusUpdate,
+    IncidentUpdate,
+)
+from app.schemas.meeting import (
+    MeetingAttendanceCreate,
+    MeetingAttendanceResponse,
+    MeetingCreate,
+    MeetingResponse,
+    MeetingUpdate,
+)
+from app.schemas.notification import (
+    NotificationMarkRead,
+    NotificationResponse,
 )
 from app.schemas.subtask import (
     SubtaskCreate,
-    SubtaskUpdate,
     SubtaskResponse,
+    SubtaskUpdate,
 )
-from app.schemas.notification import (
-    NotificationResponse,
-    NotificationMarkRead,
+from app.schemas.ticket import (
+    TicketComplete,
+    TicketCreate,
+    TicketMoveEpic,
+    TicketQuestion,
+    TicketRedirect,
+    TicketResponse,
+    TicketUpdate,
 )
-from app.schemas.analytics import (
-    UserPerformance,
-    HeatmapEntry,
-    BurndownPoint,
-    BurndownData,
-    AnalyticsSummary,
+from app.schemas.ticket_redirection import (
+    TeamMemberResponse,
+    TicketAssignedNotification,
+    TicketEventResponse,
+    TicketRedirectionRequest,
+    TicketRedirectionResponse,
+    TicketStatusChangedNotification,
+    TimerSyncNotification,
+    WebSocketNotification,
+)
+from app.schemas.user import (
+    AdminPasswordResetResponse,
+    InvitationAccept,
+    InvitationCreate,
+    InvitationInfo,
+    InvitationResponse,
+    LogoutRequest,
+    RefreshRequest,
+    TokenPayload,
+    TokenResponse,
+    UserBase,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    UserUpdate,
 )
 
 __all__ = [
@@ -56,6 +89,13 @@ __all__ = [
     "UserLogin",
     "TokenResponse",
     "TokenPayload",
+    "RefreshRequest",
+    "LogoutRequest",
+    "AdminPasswordResetResponse",
+    "InvitationCreate",
+    "InvitationResponse",
+    "InvitationInfo",
+    "InvitationAccept",
     # Esquemas de Aplicación
     "ApplicationCreate",
     "ApplicationUpdate",
@@ -86,4 +126,26 @@ __all__ = [
     "BurndownPoint",
     "BurndownData",
     "AnalyticsSummary",
+    # Esquemas de Documentos
+    "DocumentResponse",
+    # Esquemas de Redirección de Tickets
+    "TicketRedirectionRequest",
+    "TicketRedirectionResponse",
+    "TeamMemberResponse",
+    "TicketEventResponse",
+    "WebSocketNotification",
+    "TicketAssignedNotification",
+    "TicketStatusChangedNotification",
+    "TimerSyncNotification",
+    # Esquemas de Incidentes
+    "IncidentCreate",
+    "IncidentUpdate",
+    "IncidentStatusUpdate",
+    "IncidentResponse",
+    # Esquemas de Reuniones
+    "MeetingAttendanceCreate",
+    "MeetingAttendanceResponse",
+    "MeetingCreate",
+    "MeetingUpdate",
+    "MeetingResponse",
 ]

@@ -2,10 +2,10 @@
 # Incluye modelos para registro, login, autenticación y respuestas de usuario
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
@@ -19,19 +19,21 @@ class UserBase(BaseModel):
         specialty: Especialidad técnica o área de expertise (opcional)
     """
     email: EmailStr
-    full_name: str
-    specialty: Optional[str] = None
+    full_name: str = Field(..., max_length=255)
+    specialty: Optional[str] = Field(None, max_length=255)
 
 
 class UserCreate(UserBase):
     """
     Esquema para crear un nuevo usuario en el sistema.
     Extiende UserBase con validación de contraseña fuerte.
-    
+
     Atributos:
         password: Contraseña que debe tener mínimo 8 caracteres
+        role: Rol inicial del usuario (DEVELOPER o TEAM_LEADER); por defecto DEVELOPER
     """
-    password: str
+    password: str = Field(..., max_length=128)
+    role: Optional[str] = "DEVELOPER"
 
     @field_validator("password")
     @classmethod
@@ -63,9 +65,10 @@ class UserUpdate(BaseModel):
         specialty: Nueva especialidad (opcional)
         avatar_url: URL de la imagen de perfil (opcional)
     """
-    full_name: Optional[str] = None
-    specialty: Optional[str] = None
-    avatar_url: Optional[str] = None
+    full_name: Optional[str] = Field(None, max_length=255)
+    specialty: Optional[str] = Field(None, max_length=255)
+    avatar_url: Optional[str] = Field(None, max_length=2_000)
+    preferences: Optional[Dict[str, Any]] = None
 
 
 class UserResponse(UserBase):
@@ -85,6 +88,16 @@ class UserResponse(UserBase):
     avatar_url: Optional[str] = None
     is_active: bool
     created_at: datetime
+    preferences: Optional[dict] = None
+    must_change_password: bool = False
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def extract_role_name(cls, v: Any) -> str:
+        """Extrae el nombre del rol si viene como un objeto de SQLAlchemy"""
+        if hasattr(v, "name"):
+            return v.name
+        return str(v)
 
     model_config = {"from_attributes": True}
 
@@ -105,28 +118,133 @@ class UserLogin(BaseModel):
 class TokenResponse(BaseModel):
     """
     Esquema de respuesta después de una autenticación exitosa.
-    Contiene los tokens JWT necesarios para acceder a recursos protegidos.
-    
+
+    El refresh_token YA NO viaja en este cuerpo (plan 3.2): el backend lo
+    entrega como cookie HttpOnly en Set-Cookie, así que nunca es legible desde
+    JavaScript. El access_token sí viaja aquí porque el frontend lo mantiene
+    en memoria (no en localStorage) para usarlo como Bearer en cada petición.
+
     Atributos:
         access_token: Token JWT para acceder a recursos protegidos (corta duración)
-        refresh_token: Token para renovar el access_token sin requerer login
         token_type: Tipo de token (siempre "bearer" para JWT)
+        expires_in: Segundos de vida del access_token
+        must_change_password: Si es True, el frontend debe forzar el cambio
+            de contraseña antes de dejar navegar (plan 3.8)
     """
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    must_change_password: bool = False
 
 
 class TokenPayload(BaseModel):
     """
     Esquema del contenido decodificado de un JWT.
-    Contiene información extraída del token JWT para validación.
-    
+
     Atributos:
         sub: Identificador del usuario (subject claim)
         role: Rol del usuario extraído del token
         exp: Timestamp Unix de expiración del token
+        type: "access" o "refresh" — evita que un token sirva para el
+            propósito del otro (plan 3.1: antes ambos compartían payload y
+            clave, así que un refresh token de 7 días colaba como Bearer)
+        jti: identificador único del token, usado para poder revocarlo
+            individualmente en logout (plan 3.3)
     """
     sub: str
     role: str
     exp: int
+    type: str
+    jti: str
+
+
+class RefreshRequest(BaseModel):
+    """
+    Ya no se usa para /auth/refresh (el refresh token viaja por cookie, no
+    por cuerpo). Se mantiene por si algún cliente no-navegador (CLI, tests)
+    necesita pasar el token explícitamente; el router acepta ambas formas.
+    """
+    refresh_token: Optional[str] = None
+
+
+class LogoutRequest(BaseModel):
+    """Cuerpo opcional de /auth/logout, para revocar un refresh_token explícito."""
+    refresh_token: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    """
+    Esquema para validar la petición de cambio de contraseña.
+    """
+    old_password: str = Field(..., max_length=128)
+    new_password: str = Field(..., max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La nueva contraseña debe tener mínimo 8 caracteres")
+        return v
+
+
+class AdminPasswordResetResponse(BaseModel):
+    """
+    Respuesta al resetear la contraseña de otro usuario (plan 3.8).
+
+    La contraseña temporal se devuelve UNA sola vez, en esta respuesta; no se
+    puede volver a consultar. El usuario deberá cambiarla en su próximo login
+    (must_change_password queda en True).
+    """
+    user_id: UUID
+    temporary_password: str
+
+
+# ---------------------------------------------------------------------------
+# Invitaciones (plan 3.7) — sustituyen al registro público
+# ---------------------------------------------------------------------------
+
+class InvitationCreate(BaseModel):
+    email: EmailStr
+    role: str = "DEVELOPER"
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        valid = {"ADMIN", "TEAM_LEADER", "DEVELOPER"}
+        if v not in valid:
+            raise ValueError(f"Rol inválido. Roles válidos: {', '.join(sorted(valid))}")
+        return v
+
+
+class InvitationResponse(BaseModel):
+    """
+    Se devuelve una sola vez, justo al crear la invitación: es el único
+    momento en que el token en claro existe fuera de la base de datos (donde
+    solo se guarda su hash). El admin copia el enlace y lo entrega por fuera
+    de la aplicación.
+    """
+    id: UUID
+    email: str
+    role: str
+    token: str
+    expires_at: datetime
+
+
+class InvitationInfo(BaseModel):
+    """Lo que ve el invitado antes de aceptar: sin datos sensibles."""
+    email: str
+    role: str
+    expires_at: datetime
+    is_expired: bool
+    is_used: bool
+
+
+class InvitationAccept(BaseModel):
+    full_name: str = Field(..., max_length=255)
+    password: str = Field(..., max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener mínimo 8 caracteres")
+        return v

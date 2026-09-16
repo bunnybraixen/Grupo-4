@@ -1,119 +1,145 @@
 <template>
-  <!-- ================================================================ -->
-  <!-- COMPONENTE: Carril de Épica (Swimlane) -->
-  <!-- ================================================================ -->
-  <!-- Representa una épica con sus tickets asociados en un carril -->
-  <!-- Soporta: colapsar/expandir, arrastrar y soltar, adjuntar documentos -->
-  <!-- Muestra barra de progreso, contador de tickets y documentos -->
-  <!-- ================================================================ -->
-
-  <div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden mb-4">
-    <!-- ================================================================ -->
-    <!-- SECCIÓN: Encabezado del Carril -->
-    <!-- ================================================================ -->
-    <!-- Título, progreso, contador de tickets, documentos y controles -->
-    <!-- ================================================================ -->
+  <div
+    :class="[
+      'bg-[var(--bg-card)] rounded-lg border border-[var(--border-subtle)] overflow-hidden mb-4 transition-opacity',
+      isDraggingEpic ? 'opacity-50 shadow-none' : ''
+    ]"
+  >
+    <!-- Epic drag bar (full-width top strip) -->
     <div
-      @dragover.prevent="isDraggingOver = true"
-      @dragleave="isDraggingOver = false"
+      draggable="true"
+      @dragstart="handleEpicDragStart"
+      @dragend="handleEpicDragEnd"
+      :class="[
+        'h-2 w-full cursor-grab active:cursor-grabbing transition-colors',
+        isDraggingEpic ? 'bg-[var(--accent-cold-2)]' : 'hover:bg-[var(--accent-cold-2)] bg-transparent'
+      ]"
+      title="Arrastrar épica"
+    />
+
+    <!-- Header -->
+    <div
+      @dragover.prevent="handleDragOver"
+      @dragleave="handleDragLeave"
       @drop.prevent="handleTicketDrop"
       :class="[
-        'bg-slate-750 p-4 border-b border-slate-700 transition-colors',
-        isDraggingOver ? 'bg-blue-900 border-blue-500' : ''
+        'bg-[var(--bg-panel)] p-4 border-b border-[var(--border-color)] transition-colors',
+        isDraggingOver ? 'bg-[color-mix(in_srgb,var(--accent-cold-2)_20%,var(--bg-panel))] border-[var(--accent-cold-2)]' : ''
       ]"
     >
       <div class="flex items-center gap-3">
-        <!-- Icono de arrastre (6 puntos) -->
-        <div
-          draggable="true"
-          @dragstart="$emit('epicDragStart', epic)"
-          @dragend="$emit('epicDragEnd')"
-          class="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-300 transition-colors"
-        >
-          <Icon icon="mdi:drag-vertical" class="text-xl" />
-        </div>
 
-        <!-- Botón de expandir/contraer épica -->
+        <!-- Expand/collapse -->
         <button
           @click="isExpanded = !isExpanded"
-          class="text-slate-400 hover:text-white transition-colors"
+          class="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
         >
           <Icon
             :icon="isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'"
-            class="text-xl"
+            :class="[
+              'text-xl transition-transform duration-200',
+              isExpanded ? 'rotate-0' : 'rotate-180'
+            ]"
           />
         </button>
 
-        <!-- Título de la épica -->
+        <!-- Title -->
         <div class="flex-1 min-w-0">
-          <h3 class="text-white font-semibold truncate">{{ epic.title }}</h3>
+          <h3 class="text-[var(--text-primary)] font-semibold truncate">{{ epic.title }}</h3>
         </div>
 
-        <!-- Barra de progreso: porcentaje completado -->
+        <!-- Progress bar -->
         <div class="flex items-center gap-2 flex-shrink-0">
-          <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
+          <div class="w-24 h-2 bg-[var(--border-subtle)] rounded-full overflow-hidden">
             <div
-              class="h-full bg-green-500 transition-all duration-300"
+              class="h-full bg-[var(--lime)] transition-all duration-300"
               :style="{ width: progressPercentage + '%' }"
             />
           </div>
-          <span class="text-xs text-slate-300 w-8 text-right">
+          <span class="text-xs text-[var(--text-muted)] w-8 text-right">
             {{ progressPercentage }}%
           </span>
         </div>
 
-        <!-- Contador de tickets -->
-        <span class="inline-flex items-center justify-center w-6 h-6 text-xs font-bold bg-slate-700 text-slate-200 rounded-full">
+        <!-- Ticket count -->
+        <span class="inline-flex items-center justify-center w-6 h-6 text-xs font-bold bg-[var(--bg-panel)] text-[var(--text-secondary)] rounded-full">
           {{ epic.tickets.length }}
         </span>
 
-        <!-- Icono de documentos adjuntos -->
+        <!-- Documents toggle -->
         <button
-          @click="showDocuments = !showDocuments"
-          class="relative text-slate-400 hover:text-white transition-colors"
-          :title="`${epic.attachedDocuments?.length || 0} documentos`"
+          @click="toggleDocuments"
+          class="relative text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          :title="`${localDocuments.length} documentos`"
         >
           <Icon icon="mdi:paperclip" class="text-lg" />
           <span
-            v-if="epic.attachedDocuments?.length"
+            v-if="localDocuments.length"
             class="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center"
           >
-            {{ epic.attachedDocuments.length }}
+            {{ localDocuments.length }}
           </span>
         </button>
       </div>
 
-      <!-- ================================================================ -->
-      <!-- SUB-SECCIÓN: Información de Documentos (desplegable) -->
-      <!-- ================================================================ -->
-      <div v-if="showDocuments && epic.attachedDocuments?.length" class="mt-3 pt-3 border-t border-slate-700">
-        <div class="grid grid-cols-2 gap-2">
-          <a
-            v-for="doc in epic.attachedDocuments"
-            :key="doc.id"
-            :href="doc.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs text-blue-400 hover:text-blue-300 truncate flex items-center gap-1"
+      <!-- Documents panel -->
+      <div v-if="showDocuments" class="mt-3 pt-3 border-t border-[var(--border-subtle)]">
+        <!-- Upload button -->
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-[var(--text-secondary)] font-medium">Documentos adjuntos</span>
+          <button
+            @click="fileInputRef?.click()"
+            :disabled="isUploading"
+            class="flex items-center gap-1 px-2 py-1 text-xs bg-[var(--accent-cold-2)] hover:bg-[var(--accent-cold-1)] disabled:opacity-50 text-white rounded transition-colors"
           >
-            <Icon icon="mdi:file" />
-            {{ doc.name }}
-          </a>
+            <Icon :icon="isUploading ? 'mdi:loading' : 'mdi:upload'" :class="isUploading ? 'animate-spin' : ''" />
+            {{ isUploading ? 'Subiendo...' : 'Subir' }}
+          </button>
         </div>
+
+        <!-- Hidden file input -->
+        <input
+          ref="fileInputRef"
+          type="file"
+          class="hidden"
+          @change="handleFileSelected"
+        />
+
+        <!-- Document list -->
+        <div v-if="localDocuments.length" class="grid grid-cols-1 gap-1">
+          <div
+            v-for="doc in localDocuments"
+            :key="doc.id"
+            class="flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--bg-panel)] rounded px-2 py-1"
+          >
+            <Icon icon="mdi:file" class="text-[var(--text-secondary)] flex-shrink-0" />
+            <span class="flex-1 truncate">{{ doc.filename }}</span>
+            <span class="text-[var(--text-muted)] flex-shrink-0">{{ formatSize(doc.file_size) }}</span>
+            <a
+              :href="`/api/documents/${doc.id}/download`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-blue-400 hover:text-blue-300 flex-shrink-0"
+              title="Descargar"
+            >
+              <Icon icon="mdi:download" />
+            </a>
+            <button
+              @click="removeDocument(doc.id)"
+              class="text-red-400 hover:text-red-300 flex-shrink-0"
+              title="Eliminar"
+            >
+              <Icon icon="mdi:trash-can-outline" />
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-xs text-[var(--text-muted)] text-center py-1">Sin documentos adjuntos</p>
       </div>
     </div>
 
-    <!-- ================================================================ -->
-    <!-- SECCIÓN: Lista de Tickets (expandible) -->
-    <!-- ================================================================ -->
-    <!-- Renderiza todos los tickets del carril cuando está expandido -->
-    <!-- ================================================================ -->
-    <div
-      v-show="isExpanded"
-      class="p-4 space-y-2 bg-slate-900"
-    >
-      <!-- Lista de tickets -->
-      <div v-if="epic.tickets.length === 0" class="text-center py-4 text-slate-400">
+    <!-- Ticket list -->
+    <div v-show="isExpanded" class="p-4 space-y-2 bg-[var(--bg-app)]">
+      <div v-if="epic.tickets.length === 0" class="text-center py-4 text-[var(--text-secondary)]">
         <Icon icon="mdi:inbox-outline" class="text-2xl mx-auto mb-2" />
         <p class="text-sm">No hay tickets en esta épica</p>
       </div>
@@ -122,29 +148,24 @@
         <TicketCard
           v-for="ticket in epic.tickets"
           :key="ticket.id"
-          :ticket="ticket"
+          :ticket="(ticket as any)"
           @select="$emit('selectTicket', ticket)"
           @dragstart="handleTicketDragStart"
           @dragend="$emit('epicDragEnd')"
         />
       </div>
 
-      <!-- ================================================================ -->
-      <!-- SUB-SECCIÓN: Botón para agregar nuevo ticket -->
-      <!-- ================================================================ -->
-      <!-- Input en línea para crear nuevo ticket -->
-      <!-- ================================================================ -->
-      <div class="pt-2 border-t border-slate-700 mt-2">
+      <!-- Add ticket -->
+      <div class="pt-2 border-t border-[var(--border-subtle)] mt-2">
         <button
           v-if="!isAddingTicket"
           @click="isAddingTicket = true"
-          class="w-full px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors flex items-center justify-center gap-2"
+          class="w-full px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel)] rounded transition-colors flex items-center justify-center gap-2"
         >
           <Icon icon="mdi:plus" />
           Agregar Ticket
         </button>
 
-        <!-- Input en línea para nuevo ticket -->
         <div v-else class="flex gap-2">
           <input
             v-model="newTicketTitle"
@@ -153,17 +174,17 @@
             type="text"
             placeholder="Título del ticket..."
             autofocus
-            class="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 text-sm"
+            class="flex-1 px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-cold-2)] text-sm"
           />
           <button
             @click="addNewTicket"
-            class="px-2 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+            class="px-2 py-2 bg-[var(--lime)] hover:bg-[var(--lime-90)] text-[var(--dark-gray)] rounded transition-colors"
           >
             <Icon icon="mdi:check" />
           </button>
           <button
             @click="isAddingTicket = false"
-            class="px-2 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors"
+            class="px-2 py-2 bg-[var(--bg-panel)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] rounded transition-colors"
           >
             <Icon icon="mdi:close" />
           </button>
@@ -174,145 +195,44 @@
 </template>
 
 <script setup lang="ts">
-// =====================================================================
-// IMPORTS Y COMPOSABLES
-// =====================================================================
-
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import TicketCard from './TicketCard.vue'
+import { useEpicsStore } from '@/stores/epics'
+import { api } from '@/services/api'
 
-// =====================================================================
-// DEFINICIÓN DE TIPOS
-// =====================================================================
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface Ticket {
   id: string
   title: string
-  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'COMPLETED'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   assignee?: { id: string; name: string; avatar: string }
   dueDate?: string
-}
-
-interface Document {
-  id: string
-  name: string
-  url: string
 }
 
 interface Epic {
   id: string
   title: string
   tickets: Ticket[]
-  attachedDocuments?: Document[]
   completedTickets?: number
 }
 
-// =====================================================================
-// PROPS
-// =====================================================================
-
-// Objeto épica con todos sus datos
-const props = defineProps<{
-  epic: Epic
-}>()
-
-// =====================================================================
-// ESTADO LOCAL (COMPOSABLE)
-// =====================================================================
-
-// Control de expansión del carril
-const isExpanded = ref(true)
-
-// Control de mostrar lista de documentos
-const showDocuments = ref(false)
-
-// Control de creación de nuevo ticket
-const isAddingTicket = ref(false)
-
-// Título del nuevo ticket siendo creado
-const newTicketTitle = ref('')
-
-// Control visual de drag-over para Drop Zone
-const isDraggingOver = ref(false)
-
-// =====================================================================
-// PROPIEDADES COMPUTADAS
-// =====================================================================
-
-/**
- * Calcula el porcentaje de tickets completados
- * Basado en tickets con status DONE dividido total de tickets
- */
-const progressPercentage = computed(() => {
-  if (props.epic.tickets.length === 0) return 0
-  
-  const completedCount = props.epic.tickets.filter(
-    t => t.status === 'DONE'
-  ).length
-  
-  return Math.round((completedCount / props.epic.tickets.length) * 100)
-})
-
-// =====================================================================
-// MÉTODOS
-// =====================================================================
-
-/**
- * Agrega un nuevo ticket a la épica
- * Valida que el título no esté vacío
- * Emite evento y limpia formulario
- */
-const addNewTicket = () => {
-  // Validación: título no vacío
-  if (newTicketTitle.value.trim().length === 0) {
-    return
-  }
-
-  // Emitir evento para crear ticket
-  emit('addTicket', {
-    epicId: props.epic.id,
-    title: newTicketTitle.value
-  })
-
-  // Limpiar estado
-  newTicketTitle.value = ''
-  isAddingTicket.value = false
+interface DocumentItem {
+  id: string
+  filename: string
+  file_size: number
+  mime_type: string
+  doc_type: string
+  epic_id?: string | null
+  ticket_id?: string | null
 }
 
-/**
- * Maneja el inicio de arrastre de un ticket
- * Propaga evento hacia componente padre
- */
-const handleTicketDragStart = (ticket: Ticket) => {
-  emit('epicDragStart', { epic: props.epic, ticket })
-}
+// ── Props & emits ──────────────────────────────────────────────────────────
 
-/**
- * Maneja el drop de un ticket sobre el carril
- * Actualiza el orden de tickets dentro de la épica
- */
-const handleTicketDrop = (event: DragEvent) => {
-  isDraggingOver.value = false
-  
-  // Obtener datos del ticket siendo arrastrado
-  const draggedTicketId = event.dataTransfer?.getData('ticketId')
-  
-  if (draggedTicketId) {
-    // Emitir evento de reorden
-    emit('reorderTickets', {
-      epicId: props.epic.id,
-      draggedTicketId
-    })
-  }
-}
+const props = defineProps<{ epic: Epic }>()
 
-// =====================================================================
-// EMITS
-// =====================================================================
-
-// Define eventos emitidos por el componente
 const emit = defineEmits<{
   toggleCollapse: [isExpanded: boolean]
   addTicket: [data: { epicId: string; title: string }]
@@ -320,13 +240,153 @@ const emit = defineEmits<{
   reorderTickets: [data: { epicId: string; draggedTicketId: string }]
   epicDragStart: [data: any]
   epicDragEnd: []
-  uploadDoc: [data: { epicId: string; file: File }]
 }>()
+
+// ── Store ──────────────────────────────────────────────────────────────────
+
+const epicsStore = useEpicsStore()
+
+// ── State ──────────────────────────────────────────────────────────────────
+
+const isExpanded = ref(true)
+const showDocuments = ref(false)
+const isAddingTicket = ref(false)
+const newTicketTitle = ref('')
+const isDraggingOver = ref(false)
+const isDraggingEpic = ref(false)
+const localDocuments = ref<DocumentItem[]>([])
+const isUploading = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+let hoverTimeout: number | null = null
+
+// ── Lifecycle ──────────────────────────────────────────────────────────────
+
+onMounted(async () => {
+  isExpanded.value = !epicsStore.collapsedEpics.has(props.epic.id)
+  await fetchDocuments()
+})
+
+watch(isExpanded, (newValue) => {
+  if (newValue) epicsStore.expand(props.epic.id)
+  else epicsStore.collapse(props.epic.id)
+})
+
+// ── Computed ───────────────────────────────────────────────────────────────
+
+const progressPercentage = computed(() => {
+  if (props.epic.tickets.length === 0) return 0
+  const completed = props.epic.tickets.filter(t => t.status === 'COMPLETED').length
+  return Math.round((completed / props.epic.tickets.length) * 100)
+})
+
+// ── Document methods ───────────────────────────────────────────────────────
+
+const fetchDocuments = async () => {
+  try {
+    const docs = await api.documents.list({ epicId: props.epic.id })
+    localDocuments.value = docs as unknown as DocumentItem[]
+  } catch {
+    // non-critical; silently ignore
+  }
+}
+
+const toggleDocuments = async () => {
+  showDocuments.value = !showDocuments.value
+  if (showDocuments.value) {
+    await fetchDocuments()
+  }
+}
+
+const handleFileSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  isUploading.value = true
+  try {
+    const uploaded = await api.documents.upload(file, {
+      epicId: props.epic.id,
+      docType: 'DOCUMENTATION',
+    })
+    localDocuments.value.unshift(uploaded as unknown as DocumentItem)
+  } catch (err) {
+    console.error('Error al subir documento:', err)
+  } finally {
+    isUploading.value = false
+    input.value = ''
+  }
+}
+
+const removeDocument = async (docId: string) => {
+  try {
+    await api.documents.delete(docId)
+    localDocuments.value = localDocuments.value.filter(d => d.id !== docId)
+  } catch (err) {
+    console.error('Error al eliminar documento:', err)
+  }
+}
+
+const formatSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// ── Ticket methods ─────────────────────────────────────────────────────────
+
+const addNewTicket = () => {
+  if (!newTicketTitle.value.trim()) return
+  emit('addTicket', { epicId: props.epic.id, title: newTicketTitle.value })
+  newTicketTitle.value = ''
+  isAddingTicket.value = false
+}
+
+const handleEpicDragStart = () => {
+  isDraggingEpic.value = true
+  emit('epicDragStart', props.epic)
+}
+
+const handleEpicDragEnd = () => {
+  isDraggingEpic.value = false
+  emit('epicDragEnd')
+}
+
+const handleTicketDragStart = (ticket: Ticket) => {
+  emit('epicDragStart', { epic: props.epic, ticket })
+}
+
+const handleDragOver = () => {
+  isDraggingOver.value = true
+  if (!isExpanded.value) {
+    if (hoverTimeout) clearTimeout(hoverTimeout)
+    hoverTimeout = setTimeout(() => {
+      isExpanded.value = true
+    }, 500) as unknown as number
+  }
+}
+
+const handleDragLeave = () => {
+  isDraggingOver.value = false
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout)
+    hoverTimeout = null
+  }
+}
+
+const handleTicketDrop = (event: DragEvent) => {
+  isDraggingOver.value = false
+  const draggedTicketId = event.dataTransfer?.getData('ticketId')
+  if (draggedTicketId) {
+    emit('reorderTickets', { epicId: props.epic.id, draggedTicketId })
+  }
+}
 </script>
 
 <style scoped>
-/* Transiciones suaves para expansión */
-.transition-all {
-  transition: all 0.3s ease;
+.rotate-180 {
+  transform: rotate(-180deg);
+}
+.rotate-0 {
+  transform: rotate(0deg);
 }
 </style>

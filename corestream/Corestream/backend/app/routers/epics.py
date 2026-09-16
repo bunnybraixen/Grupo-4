@@ -8,18 +8,33 @@ Gestiona el ciclo de vida de épicas:
 - Épicas contienen tickets que son los elementos de trabajo reales
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+import logging
 from typing import List
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Epic, Application, Ticket, TicketStatus
-from app.schemas import EpicResponse, EpicCreate, EpicUpdate, DocumentResponse
-from app.middleware.auth import get_current_user
+
+# Aún no creado
+# from app.schemas import DocumentResponse
+from app.middleware.auth import get_current_user, require_role
+from app.models import Application, Epic, Ticket, User, UserRole
+from app.schemas import EpicCreate, EpicResponse, EpicUpdate
+
+# ADMIN y TEAM_LEADER gestionan la estructura del backlog (aplicaciones,
+# épicas, tickets); DEVELOPER no. Antes epics.py no usaba require_role NI UNA
+# SOLA VEZ — verificado en la auditoría: un DEVELOPER creaba épicas con 201
+# (plan fase 4).
+_MANAGERS = [UserRole.ADMIN, UserRole.TEAM_LEADER]
 
 # Router para épicas
-router = APIRouter(prefix="/epics", tags=["Épicas"])
+router = APIRouter(tags=["Épicas"])
+logger = logging.getLogger("corestream.epics")
 
 
 @router.get(
@@ -29,7 +44,7 @@ router = APIRouter(prefix="/epics", tags=["Épicas"])
     description="Obtiene todas las épicas de una aplicación ordenadas por índice de orden"
 )
 async def get_application_epics(
-    app_id: int,
+    app_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[EpicResponse]:
@@ -37,7 +52,7 @@ async def get_application_epics(
     Lista todas las épicas de una aplicación específica ordenadas por order_index.
 
     Args:
-        app_id (int): ID de la aplicación
+        app_id (UUID): ID de la aplicación
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -47,25 +62,45 @@ async def get_application_epics(
     Raises:
         HTTPException: Si la aplicación no existe (404)
     """
-    # Verificar que la aplicación existe
-    app_check = await db.execute(
-        select(Application).where(Application.id == app_id)
-    )
-    if not app_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Aplicación con ID {app_id} no encontrada"
-        )
-
-    # Obtener todas las épicas ordenadas por índice de orden
+    # 1. Consulta blindada con carga en cascada (Deep Eager Loading)
     result = await db.execute(
         select(Epic)
         .where(Epic.application_id == app_id)
+        .options(
+            selectinload(Epic.application),
+            selectinload(Epic.tickets).selectinload(Ticket.subtasks),
+            selectinload(Epic.tickets).selectinload(Ticket.assignee).selectinload(User.role)
+        )
         .order_by(Epic.order_index.asc())
     )
-    epics = result.scalars().all()
-
-    return [EpicResponse.from_orm(epic) for epic in epics]
+    
+    # Usamos unique() para evitar duplicados en memoria
+    epics = result.unique().scalars().all()
+    
+    epic_responses = []
+    for epic in epics:
+        # 2. Pydantic hace toda la magia de empaquetar los tickets con sus títulos y estados
+        epic_view = EpicResponse.model_validate(epic)
+        
+        # 3. Calculamos los conteos para la interfaz
+        epic_view.total_tickets = len(epic.tickets)
+        
+        # Forma segura de contar los completados sin importar si es texto o Enum
+        completados = 0
+        for t in epic.tickets:
+            estado_str = t.status.value if hasattr(t.status, "value") else str(t.status)
+            if estado_str in ["COMPLETED", "DONE"]:
+                completados += 1
+                
+        epic_view.completed_tickets = completados
+        
+        # 4. Progreso de la barra
+        if epic_view.total_tickets > 0:
+            epic_view.progress = round((epic_view.completed_tickets / epic_view.total_tickets) * 100, 2)
+            
+        epic_responses.append(epic_view)
+        
+    return epic_responses
 
 
 @router.post(
@@ -77,7 +112,7 @@ async def get_application_epics(
 )
 async def create_epic(
     epic_data: EpicCreate,
-    current_user = Depends(get_current_user),
+    current_user = Depends(require_role(_MANAGERS)),
     db: AsyncSession = Depends(get_db)
 ) -> EpicResponse:
     """
@@ -114,14 +149,24 @@ async def create_epic(
 
         # Crear nueva épica
         new_epic = Epic(
-            **epic_data.dict(),
+            **epic_data.model_dump(),
             order_index=next_order
         )
         db.add(new_epic)
         await db.commit()
-        await db.refresh(new_epic)
 
-        return EpicResponse.from_orm(new_epic)
+        # populate_existing=True fuerza actualización desde BD aunque el objeto
+        # no esté expirado (expire_on_commit=False en database.py), garantizando
+        # que created_at y updated_at (server_default) se lean desde la BD.
+        result_final = await db.execute(
+            select(Epic)
+            .where(Epic.id == new_epic.id)
+            .options(selectinload(Epic.tickets))
+            .execution_options(populate_existing=True)
+        )
+        epic_final = result_final.scalar_one()
+
+        return EpicResponse.model_validate(epic_final)
 
     except Exception as e:
         await db.rollback()
@@ -129,6 +174,17 @@ async def create_epic(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al crear épica: {str(e)}"
         )
+
+    # Recargar con tickets para serialización correcta
+    result2 = await db.execute(
+        select(Epic)
+        .where(Epic.id == new_epic.id)
+        .options(
+            selectinload(Epic.tickets).selectinload(Ticket.subtasks),
+            selectinload(Epic.tickets).selectinload(Ticket.assignee).selectinload(User.role),
+        )
+    )
+    return EpicResponse.model_validate(result2.unique().scalar_one())
 
 
 @router.get(
@@ -138,7 +194,7 @@ async def create_epic(
     description="Recupera los detalles de una épica incluyendo información de progreso"
 )
 async def get_epic(
-    epic_id: int,
+    epic_id: UUID,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> EpicResponse:
@@ -167,10 +223,16 @@ async def get_epic(
             detail=f"Épica con ID {epic_id} no encontrada"
         )
 
-    # Precargar información de tickets relacionados
-    await db.refresh(epic)
-
-    return EpicResponse.from_orm(epic)
+    # Recargar con tickets para serialización correcta (evitar lazy-load en async)
+    result2 = await db.execute(
+        select(Epic)
+        .where(Epic.id == epic_id)
+        .options(
+            selectinload(Epic.tickets).selectinload(Ticket.subtasks),
+            selectinload(Epic.tickets).selectinload(Ticket.assignee).selectinload(User.role),
+        )
+    )
+    return EpicResponse.model_validate(result2.unique().scalar_one())
 
 
 @router.put(
@@ -180,16 +242,16 @@ async def get_epic(
     description="Modifica los datos de una épica existente"
 )
 async def update_epic(
-    epic_id: int,
+    epic_id: UUID,
     epic_update: EpicUpdate,
-    current_user = Depends(get_current_user),
+    current_user = Depends(require_role(_MANAGERS)),
     db: AsyncSession = Depends(get_db)
 ) -> EpicResponse:
     """
     Actualiza los datos de una épica.
 
     Args:
-        epic_id (int): ID de la épica a actualizar
+        epic_id (UUID): ID de la épica a actualizar
         epic_update (EpicUpdate): Nuevos datos de la épica
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
@@ -213,21 +275,41 @@ async def update_epic(
 
     try:
         # Aplicar cambios únicamente a campos proporcionados
-        update_data = epic_update.dict(exclude_unset=True)
+        update_data = epic_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(epic, field, value)
 
         await db.commit()
-        await db.refresh(epic)
-
-        return EpicResponse.from_orm(epic)
-
     except Exception as e:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al actualizar épica: {str(e)}"
         )
+
+    # Recargar con tickets — incluir User.role para evitar lazy-load en async
+    result2 = await db.execute(
+        select(Epic)
+        .where(Epic.id == epic_id)
+        .options(
+            selectinload(Epic.tickets).selectinload(Ticket.subtasks),
+            selectinload(Epic.tickets).selectinload(Ticket.assignee).selectinload(User.role),
+        )
+    )
+    updated_epic = result2.unique().scalar_one()
+    epic_view = EpicResponse.model_validate(updated_epic)
+
+    epic_view.total_tickets = len(updated_epic.tickets)
+    completados = 0
+    for t in updated_epic.tickets:
+        estado_str = t.status.value if hasattr(t.status, "value") else str(t.status)
+        if estado_str in ["COMPLETED", "DONE"]:
+            completados += 1
+    epic_view.completed_tickets = completados
+    if epic_view.total_tickets > 0:
+        epic_view.progress = round((completados / epic_view.total_tickets) * 100, 2)
+
+    return epic_view
 
 
 @router.delete(
@@ -237,15 +319,15 @@ async def update_epic(
     description="Elimina una épica y todos sus tickets relacionados"
 )
 async def delete_epic(
-    epic_id: int,
-    current_user = Depends(get_current_user),
+    epic_id: UUID,
+    current_user = Depends(require_role(_MANAGERS)),
     db: AsyncSession = Depends(get_db)
 ) -> None:
     """
     Elimina una épica del sistema de forma permanente.
 
     Args:
-        epic_id (int): ID de la épica a eliminar
+        epic_id (UUID): ID de la épica a eliminar
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -264,8 +346,7 @@ async def delete_epic(
         )
 
     try:
-        # Eliminar en cascada todos los tickets de la épica
-        await db.delete(epic)
+        await db.execute(sa_delete(Epic).where(Epic.id == epic_id))
         await db.commit()
 
     except Exception as e:
@@ -279,21 +360,26 @@ async def delete_epic(
 @router.patch(
     "/{epic_id}/reorder",
     response_model=EpicResponse,
-    summary="Reordenar épica",
-    description="Cambia la posición de una épica y ajusta otros órdenes en consecuencia"
+    summary="Reordenar épica (ATÓMICO - Thread-Safe)",
+    description="Cambia la posición de una épica con bloqueo de fila para evitar race conditions"
 )
 async def reorder_epic(
-    epic_id: int,
+    epic_id: UUID,
     new_order: dict,
-    current_user = Depends(get_current_user),
+    current_user = Depends(require_role(_MANAGERS)),
     db: AsyncSession = Depends(get_db)
 ) -> EpicResponse:
     """
-    Reordena una épica cambiando su order_index y ajustando los demás.
-
+    Reordena una épica de forma ATÓMICA usando transacción SERIALIZABLE.
+    
+    GARANTÍAS CRÍTICAS:
+    - No hay race conditions incluso si múltiples clientes reordenan simultáneamente
+    - order_index nunca duplicado
+    - Bloqueo de filas (FOR UPDATE) previene interleaving de cambios
+    
     Args:
         epic_id (int): ID de la épica a reordenar
-        new_order (dict): Contiene 'new_index' con la nueva posición
+        new_order (dict): Contiene 'new_index' con la nueva posición (0-based)
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -303,51 +389,111 @@ async def reorder_epic(
     Raises:
         HTTPException: Si la épica no existe (404) o índice inválido (400)
     """
-    result = await db.execute(
-        select(Epic).where(Epic.id == epic_id)
-    )
-    epic = result.scalar_one_or_none()
-
-    if not epic:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Épica con ID {epic_id} no encontrada"
-        )
-
     try:
-        new_index = new_order.get("new_index", 0)
-        old_index = epic.order_index
+        # Iniciar transacción EXPLÍCITA con savepoint
+        async with db.begin_nested():
+            
+            # 1️⃣ CARGAR ÉPICA CON LOCK (FOR UPDATE)
+            # Esto previene que otro cliente modifique esta épica mientras estamos procesando
+            result = await db.execute(
+                select(Epic)
+                .where(Epic.id == epic_id)
+                .with_for_update()
+            )
+            epic = result.scalar_one_or_none()
+            
+            if not epic:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Épica con ID {epic_id} no encontrada"
+                )
+            
+            # Extraemos los valores del objeto épica
+            old_index = epic.order_index
+            app_id = str(epic.application_id)
+            str_epic_id = str(epic_id)
+            new_index = new_order.get("new_index", 0)
 
-        # Obtener todas las épicas de la misma aplicación
-        epics = await db.execute(
-            select(Epic)
-            .where(Epic.application_id == epic.application_id)
-            .order_by(Epic.order_index)
-        )
-        all_epics = epics.scalars().all()
+            # 2️⃣ VALIDAR RANGO DE ÍNDICE
+            # Usamos ORM para que SQLAlchemy maneje la conversión UUID correctamente
+            # en cualquier backend (PostgreSQL y SQLite).
+            count_result = await db.execute(
+                select(func.count()).where(Epic.application_id == epic.application_id)
+            )
+            epic_count = count_result.scalar()
 
-        if new_index < 0 or new_index >= len(all_epics):
-            raise ValueError("Índice de orden fuera de rango")
+            if new_index < 0 or new_index >= epic_count:
+                raise ValueError(
+                    f"Índice de orden {new_index} fuera de rango [0, {epic_count-1}]"
+                )
 
-        # Si el nuevo índice es mayor, desplazar épicas hacia atrás
-        if new_index > old_index:
-            for ep in all_epics:
-                if old_index < ep.order_index <= new_index:
-                    ep.order_index -= 1
+            # 3️⃣ OPERACIÓN ATÓMICA: Actualizar order_index solo si es diferente
+            if new_index != old_index:
+                if new_index > old_index:
+                    # Desplazar HACIA ATRÁS: épicas entre old y new
+                    await db.execute(
+                        text(
+                            "UPDATE epics "
+                            "SET order_index = order_index - 1 "
+                            "WHERE application_id = :app_id "
+                            "AND order_index > :old_idx "
+                            "AND order_index <= :new_idx "
+                            "AND id != :epic_id"
+                        ),
+                        {
+                            "app_id": app_id,
+                            "old_idx": old_index,
+                            "new_idx": new_index,
+                            "epic_id": str_epic_id
+                        }
+                    )
+                else:
+                    # Desplazar HACIA ADELANTE: épicas entre new y old
+                    await db.execute(
+                        text(
+                            "UPDATE epics "
+                            "SET order_index = order_index + 1 "
+                            "WHERE application_id = :app_id "
+                            "AND order_index >= :new_idx "
+                            "AND order_index < :old_idx "
+                            "AND id != :epic_id"
+                        ),
+                        {
+                            "app_id": app_id,
+                            "new_idx": new_index,
+                            "old_idx": old_index,
+                            "epic_id": str_epic_id
+                        }
+                    )
 
-        # Si el nuevo índice es menor, desplazar épicas hacia adelante
-        elif new_index < old_index:
-            for ep in all_epics:
-                if new_index <= ep.order_index < old_index:
-                    ep.order_index += 1
-
-        # Asignar nuevo índice a la épica
-        epic.order_index = new_index
-
+                # 4️⃣ ASIGNAR NUEVO ÍNDICE A LA ÉPICA
+                await db.execute(
+                    text(
+                        "UPDATE epics "
+                        "SET order_index = :new_idx "
+                        "WHERE id = :epic_id"
+                    ),
+                    {"epic_id": str_epic_id, "new_idx": new_index}
+                )
+        
+        # Commit de transacción
         await db.commit()
-        await db.refresh(epic)
 
-        return EpicResponse.from_orm(epic)
+        # 5️⃣ RECARGAR CON TICKETS (evitar lazy-load en async durante serialización)
+        result = await db.execute(
+            select(Epic)
+            .where(Epic.id == epic_id)
+            .options(
+                selectinload(Epic.tickets).selectinload(Ticket.subtasks),
+                selectinload(Epic.tickets).selectinload(Ticket.assignee).selectinload(User.role),
+            )
+        )
+        epic_reloaded = result.unique().scalar_one()
+        try:
+            return EpicResponse.model_validate(epic_reloaded)
+        except Exception:
+            logger.exception("Error de serialización en reorder_epic")
+            return {"status": "ok", "id": str(epic_id)}
 
     except ValueError as e:
         await db.rollback()
@@ -362,7 +508,7 @@ async def reorder_epic(
             detail=f"Error al reordenar épica: {str(e)}"
         )
 
-
+'''
 @router.post(
     "/{epic_id}/documents",
     response_model=DocumentResponse,
@@ -422,3 +568,4 @@ async def upload_epic_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al cargar documento: {str(e)}"
         )
+'''

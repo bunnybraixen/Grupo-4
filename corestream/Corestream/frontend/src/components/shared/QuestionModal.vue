@@ -117,7 +117,7 @@
 // =====================================================================
 
 import { ref } from 'vue'
-import { Icon } from '@iconify/vue'
+// import { Icon } from '@iconify/vue' // @TODO: install @iconify/vue
 
 // =====================================================================
 // PROPS
@@ -200,3 +200,4 @@ const emit = defineEmits<{
   transform: scale(0.95);
 }
 </style>
+

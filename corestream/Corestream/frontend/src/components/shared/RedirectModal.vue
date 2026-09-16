@@ -188,7 +188,7 @@
 // =====================================================================
 
 import { ref, computed } from 'vue'
-import { Icon } from '@iconify/vue'
+// import { Icon } from '@iconify/vue' // @TODO: install @iconify/vue
 
 // =====================================================================
 // DEFINICIÓN DE TIPOS
@@ -338,3 +338,4 @@ const emit = defineEmits<{
   transform: scale(0.95);
 }
 </style>
+

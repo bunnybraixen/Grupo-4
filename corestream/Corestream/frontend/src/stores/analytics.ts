@@ -7,17 +7,17 @@
  * - Recopilar datos de rendimiento de usuarios
  * - Generar mapas de calor de actividad
  * - Calcular datos de burndown para épicos
- * - Exportar reportes en CSV
  * - Ordenar y filtrar datos analíticos
  */
-
+ 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type {
   AnalyticsSummary,
   UserPerformance,
-  HeatmapEntry,
+  HeatmapData,
   BurndownData,
+  SupportSummary,
 } from '@/types'
 import { api } from '@/services/api'
 
@@ -43,13 +43,18 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * Datos de mapa de calor de actividad
    * Mostrado típicamente en una vista de calendario/heatmap
    */
-  const heatmapData = ref<HeatmapEntry[]>([])
+  const heatmapData = ref<HeatmapData[]>([])
 
   /**
    * Datos de burndown para un épico específico
    * Usado para gráficos de progreso en el tiempo
    */
-  const burndownData = ref<BurndownData[]>([])
+  const burndownData = ref<BurndownData | null>(null)
+
+  /**
+   * Resumen agregado de tickets de soporte (global, independiente de aplicación).
+   */
+  const supportSummary = ref<SupportSummary | null>(null)
 
   /**
    * Flag de carga durante operaciones async
@@ -92,7 +97,8 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * - avgCompletionTime: tiempo promedio de finalización
    */
   const sortedPerformance = computed((): UserPerformance[] => {
-    const sorted = [...performance.value].sort((a, b) => {
+    const perf = Array.isArray(performance.value) ? performance.value : []
+    const sorted = [...perf].sort((a, b) => {
       let compareA: string | number = 0
       let compareB: string | number = 0
 
@@ -110,12 +116,12 @@ export const useAnalyticsStore = defineStore('analytics', () => {
           compareB = b.velocity || 0
           break
         case 'blockedRate':
-          compareA = a.blockedTickets / Math.max(a.totalTickets, 1)
-          compareB = b.blockedTickets / Math.max(b.totalTickets, 1)
+          compareA = a.blockedPercentage || 0
+          compareB = b.blockedPercentage || 0
           break
         case 'avgCompletionTime':
-          compareA = a.averageCompletionTime || 0
-          compareB = b.averageCompletionTime || 0
+          compareA = a.averageHoursPerTicket || 0
+          compareB = b.averageHoursPerTicket || 0
           break
         default:
           compareA = 0
@@ -162,11 +168,8 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    */
   const teamBlockedRate = computed((): number => {
     if (performance.value.length === 0) return 0
-    const totalBlocked = performance.value.reduce((sum, p) => sum + p.blockedTickets, 0)
-    const totalTickets = performance.value.reduce((sum, p) => sum + p.totalTickets, 0)
-    
-    if (totalTickets === 0) return 0
-    return Math.round((totalBlocked / totalTickets) * 100)
+    const total = performance.value.reduce((sum, p) => sum + (p.blockedPercentage || 0), 0)
+    return Math.round(total / performance.value.length)
   })
 
   /**
@@ -174,7 +177,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    */
   const teamAverageCompletionTime = computed((): number => {
     if (performance.value.length === 0) return 0
-    const totalTime = performance.value.reduce((sum, p) => sum + (p.averageCompletionTime || 0), 0)
+    const totalTime = performance.value.reduce((sum, p) => sum + (p.averageHoursPerTicket || 0), 0)
     return totalTime / performance.value.length
   })
 
@@ -187,19 +190,24 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * @param appId - ID de la aplicación
    * @returns Promise<AnalyticsSummary>
    */
-  const fetchSummary = async (appId: string): Promise<AnalyticsSummary> => {
+  const fetchSummary = async (appId: string): Promise<AnalyticsSummary | undefined> => {
     isLoading.value = true
     error.value = null
 
     try {
-      const data = await api.analytics.getSummary(appId)
+      const res = await api.analytics.getSummary({
+        applicationId: appId,
+        startDate: dateRange.value.from.toISOString(),
+        endDate: dateRange.value.to.toISOString()
+      })
+      const data: AnalyticsSummary = (res as any)?.data ?? res as unknown as AnalyticsSummary
       summary.value = data
       return data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener resumen analítico'
       error.value = message
+      summary.value = null
       console.error('Error en fetchSummary:', err)
-      throw err
     } finally {
       isLoading.value = false
     }
@@ -222,7 +230,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     appId: string,
     from: Date | string = dateRange.value.from,
     to: Date | string = dateRange.value.to
-  ): Promise<UserPerformance[]> => {
+  ): Promise<UserPerformance[] | undefined> => {
     isLoading.value = true
     error.value = null
 
@@ -230,14 +238,15 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       const fromStr = typeof from === 'string' ? from : from.toISOString()
       const toStr = typeof to === 'string' ? to : to.toISOString()
 
-      const data = await api.analytics.getPerformance(appId, fromStr, toStr)
+      const res = await api.analytics.getPerformance({ applicationId: appId, startDate: fromStr, endDate: toStr })
+      const data: UserPerformance[] = Array.isArray(res) ? res : (res as any).data
       performance.value = data
       return data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener rendimiento'
       error.value = message
+      performance.value = []
       console.error('Error en fetchPerformance:', err)
-      throw err
     } finally {
       isLoading.value = false
     }
@@ -255,13 +264,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * @param appId - ID de la aplicación
    * @param from - Fecha de inicio
    * @param to - Fecha de fin
-   * @returns Promise<HeatmapEntry[]>
+   * @returns Promise<HeatmapData[]>
    */
   const fetchHeatmap = async (
     appId: string,
     from: Date | string = dateRange.value.from,
     to: Date | string = dateRange.value.to
-  ): Promise<HeatmapEntry[]> => {
+  ): Promise<HeatmapData[] | undefined> => {
     isLoading.value = true
     error.value = null
 
@@ -269,14 +278,25 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       const fromStr = typeof from === 'string' ? from : from.toISOString()
       const toStr = typeof to === 'string' ? to : to.toISOString()
 
-      const data = await api.analytics.getHeatmap(appId, fromStr, toStr)
-      heatmapData.value = data
-      return data
+      // Llamamos a la API con el appId
+      const res = await api.analytics.getHeatmap(appId, { startDate: fromStr, endDate: toStr })
+
+      // El backend de tu compañero devuelve { application_id, heatmap: [...] }
+      const rawData = res?.heatmap || res?.data?.heatmap || []
+      
+      const mappedData: HeatmapData[] = rawData.map((item: any) => ({
+        name: item.name || 'Desconocido',
+        values: item.data || item.values || [0, 0, 0, 0, 0, 0, 0],
+        dates: [] 
+      }))
+
+      heatmapData.value = mappedData
+      return mappedData
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener mapa de calor'
       error.value = message
+      heatmapData.value = []
       console.error('Error en fetchHeatmap:', err)
-      throw err
     } finally {
       isLoading.value = false
     }
@@ -295,12 +315,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * @param epicId - ID del épico
    * @returns Promise<BurndownData[]>
    */
-  const fetchBurndown = async (epicId: string): Promise<BurndownData[]> => {
+  const fetchBurndown = async (epicId: string): Promise<BurndownData | null> => {
     isLoading.value = true
     error.value = null
 
     try {
-      const data = await api.analytics.getBurndown(epicId)
+      const res = await api.analytics.getBurndown(epicId)
+      const data: BurndownData = (res as any)?.data ?? res as unknown as BurndownData
       burndownData.value = data
       return data
     } catch (err) {
@@ -310,6 +331,42 @@ export const useAnalyticsStore = defineStore('analytics', () => {
       throw err
     } finally {
       isLoading.value = false
+    }
+  }
+
+  /**
+   * Carga TODOS los datos analíticos de una app en paralelo
+   * @param appId - ID de la aplicación
+   */
+  const fetchAllData = async (appId: string): Promise<void> => {
+    isLoading.value = true
+    try {
+      await Promise.all([
+        fetchSummary(appId),
+        fetchPerformance(appId),
+        fetchHeatmap(appId)
+      ])
+    } catch (err) {
+      console.error('Error cargando analíticas globales:', err)
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * Obtiene el resumen de tickets de soporte (conteos por estado/severidad y
+   * tiempo promedio de resolución). No depende de la aplicación seleccionada.
+   *
+   * @returns Promise<SupportSummary | undefined>
+   */
+  const fetchSupportSummary = async (): Promise<SupportSummary | undefined> => {
+    try {
+      const data = await api.analytics.getSupportSummary()
+      supportSummary.value = data
+      return data
+    } catch (err) {
+      console.error('Error en fetchSupportSummary:', err)
+      supportSummary.value = null
     }
   }
 
@@ -367,90 +424,13 @@ export const useAnalyticsStore = defineStore('analytics', () => {
   }
 
   /**
-   * Exporta un reporte en formato CSV
-   * Se descarga automáticamente en el navegador del usuario
-   * 
-   * CONTENIDO DEL CSV:
-   * - Resumen de aplicación
-   * - Datos de rendimiento por usuario
-   * - Métricas generales
-   * 
-   * @param appId - ID de la aplicación
-   * @returns Promise<void>
-   */
-  const exportCsv = async (appId: string): Promise<void> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      // La API retorna un blob con el contenido CSV
-      const csvContent = await api.analytics.exportCsv(appId)
-      
-      // Crear blob y descargar
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      
-      link.setAttribute('href', url)
-      link.setAttribute('download', `analytics-${appId}-${Date.now()}.csv`)
-      link.style.visibility = 'hidden'
-      
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al exportar CSV'
-      error.value = message
-      console.error('Error en exportCsv:', err)
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * Exporta un reporte en formato PDF
-   * Se descarga automáticamente en el navegador del usuario
-   * 
-   * @param appId - ID de la aplicación
-   * @returns Promise<void>
-   */
-  const exportPdf = async (appId: string): Promise<void> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const pdfContent = await api.analytics.exportPdf(appId)
-      
-      const blob = new Blob([pdfContent], { type: 'application/pdf' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      
-      link.setAttribute('href', url)
-      link.setAttribute('download', `analytics-${appId}-${Date.now()}.pdf`)
-      link.style.visibility = 'hidden'
-      
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al exportar PDF'
-      error.value = message
-      console.error('Error en exportPdf:', err)
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
    * Limpia el estado del store (para cuando se cambia de aplicación)
    */
   const clear = (): void => {
     summary.value = null
     performance.value = []
     heatmapData.value = []
-    burndownData.value = []
+    burndownData.value = null
     error.value = null
   }
 
@@ -460,6 +440,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     performance,
     heatmapData,
     burndownData,
+    supportSummary,
     isLoading,
     error,
     dateRange,
@@ -476,12 +457,12 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     fetchPerformance,
     fetchHeatmap,
     fetchBurndown,
+    fetchAllData,
+    fetchSupportSummary,
     setDateRange,
     setDateRangeLastDays,
     setSortColumn,
     setSortDirection,
-    exportCsv,
-    exportPdf,
     clear,
   }
 })

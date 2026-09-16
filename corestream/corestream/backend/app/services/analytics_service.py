@@ -14,13 +14,32 @@ Métricas principales:
 
 from datetime import datetime, timedelta
 from typing import List, Optional
+from uuid import UUID
+
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, and_, or_
-from fastapi import HTTPException, status
 
-# Importar modelos desde el paquete de modelos
-# from app.models import TicketEvent, Ticket, User
+from app.models import Epic, Role, Ticket, TicketEvent, TicketStatus, User
+
+# Tipos de evento que NO representan trabajo real sobre un ticket, sino acciones de
+# gestión o autoría (crearlo, asignarlo, editar sus campos, moverlo entre épicas).
+# No deben contar para "tickets procesados": un TEAM_LEADER que crea 50 tickets en el
+# Builder y los asigna a developers no los "trabajó". Los tickets que sí trabajó
+# quedan capturados por eventos de trabajo real (STATUS_CHANGED, COMPLETED,
+# QUESTION_RAISED, REDIRECTED, TIMER_*, SUBTASK_*, COMMENT, etc.), porque esos eventos
+# también agregan el ticket_id al set de procesados.
+#
+# Nota: la asignación de tickets de desarrollo se hace vía PATCH /tickets/{id}
+# (endpoint genérico de update → evento UPDATED con user_id = quien asigna), por eso
+# UPDATED también se excluye aquí.
+NON_WORK_EVENT_TYPES = frozenset({
+    "CREATED",
+    "UPDATED",
+    "MOVED",
+    "ASSIGNED",
+    "TICKET_ASSIGNED",
+})
 
 
 class AnalyticsService:
@@ -36,10 +55,10 @@ class AnalyticsService:
 
     @staticmethod
     async def get_user_performance(
-        db: AsyncSession,
-        application_id: str,
-        date_from: datetime,
-        date_to: datetime
+        app_id: int,
+        date_from: Optional[datetime],
+        date_to: Optional[datetime],
+        db: AsyncSession
     ) -> List[dict]:
         """
         Obtiene métricas de desempeño detalladas para cada usuario.
@@ -49,10 +68,10 @@ class AnalyticsService:
         eficiencia en la ejecución de tareas.
         
         Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            application_id (str): ID de la aplicación/proyecto a analizar
+            app_id (int): ID de la aplicación/proyecto a analizar
             date_from (datetime): Fecha inicial del período de análisis
             date_to (datetime): Fecha final del período de análisis (inclusive)
+            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
             
         Returns:
             List[dict]: Lista de diccionarios con métricas de cada usuario
@@ -61,484 +80,304 @@ class AnalyticsService:
             {
                 'user_id': uuid,
                 'user_name': str,
-                'user_email': str,
                 'tickets_processed': int,        # Total de tickets trabajados
                 'tickets_completed': int,       # Total de tickets terminados (DONE)
-                'completion_rate': float,       # Porcentaje completados (0-100)
-                'total_questions': int,         # Preguntas planteadas
-                'total_redirections': int,      # Tickets redirigidos
-                'average_time_spent': float,    # Promedio en horas
-                'efficiency_score': float,      # Tickets/hora (0-100 escala)
+                'questions_raised': int,        # Preguntas planteadas
+                'redirections': int,      # Tickets redirigidos
+                'avg_time_hours': float,    # Promedio en horas
+                'efficiency': float,      # Tickets/hora (0-100 escala)
                 'blocking_index': float,        # % de tiempo bloqueado (0-100)
                 'churn_index': float,           # % de tickets redirigidos (0-100)
-                'avg_resolution_time': float,   # Promedio en horas hasta DONE
-                'quality_score': float          # Score compuesto 0-100
             }
             
         Raises:
             HTTPException(400): Rango de fechas inválido (from > to)
-            HTTPException(404): Application no encontrada
             HTTPException(500): Error en cálculo de métricas
-            
-        Cálculos detallados:
-            - tickets_processed: Count(DISTINCT ticket_id) por usuario
-            - tickets_completed: Count(TicketEvent.TICKET_COMPLETED) por usuario
-            - completion_rate: (completados / procesados) * 100
-            - total_questions: Count(TicketEvent.QUESTION_RAISED) por usuario
-            - total_redirections: Count(TicketEvent.TICKET_REDIRECTED) por usuario
-            - average_time_spent: AVG(time_spent_seconds) / 3600
-            - efficiency_score: (completados / horas_totales) * constante_escala
-            - blocking_index: (SUM(blocked_time_seconds) / SUM(time_spent_seconds)) * 100
-            - churn_index: (redirections / processed) * 100
-            - quality_score: Promedio ponderado de completion_rate, blocking_index inverso, churn inverso
             
         Detalle técnico:
             - Agrupa por user_id para consolidar métricas
             - Filtra eventos dentro del rango de fechas
-            - Solo incluye usuarios que tuvieron actividad en el rango
-            - Evita divisiones por cero con CASE/WHEN
-            - Ordena resultados por efficiency_score descendente
+            - Evita divisiones por cero
         """
         try:
-            # Validar rango de fechas
-            if date_from > date_to:
+            if date_from and date_to and date_from > date_to:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="La fecha inicial debe ser menor o igual a la fecha final"
                 )
             
-            # Asegurar que las fechas cubren día completo
-            # date_to se ajusta a fin del día para inclusividad
-            date_to_end = date_to.replace(hour=23, minute=59, second=59)
-            
-            # Construir queries SQL para agregaciones
-            # NOTA: Estos son pseudocódigos, la implementación real depende del ORM
-            
-            # 1. Contar tickets procesados por usuario (DISTINCT)
-            # SELECT 
-            #    user_id,
-            #    COUNT(DISTINCT ticket_id) as tickets_processed,
-            #    COUNT(CASE WHEN event_type = 'TICKET_COMPLETED' THEN 1 END) as tickets_completed,
-            #    COUNT(CASE WHEN event_type = 'QUESTION_RAISED' THEN 1 END) as total_questions,
-            #    COUNT(CASE WHEN event_type = 'TICKET_REDIRECTED' AND from_user_id = user_id THEN 1 END) as redirections,
-            #    AVG(ticket.time_spent_seconds) as avg_time_seconds,
-            #    SUM(ticket.blocked_time_seconds) as total_blocked_seconds
-            # FROM ticket_events
-            # JOIN tickets ON ticket_events.ticket_id = tickets.id
-            # WHERE application_id = ? AND created_at BETWEEN ? AND ?
-            # GROUP BY user_id
-            
-            user_performance = []
-            
-            # Obtener usuarios activos en el período
-            # stmt = select(User).where(User.application_id == application_id)
-            # result = await db.execute(stmt)
-            # users = result.scalars().all()
-            
-            # for user in users:
-            #     # Calcular métricas para cada usuario
-            #     # (Implementar en código real)
-            #     performance = {
-            #         'user_id': str(user.id),
-            #         'user_name': user.name,
-            #         'user_email': user.email,
-            #         'tickets_processed': 0,
-            #         'tickets_completed': 0,
-            #         'completion_rate': 0.0,
-            #         'total_questions': 0,
-            #         'total_redirections': 0,
-            #         'average_time_spent': 0.0,
-            #         'efficiency_score': 0.0,
-            #         'blocking_index': 0.0,
-            #         'churn_index': 0.0,
-            #         'avg_resolution_time': 0.0,
-            #         'quality_score': 0.0
-            #     }
-            #     user_performance.append(performance)
-            
-            return user_performance
+            # Obtener todos los tickets de la aplicación
+            stmt_tickets = select(Ticket).join(Epic).where(Epic.application_id == app_id)
+            result = await db.execute(stmt_tickets)
+            app_tickets = result.scalars().all()
+            ticket_ids = [t.id for t in app_tickets]
+
+            if not ticket_ids:
+                return []
+
+            # Calcular tiempos y conteo de tickets asignados por usuario
+            user_ticket_data: dict = {}
+            for ticket in app_tickets:
+                if ticket.assignee_id:
+                    uid = str(ticket.assignee_id)
+                    if uid not in user_ticket_data:
+                        user_ticket_data[uid] = {"assigned": 0, "total_seconds": 0}
+                    user_ticket_data[uid]["assigned"] += 1
+                    user_ticket_data[uid]["total_seconds"] += ticket.time_spent_seconds or 0
+
+            # Obtener todos los eventos de esos tickets
+            stmt_events = select(TicketEvent).where(TicketEvent.ticket_id.in_(ticket_ids))
+            if date_from:
+                stmt_events = stmt_events.where(TicketEvent.created_at >= date_from)
+            if date_to:
+                date_to_end = date_to.replace(hour=23, minute=59, second=59)
+                stmt_events = stmt_events.where(TicketEvent.created_at <= date_to_end)
+                
+            result_events = await db.execute(stmt_events)
+            events = result_events.scalars().all()
+
+            # Procesamiento en Python para máxima compatibilidad con asyncpg
+            user_stats = {}
+            for event in events:
+                uid = str(event.user_id)
+                if uid not in user_stats:
+                    user_stats[uid] = {
+                        "tickets_processed": set(),
+                        "tickets_completed": 0,
+                        "questions_raised": 0,
+                        "redirections": 0,
+                    }
+                
+                ev_type = event.event_type.value if hasattr(event.event_type, 'value') else event.event_type
+
+                # Solo cuentan como "procesados" los tickets sobre los que el usuario
+                # ejecutó trabajo real. Los eventos de gestión/autoría (crear, asignar,
+                # editar, mover) se excluyen — ver NON_WORK_EVENT_TYPES. Esto evita que
+                # un TEAM_LEADER que crea y asigna tickets a developers los cuente como
+                # propios sin haberlos trabajado.
+                if ev_type not in NON_WORK_EVENT_TYPES:
+                    user_stats[uid]["tickets_processed"].add(event.ticket_id)
+
+                if ev_type == 'COMPLETED':
+                    user_stats[uid]["tickets_completed"] += 1
+                elif ev_type == 'QUESTION_RAISED':
+                    user_stats[uid]["questions_raised"] += 1
+                elif ev_type == 'REDIRECTED':
+                    user_stats[uid]["redirections"] += 1
+
+            # Obtener datos de los usuarios encontrados — DEVELOPER y TEAM_LEADER
+            # (los TEAM_LEADER también trabajan tickets: asignan, aprueban, completan)
+            user_ids = [UUID(uid) for uid in user_stats.keys()]
+            users = []
+            if user_ids:
+                stmt_users = (
+                    select(User)
+                    .join(User.role)
+                    .where(User.id.in_(user_ids), Role.name.in_(["DEVELOPER", "TEAM_LEADER"]))
+                )
+                res_users = await db.execute(stmt_users)
+                users = {str(u.id): u for u in res_users.scalars().all()}
+
+            # Formatear la salida según el esquema UserPerformance
+            performance_list = []
+            for uid, stats in user_stats.items():
+                user_obj = users.get(uid)
+                if not user_obj:
+                    continue
+                
+                processed = len(stats["tickets_processed"])
+                completed = stats["tickets_completed"]
+                questions = stats["questions_raised"]
+                redirections = stats["redirections"]
+
+                ticket_data = user_ticket_data.get(uid, {"assigned": 0, "total_seconds": 0})
+                assigned = ticket_data["assigned"]
+                total_seconds = ticket_data["total_seconds"]
+
+                # avg_time_hours: promedio de tiempo real desde time_spent_seconds
+                avg_time_hours = (total_seconds / 3600) / assigned if assigned > 0 else 0.0
+
+                # Eficiencia normalizada: 1 ticket/hora = 100% (spec CS-031)
+                # 3 tickets en 3 horas → total_hours=3, completed=3 → 100%
+                total_hours = total_seconds / 3600
+                efficiency = (completed / total_hours) * 100 if total_hours > 0 else 0.0
+
+                # Índice de Bloqueo = Preguntas levantadas / Tickets procesados
+                blocking_index = (questions / processed * 100) if processed > 0 else 0.0
+
+                # Índice de Rotación = Redirecciones / Tickets asignados
+                churn = (redirections / assigned * 100) if assigned > 0 else 0.0
+
+                performance_list.append({
+                    "user_id": user_obj.id,
+                    "user_name": user_obj.full_name,
+                    "avatar_url": user_obj.avatar_url,
+                    "tickets_processed": processed,
+                    "tickets_completed": completed,
+                    "questions_raised": questions,
+                    "redirections": redirections,
+                    "avg_time_hours": round(avg_time_hours, 2),
+                    "efficiency": round(min(100.0, efficiency), 2),
+                    "blocking_index": round(min(100.0, blocking_index), 2),
+                    "churn_index": round(min(100.0, churn), 2),
+                    "total_activity": len(events) # Para el router de summary
+                })
+
+            return performance_list
             
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al calcular métricas de desempeño de usuarios"
+                detail=f"Error al calcular métricas de desempeño de usuarios: {str(e)}"
             )
 
     @staticmethod
-    async def get_heatmap_data(
+    async def get_activity_heatmap(
+        app_id: int,
         db: AsyncSession,
-        application_id: str,
-        date_from: datetime,
-        date_to: datetime
-    ) -> List[dict]:
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+        ) -> List[dict]:
         """
         Genera datos de heatmap de productividad por usuario y día de semana.
         
         Proporciona una visualización de patrones de productividad mostrando
         cuántos tickets completaron usuarios en cada día de la semana. Útil
         para identificar patrones de actividad y bottlenecks por día.
-        
-        Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            application_id (str): ID de la aplicación/proyecto
-            date_from (datetime): Fecha inicial del período de análisis
-            date_to (datetime): Fecha final del período de análisis
-            
-        Returns:
-            List[dict]: Lista de registros de heatmap
-            
-        Estructura de cada elemento:
-            {
-                'user_id': uuid,
-                'user_name': str,
-                'day_of_week': int,              # 0=Lunes, 6=Domingo
-                'day_name': str,                 # 'Lunes', 'Martes', etc.
-                'completed_tickets': int,       # Tickets DONE en ese día
-                'avg_time_per_ticket': float,   # Promedio horas
-                'blocked_count': int,            # Veces que fue BLOCKED
-                'redirected_count': int,         # Veces que fue REDIRECTED
-                'productivity_score': float      # Score 0-100 para ese día
-            }
-            
-        Raises:
-            HTTPException(500): Error en cálculo de heatmap
-            
-        Cálculos:
-            - Agrupa TICKET_COMPLETED events por usuario y día de semana
-            - Calcula promedios de tiempo y métricas por combinación
-            - Ordena por día de semana luego por usuario
-            - productivity_score es normalizado a 0-100 relativamente
-            
-        Detalle técnico:
-            - Usa EXTRACT(DOW FROM created_at) para día de semana
-            - DOW: 0=Domingo, 1=Lunes... 6=Sábado (SQL standard)
-            - Se ajusta para usar convención Lunes=0 en respuesta
-            - Registros con 0 completados se excluyen para claridad
-            - Útil para detección de patrones anómalos de productividad
         """
         try:
-            # Mapeo de números de día a nombres
-            day_names = {
-                0: 'Lunes',
-                1: 'Martes',
-                2: 'Miércoles',
-                3: 'Jueves',
-                4: 'Viernes',
-                5: 'Sábado',
-                6: 'Domingo'
-            }
-            
-            # Validar rango de fechas
-            if date_from > date_to:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La fecha inicial debe ser menor o igual a la fecha final"
-                )
-            
-            # Query para obtener datos de heatmap
-            # SELECT 
-            #    user_id,
-            #    EXTRACT(DOW FROM created_at) as day_of_week,
-            #    COUNT(*) as completed_tickets,
-            #    AVG(ticket.time_spent_seconds)/3600 as avg_time_per_ticket
-            # FROM ticket_events
-            # WHERE event_type = 'TICKET_COMPLETED' 
-            #   AND application_id = ?
-            #   AND created_at BETWEEN ? AND ?
-            # GROUP BY user_id, day_of_week
-            # ORDER BY day_of_week, user_id
-            
+            # Empezamos la consulta base
+            stmt = select(TicketEvent).join(Ticket).join(Epic).where(
+                Epic.application_id == app_id,
+                TicketEvent.event_type == 'COMPLETED'
+            )
+
+            # Filtramos por las fechas que manda el frontend
+            if start_date:
+                stmt = stmt.where(TicketEvent.created_at >= start_date)
+            if end_date:
+                end_date_eod = end_date.replace(hour=23, minute=59, second=59)  
+                stmt = stmt.where(TicketEvent.created_at <= end_date_eod)
+
+            # Ejecutamos la consulta
+            result = await db.execute(stmt)
+            events = result.scalars().all()
+
+            user_activity = {}
+            for event in events:
+                uid = str(event.user_id)
+                if uid not in user_activity:
+                    user_activity[uid] = [0, 0, 0, 0, 0, 0, 0]
+                
+                # weekday(): 0 es Lunes, 6 es Domingo
+                day_index = event.created_at.weekday()
+                user_activity[uid][day_index] += 1
+
+            # Obtener nombres de usuarios
+            user_ids = [UUID(uid) for uid in user_activity.keys()]
+            users = {}
+            if user_ids:
+                stmt_users = select(User).where(User.id.in_(user_ids))
+                res_users = await db.execute(stmt_users)
+                users = {str(u.id): u for u in res_users.scalars().all()}
+
             heatmap_data = []
-            
-            # (Implementar en código real con SQLAlchemy)
-            # Obtener usuarios y sus eventos de completación por día
-            
+            for uid, data in user_activity.items():
+                if uid in users:
+                    heatmap_data.append({
+                        "user_id": users[uid].id,
+                        "user_name": users[uid].full_name,
+                        "data": data
+                    })
+
             return heatmap_data
             
-        except HTTPException:
-            raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al generar datos de heatmap"
+                detail=f"Error al generar datos de heatmap: {str(e)}"
             )
 
     @staticmethod
-    async def get_burndown_data(
-        db: AsyncSession,
-        epic_id: str
-    ) -> dict:
+    async def get_burndown_chart(epic_id: int, db: AsyncSession) -> dict:
         """
         Calcula datos de burndown chart para un epic.
         
         Genera datos para visualizar progreso de completación de un epic,
         mostrando línea ideal de completación versus línea actual. Útil
         para identificar si el epic se completará a tiempo.
-        
-        Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            epic_id (str): ID del epic a analizar
-            
-        Returns:
-            dict: Diccionario con datos de burndown
-            
-        Estructura de retorno:
-            {
-                'epic_id': uuid,
-                'epic_title': str,
-                'status': str,                  # 'ON_TRACK', 'AT_RISK', 'DELAYED'
-                'total_tickets': int,
-                'completed_tickets': int,
-                'remaining_tickets': int,
-                'completion_percentage': float, # 0-100
-                'start_date': datetime,
-                'end_date': datetime,           # Planned end date
-                'actual_end_date': Optional[datetime],
-                'days_elapsed': int,
-                'days_planned': int,
-                'ideal_remaining': int,         # Línea ideal de progreso
-                'actual_remaining': int,        # Línea actual
-                'variance': int,                # actual_remaining - ideal_remaining
-                'burn_rate': float,             # Tickets completados por día
-                'projected_completion': datetime,
-                'velocity_trend': str           # 'INCREASING', 'STABLE', 'DECREASING'
-            }
-            
-        Raises:
-            HTTPException(404): Epic no encontrado
-            HTTPException(500): Error en cálculo de burndown
-            
-        Cálculos:
-            - ideal_remaining: Progresión lineal desde total a 0
-            - actual_remaining: Tickets no DONE al final de cada día
-            - variance: Diferencia entre ideal y actual (+ = delantado)
-            - burn_rate: Promedio tickets/día completados hasta ahora
-            - projected_completion: Si se mantiene burn_rate actual
-            
-        Detalle técnico:
-            - Status se calcula así:
-              * ON_TRACK: variance > -20% y no es fin de período
-              * AT_RISK: variance entre -20% y -50%
-              * DELAYED: variance < -50% o actual_end > planned_end
-            - Usa eventos TICKET_COMPLETED para determinar completación
-            - Histórico por día permite visualización en gráfico
-            - Proyección asume velocidad constante (simplificado)
         """
         try:
-            # Validar que epic existe
-            # stmt = select(Epic).where(Epic.id == UUID(epic_id))
-            # result = await db.execute(stmt)
-            # epic = result.scalars().first()
+            stmt = select(Epic).where(Epic.id == epic_id)
+            result = await db.execute(stmt)
+            epic = result.scalar_one_or_none()
+
+            if not epic:
+                raise HTTPException(status_code=404, detail="Epic no encontrado")
+
+            stmt_tickets = select(Ticket).where(Ticket.epic_id == epic_id)
+            result_tickets = await db.execute(stmt_tickets)
+            tickets = result_tickets.scalars().all()
+
+            total_tickets = len(tickets)
             
-            # if not epic:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_404_NOT_FOUND,
-            #         detail="Epic no encontrado"
-            #     )
+            # Generar datos simulados de burndown lineal para el gráfico
+            start_date = epic.created_at
+            end_date = epic.due_date if epic.due_date else (start_date + timedelta(days=14))
             
-            # Obtener tickets del epic
-            # stmt_tickets = select(Ticket).where(
-            #    (Ticket.epic_id == UUID(epic_id))
-            # )
-            # result_tickets = await db.execute(stmt_tickets)
-            # tickets = result_tickets.scalars().all()
+            total_days = (end_date - start_date).days
+            if total_days <= 0:
+                total_days = 1
+
+            ideal_points = []
+            actual_points = []
             
-            # Contar total y completados
-            # total_tickets = len(tickets)
-            # completed_tickets = len([t for t in tickets if t.status == 'DONE'])
-            # remaining_tickets = total_tickets - completed_tickets
+            # Encontrar tickets que ya están completados y cuándo se completaron
+            # Asumimos que los tickets completados tienen un completed_at. 
+            # Si no lo tienen, puedes usar la fecha de actualización (updated_at)
+            completed_tickets = [t for t in tickets if t.status == TicketStatus.COMPLETED and t.completed_at is not None]
             
-            # Calcular línea ideal
-            # days_planned = (epic.end_date - epic.start_date).days
-            # days_elapsed = (datetime.utcnow() - epic.start_date).days
             
-            # Línea ideal: desciende linealmente
-            # ideal_remaining = max(
-            #     0,
-            #     total_tickets - (completed_tickets / days_planned * days_elapsed)
-            # )
-            
-            # Calcular burn rate
-            # if days_elapsed > 0:
-            #     burn_rate = completed_tickets / days_elapsed
-            # else:
-            #     burn_rate = 0
-            
-            # Proyectar completación
-            # if burn_rate > 0:
-            #     days_remaining = remaining_tickets / burn_rate
-            #     projected_completion = datetime.utcnow() + timedelta(days=days_remaining)
-            # else:
-            #     projected_completion = epic.end_date
-            
-            # Determinar status
-            # variance = remaining_tickets - ideal_remaining
-            # variance_percentage = (variance / total_tickets) * 100 if total_tickets > 0 else 0
-            
-            # if variance_percentage > -20:
-            #     status = 'ON_TRACK'
-            # elif variance_percentage > -50:
-            #     status = 'AT_RISK'
-            # else:
-            #     status = 'DELAYED'
+            for day in range(total_days + 1):
+                current_date = start_date + timedelta(days=day)
+                date_str = current_date.strftime("%Y-%m-%d")
+                
+                # Punto ideal: línea recta desde total_tickets hasta 0
+                ideal_points.append({
+                    'date': date_str,
+                    'points': max(0, total_tickets - (total_tickets * day / total_days))
+                })
+                
+                # Punto real (Cuántos tickets quedaban vivos ESE día en específico)
+                # Contamos cuántos tickets se completaron exactamente en esta fecha o antes
+                tickets_completed_by_this_date = len([
+                    t for t in completed_tickets 
+                    if t.completed_at.date() <= current_date.date()
+                ])
+                
+                actual_remaining = total_tickets - tickets_completed_by_this_date
+                
+                # No dibujar línea real en el futuro (si current_date > hoy)
+                if current_date.date() <= datetime.utcnow().date():
+                    actual_points.append({
+                        'date': date_str,
+                        'points': actual_remaining
+                    })
             
             return {
-                # 'epic_id': str(epic.id),
-                # 'epic_title': epic.title,
-                # 'status': status,
-                # 'total_tickets': total_tickets,
-                # 'completed_tickets': completed_tickets,
-                # 'remaining_tickets': remaining_tickets,
-                # 'completion_percentage': (completed_tickets / total_tickets * 100) if total_tickets > 0 else 0,
-                # 'start_date': epic.start_date.isoformat(),
-                # 'end_date': epic.end_date.isoformat(),
-                # 'actual_end_date': None,  # Se llena si ya está DONE
-                # 'days_elapsed': days_elapsed,
-                # 'days_planned': days_planned,
-                # 'ideal_remaining': ideal_remaining,
-                # 'actual_remaining': remaining_tickets,
-                # 'variance': int(variance),
-                # 'burn_rate': burn_rate,
-                # 'projected_completion': projected_completion.isoformat()
+                'ideal': ideal_points,
+                'actual': actual_points,
+                'total_tickets': total_tickets,
+                'completed': len(completed_tickets)
             }
-            
-        except HTTPException:
-            raise
+        
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al calcular datos de burndown"
+                detail=f"Error al obtener datos de burndown: {str(e)}"
             )
 
-    @staticmethod
-    async def get_summary(
-        db: AsyncSession,
-        application_id: str
-    ) -> dict:
-        """
-        Genera resumen ejecutivo de métricas del proyecto.
-        
-        Proporciona una vista consolidada de métricas clave del proyecto,
-        incluyendo totales, promedios, y comparativas week-over-week para
-        identificar tendencias de mejora o deterioro.
-        
-        Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            application_id (str): ID de la aplicación/proyecto
-            
-        Returns:
-            dict: Diccionario con resumen de métricas
-            
-        Estructura de retorno:
-            {
-                'application_id': uuid,
-                'application_name': str,
-                'generated_at': datetime,
-                'period': {
-                    'start_date': datetime,
-                    'end_date': datetime,
-                    'days': int
-                },
-                'overview': {
-                    'total_tickets': int,
-                    'completed_tickets': int,
-                    'blocked_tickets': int,
-                    'in_progress_tickets': int,
-                    'redirected_tickets_count': int,
-                    'completion_rate': float,    # %
-                    'blocked_rate': float        # %
-                },
-                'time_metrics': {
-                    'total_time_spent_hours': float,
-                    'average_ticket_time': float,  # horas
-                    'total_blocked_time_hours': float,
-                    'average_blocked_time': float  # horas
-                },
-                'performance': {
-                    'efficiency_score': float,   # 0-100
-                    'quality_score': float,      # 0-100
-                    'team_health': str          # 'GOOD', 'WARNING', 'CRITICAL'
-                },
-                'trends': {
-                    'week_over_week_completion': float,  # % change
-                    'week_over_week_blocked': float,     # % change
-                    'velocity_trend': str,               # 'UP', 'STABLE', 'DOWN'
-                    'quality_trend': str                 # 'IMPROVING', 'STABLE', 'DEGRADING'
-                },
-                'team': {
-                    'active_users': int,
-                    'top_performer': {
-                        'user_id': uuid,
-                        'name': str,
-                        'efficiency': float
-                    },
-                    'bottleneck_user': {
-                        'user_id': uuid,
-                        'name': str,
-                        'blocking_index': float
-                    }
-                }
-            }
-            
-        Raises:
-            HTTPException(404): Application no encontrada
-            HTTPException(500): Error en cálculo de resumen
-            
-        Cálculos:
-            - Período por defecto es últimos 30 días
-            - week_over_week: Comparación última semana vs semana anterior
-            - team_health: Basado en blocking_rate, churn_rate, efficiency
-            - Tendencias se calculan de velocidad actual vs promedio histórico
-            
-        Detalle técnico:
-            - Agrupa por semana para detectar tendencias
-            - Excluye primeros 3 días de la semana por falta de datos
-            - Quality score considera completion, blocking, y churn
-            - Team health: GOOD si score > 80, WARNING si 50-80, CRITICAL si < 50
-            - Top performer basado en efficiency
-            - Bottleneck basado en blocking_index
-        """
-        try:
-            # Calcular período (últimos 30 días por defecto)
-            date_to = datetime.utcnow()
-            date_from = date_to - timedelta(days=30)
-            
-            # Query para obtener métricas consolidadas
-            # SELECT 
-            #    COUNT(*) as total_tickets,
-            #    COUNT(CASE WHEN status = 'DONE' THEN 1 END) as completed,
-            #    COUNT(CASE WHEN status = 'BLOCKED' THEN 1 END) as blocked,
-            #    COUNT(CASE WHEN status = 'IN_PROGRESS' THEN 1 END) as in_progress,
-            #    SUM(time_spent_seconds)/3600 as total_hours,
-            #    AVG(time_spent_seconds)/3600 as avg_hours,
-            #    SUM(blocked_time_seconds)/3600 as blocked_hours
-            # FROM tickets
-            # WHERE application_id = ? AND created_at BETWEEN ? AND ?
-            
-            summary = {
-                # 'application_id': application_id,
-                # 'application_name': 'App Name',
-                # 'generated_at': datetime.utcnow().isoformat(),
-                # 'period': {
-                #     'start_date': date_from.isoformat(),
-                #     'end_date': date_to.isoformat(),
-                #     'days': 30
-                # },
-                # 'overview': { ... },
-                # 'time_metrics': { ... },
-                # 'performance': { ... },
-                # 'trends': { ... },
-                # 'team': { ... }
-            }
-            
-            return summary
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al generar resumen de proyecto"
-            )
+# Instancia global del servicio de análisis
+analytics_service = AnalyticsService()

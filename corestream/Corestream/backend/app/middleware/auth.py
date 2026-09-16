@@ -1,20 +1,22 @@
 # Archivo de autenticación y autorización
 # Proporciona funciones para crear tokens JWT, verificarlos y usar como dependencias FastAPI
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
+from app.database import get_db
+from app.models import User
+from app.redis_client import is_jti_revoked
 from app.schemas import TokenPayload
-
-# Configurar contexto de contraseñas con bcrypt para hash seguro
-# bcrypt es el algoritmo recomendado para almacenar contraseñas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Esquema de seguridad Bearer para extraer tokens JWT del header Authorization
 security = HTTPBearer()
@@ -22,274 +24,264 @@ security = HTTPBearer()
 
 def hash_password(password: str) -> str:
     """
-    Hash una contraseña en texto plano usando bcrypt.
-    
-    Las contraseñas jamás se almacenan en texto plano en la base de datos.
-    En su lugar, se almacena el hash que se puede verificar sin exponer la contraseña.
-    
+    Hash una contraseña en texto plano.
+
+    Delega en AuthService.hash_password (import diferido: evita un import
+    circular, ya que app.services.auth_service importa de este módulo).
+
+    Antes esta función hacía un bcrypt liso con pwd_context.hash(password)
+    directamente, DISTINTO del hash que usa AuthService (que antepone un
+    pre-hash SHA-256 para no truncar contraseñas largas contra el límite de
+    72 bytes de bcrypt). El login siempre verificó contra el esquema de
+    AuthService — cualquier contraseña hasheada con la versión antigua de
+    esta función jamás podía volver a verificarse. Afectaba a create_admin.py,
+    POST /api/users/ y el reseteo de contraseña de admin; se detectó porque
+    el propio bootstrap del primer ADMIN fallaba con "credenciales incorrectas"
+    usando la contraseña que él mismo acababa de crear.
+
     Args:
         password: Contraseña en texto plano a hashear
-        
+
     Returns:
-        str: Hash seguro de la contraseña con salt
-        
-    Ejemplo:
-        hashed = hash_password("miContraseña123")
-        # Resultado: $2b$12$...hash...
+        str: Hash seguro de la contraseña
     """
-    return pwd_context.hash(password)
+    from app.services.auth_service import AuthService
+
+    return AuthService.hash_password(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verifica que una contraseña en texto plano coincida con su hash.
-    
-    Utiliza la función verify segura que evita timing attacks.
-    
-    Args:
-        plain_password: Contraseña en texto plano a verificar
-        hashed_password: Hash almacenado en la base de datos
-        
-    Returns:
-        bool: True si la contraseña es correcta, False en caso contrario
-        
-    Ejemplo:
-        if verify_password("miContraseña123", hashed_password):
-            # Contraseña correcta
-            pass
+
+    Delega en AuthService.verify_password por el mismo motivo que hash_password.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    from app.services.auth_service import AuthService
+
+    return AuthService.verify_password(plain_password, hashed_password)
 
 
 def create_access_token(
     data: dict,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Crea un token JWT de acceso firmado.
-    
-    El token contiene los datos proporcionados y una fecha de expiración.
-    Se utiliza para autenticar solicitudes a endpoints protegidos.
-    
+    Crea un token JWT de acceso firmado, de vida corta.
+
     Args:
         data: Diccionario con datos a incluir en el token (ej: {"sub": user_id, "role": "admin"})
         expires_delta: Duración del token desde ahora (si es None, usa el valor por defecto de configuración)
-        
+
     Returns:
         str: Token JWT codificado en formato string
-        
-    Raises:
-        ValueError: Si los parámetros son inválidos
-        
-    Ejemplo:
-        token = create_access_token(
-            data={"sub": "user_id_123", "role": "admin"},
-            expires_delta=timedelta(minutes=30)
-        )
-        # Retorna: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     """
-    settings = get_settings()
-    
-    # Copiar datos para no modificar el diccionario original
-    to_encode = data.copy()
-    
-    # Calcular tiempo de expiración
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
-    
-    # Agregar tiempo de expiración al payload
-    to_encode.update({"exp": expire})
-    
-    # Firmar el token con la clave secreta
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
+    return _create_token(
+        data,
+        token_type="access",
+        expire=datetime.now(timezone.utc)
+        + (expires_delta or timedelta(minutes=get_settings().ACCESS_TOKEN_EXPIRE_MINUTES)),
     )
-    
-    return encoded_jwt
 
 
 def create_refresh_token(data: dict) -> str:
     """
-    Crea un token JWT de refresco con duración más larga.
-    
+    Crea un token JWT de refresco, de vida larga.
+
     Los tokens de refresco se utilizan para obtener nuevos access tokens
     sin requerer que el usuario vuelva a proporcionar sus credenciales.
-    
-    Args:
-        data: Diccionario con datos a incluir en el token (ej: {"sub": user_id})
-        
-    Returns:
-        str: Token JWT de refresco codificado
-        
-    Ejemplo:
-        refresh_token = create_refresh_token({"sub": "user_id_123"})
-        # Se puede usar para obtener un nuevo access_token
     """
     settings = get_settings()
-    
-    # Copiar datos para no modificar el diccionario original
-    to_encode = data.copy()
-    
-    # Calcular tiempo de expiración más largo para refresh tokens
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    return _create_token(
+        data,
+        token_type="refresh",
+        expire=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
-    
-    # Agregar tiempo de expiración al payload
-    to_encode.update({"exp": expire})
-    
-    # Firmar el token
-    encoded_jwt = jwt.encode(
-        to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
-    )
-    
-    return encoded_jwt
 
 
-def verify_token(token: str) -> TokenPayload:
+def _create_token(data: dict, *, token_type: str, expire: datetime) -> str:
     """
-    Verifica y decodifica un token JWT.
-    
-    Valida la firma del token usando la clave secreta y extrae su contenido.
-    
+    Firma un JWT con claims comunes a access y refresh.
+
+    Añade dos claims que antes no existían y que son la causa de que un
+    refresh token de 7 días colara como access token (plan 3.1):
+
+      - type: "access" | "refresh" — verify_token() exige el tipo esperado
+        según dónde se use el token, así uno nunca sirve para el otro.
+      - jti:  identificador único del token — permite revocar UN token
+        concreto en logout (plan 3.3) sin tener que invalidar toda la clave
+        de firma ni mantener una lista de todos los tokens emitidos.
+    """
+    settings = get_settings()
+    to_encode = data.copy()
+    to_encode.update({
+        "exp": expire,
+        "type": token_type,
+        "jti": uuid.uuid4().hex,
+    })
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+async def verify_token(token: str, expected_type: str = "access") -> TokenPayload:
+    """
+    Verifica, decodifica y valida el tipo de un token JWT.
+
     Args:
         token: Token JWT a verificar
-        
+        expected_type: "access" o "refresh" — el token debe declarar
+            exactamente este tipo, o se rechaza aunque la firma sea válida.
+            Esto es lo que impide que un refresh token (7 días) se use como
+            access token, o viceversa.
+
     Returns:
-        TokenPayload: Datos extraídos del token (sub, role, exp)
-        
+        TokenPayload: Datos extraídos del token (sub, role, exp, type, jti)
+
     Raises:
-        HTTPException: Si el token es inválido, expirado o no puede decodificarse
-        JWTError: Si hay error en la decodificación
-        
-    Ejemplo:
-        token_data = verify_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
-        user_id = token_data.sub
-        user_role = token_data.role
+        HTTPException 401: Si el token es inválido, expirado, del tipo
+            equivocado, o fue revocado explícitamente (logout).
     """
     settings = get_settings()
-    
+
     try:
-        # Decodificar y verificar el token
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
-        )
-        
-        # Extraer datos esperados del payload
-        sub: str = payload.get("sub")
-        role: str = payload.get("role")
-        exp: int = payload.get("exp")
-        
-        # Validar que los datos requeridos estén presentes
-        if sub is None or role is None or exp is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido: faltan campos requeridos"
-            )
-        
-        # Crear objeto TokenPayload con los datos
-        token_data = TokenPayload(sub=sub, role=role, exp=exp)
-        
-        return token_data
-        
-    except JWTError as e:
-        # Capturar errores específicos de JWT (expiración, firma inválida, etc.)
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No se pudo validar el token",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
+
+    sub = payload.get("sub")
+    role = payload.get("role")
+    exp = payload.get("exp")
+    jti = payload.get("jti")
+    token_type = payload.get("type")
+
+    if sub is None or role is None or exp is None or jti is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido: faltan campos requeridos",
+        )
+
+    if token_type != expected_type:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Se esperaba un token de tipo '{expected_type}'",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if await is_jti_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token fue revocado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return TokenPayload(sub=sub, role=role, exp=exp, type=token_type, jti=jti)
+
+
+async def get_access_token_payload(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> TokenPayload:
+    """
+    Dependencia que extrae y valida el access token del header Authorization,
+    sin tocar la base de datos.
+
+    Separada de get_current_user para que /auth/logout pueda revocar el jti
+    del token actual sin necesitar cargar el User completo.
+    """
+    return await verify_token(credentials.credentials, expected_type="access")
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> TokenPayload:
+    token_data: TokenPayload = Depends(get_access_token_payload),
+    db: AsyncSession = Depends(get_db),
+) -> User:
     """
-    Dependencia FastAPI que extrae y valida el usuario actual desde el token JWT.
-    
-    Se utiliza en endpoints protegidos para verificar autenticación.
-    Extrae el token del header Authorization y valida su firma.
-    
-    Args:
-        credentials: Credenciales Bearer extraídas del header Authorization
-        
-    Returns:
-        TokenPayload: Datos del usuario extraídos del token (sub, role, exp)
-        
+    Dependencia FastAPI que resuelve el usuario autenticado a partir del
+    access token. Se utiliza en endpoints protegidos para verificar
+    autenticación.
+
     Raises:
-        HTTPException: Si el token es inválido, expirado o no está presente
-        
-    Ejemplo en un endpoint:
-        @app.get("/profile")
-        async def get_profile(current_user: TokenPayload = Depends(get_current_user)):
-            return {"user_id": current_user.sub, "role": current_user.role}
+        HTTPException 401: Si el token es inválido, o el usuario ya no existe
     """
+    from uuid import UUID
+
     try:
-        # Verificar y decodificar el token
-        token_data = verify_token(credentials.credentials)
-        return token_data
-        
-    except HTTPException:
-        # Re-lanzar excepciones HTTP de autenticación
-        raise
+        user_id = UUID(token_data.sub)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido: ID de usuario mal formado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user_id)
+    )
+    user = result.unique().scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
 
 
-def require_role(required_roles: list[str]):
+def _normalize_role_value(role: object) -> str:
+    """Normaliza diferentes representaciones de rol a texto en mayúsculas."""
+    if role is None:
+        return ""
+
+    if hasattr(role, "name"):
+        value = role.name
+    elif hasattr(role, "value"):
+        value = role.value
+    else:
+        value = role
+
+    return str(value).upper()
+
+
+def require_role(required_roles: list[str] | str):
     """
     Factory que crea una dependencia para verificar que el usuario tiene uno de los roles requeridos.
-    
-    Se utiliza para autorización basada en roles (RBAC).
-    
-    Args:
-        required_roles: Lista de roles aceptados (ej: ["admin", "manager"])
-        
-    Returns:
-        async function: Función que se puede usar como dependencia FastAPI
-        
-    Raises:
-        HTTPException: Si el usuario no tiene ninguno de los roles requeridos
-        
+
     Ejemplo:
         @app.delete("/users/{user_id}")
         async def delete_user(
             user_id: UUID,
-            current_user: TokenPayload = Depends(get_current_user),
-            _: None = Depends(require_role(["admin"]))
+            current_user: User = Depends(require_role(["admin"])),
         ):
-            # Solo usuarios con rol "admin" pueden ejecutar esta función
-            return {"message": "Usuario eliminado"}
+            ...
     """
-    async def verify_role(
-        current_user: TokenPayload = Depends(get_current_user)
-    ) -> TokenPayload:
-        """
-        Verifica que el usuario actual tenga uno de los roles requeridos.
-        
-        Args:
-            current_user: Datos del usuario extraídos del token JWT
-            
-        Returns:
-            TokenPayload: Los datos del usuario si tiene permisos
-            
-        Raises:
-            HTTPException: Si el usuario no tiene el rol requerido
-        """
-        if current_user.role not in required_roles:
+    normalized_required_roles = {
+        _normalize_role_value(role)
+        for role in (required_roles if isinstance(required_roles, (list, tuple, set)) else [required_roles])
+    }
+
+    async def verify_role(current_user: User = Depends(get_current_user)) -> User:
+        role_obj = getattr(current_user, "role", None)
+        if role_obj is None:
+            user_role = ""
+        elif hasattr(role_obj, "value"):
+            user_role = str(role_obj.value)
+        elif hasattr(role_obj, "name"):
+            user_role = str(role_obj.name)
+        else:
+            user_role = str(role_obj)
+
+        if user_role not in normalized_required_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere uno de estos roles: {', '.join(required_roles)}"
+                detail=(
+                    "Se requiere uno de estos roles: "
+                    + ", ".join(sorted(normalized_required_roles))
+                ),
             )
-        
+
         return current_user
-    
+
     return verify_role

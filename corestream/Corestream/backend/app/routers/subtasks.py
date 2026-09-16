@@ -9,19 +9,42 @@ Permiten:
 - Cada subtarea puede tener su propio progreso
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from datetime import datetime, timezone
 from typing import List
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Subtask, Ticket, TicketEvent, TicketEventType
-from app.schemas import SubtaskResponse, SubtaskCreate, SubtaskUpdate
-from app.services import ticket_state_machine
 from app.middleware.auth import get_current_user
+from app.models import Subtask, Ticket, TicketEventType, User
+from app.schemas import SubtaskCreate, SubtaskResponse, SubtaskUpdate
+from app.services.ticket_permissions import assert_can_manage_ticket
+from app.services.ticket_state_machine import ticket_state_machine
 
 # Router para subtareas
-router = APIRouter(prefix="/subtasks", tags=["Subtareas"])
+router = APIRouter(tags=["Subtareas"])
+
+
+@router.get(
+    "/",
+    response_model=List[SubtaskResponse],
+    summary="Listar subtareas de un ticket",
+    description="Obtiene todas las subtareas de un ticket específico"
+)
+async def list_subtasks(
+    ticket_id: UUID,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> List[SubtaskResponse]:
+    result = await db.execute(
+        select(Subtask)
+        .where(Subtask.ticket_id == ticket_id)
+        .order_by(Subtask.order_index)
+    )
+    return result.scalars().all()
 
 
 @router.post(
@@ -32,8 +55,9 @@ router = APIRouter(prefix="/subtasks", tags=["Subtareas"])
     description="Crea una subtarea dentro de un ticket específico"
 )
 async def create_subtask(
+    ticket_id: UUID,
     subtask_data: SubtaskCreate,
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> SubtaskResponse:
     """
@@ -50,27 +74,34 @@ async def create_subtask(
     Raises:
         HTTPException: Si el ticket no existe (404) o hay error en creación (400)
     """
+    # ticket_id comes from path; body ticket_id is optional for backwards compat
+    resolved_ticket_id = subtask_data.ticket_id or ticket_id
+
     # Verificar que el ticket existe
     ticket_check = await db.execute(
-        select(Ticket).where(Ticket.id == subtask_data.ticket_id)
+        select(Ticket).where(Ticket.id == resolved_ticket_id)
     )
-    if not ticket_check.scalar_one_or_none():
+    parent_ticket = ticket_check.scalar_one_or_none()
+    if not parent_ticket:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Ticket con ID {subtask_data.ticket_id} no encontrado"
+            detail=f"Ticket con ID {ticket_id} no encontrado"
         )
+    assert_can_manage_ticket(parent_ticket, current_user)
 
     try:
         # Obtener el siguiente order_index disponible
         max_order = await db.execute(
             select(func.max(Subtask.order_index))
-            .where(Subtask.ticket_id == subtask_data.ticket_id)
+            .where(Subtask.ticket_id == ticket_id)
         )
-        next_order = (max_order.scalar() or -1) + 1
+        max_val = max_order.scalar()
+        next_order = (max_val if max_val is not None else -1) + 1
 
         # Crear nueva subtarea
         new_subtask = Subtask(
-            **subtask_data.dict(),
+            title=subtask_data.title,
+            ticket_id=ticket_id,
             order_index=next_order,
             is_completed=False
         )
@@ -80,11 +111,11 @@ async def create_subtask(
 
         # Registrar evento en el ticket
         await ticket_state_machine.log_ticket_event(
-            db, subtask_data.ticket_id, TicketEventType.SUBTASK_CREATED,
+            db, ticket_id, TicketEventType.SUBTASK_CREATED,
             current_user.id, f"Subtarea creada: {subtask_data.title}"
         )
 
-        return SubtaskResponse.from_orm(new_subtask)
+        return SubtaskResponse.model_validate(new_subtask)
 
     except Exception as e:
         await db.rollback()
@@ -101,9 +132,10 @@ async def create_subtask(
     description="Modifica una subtarea (título, estado de completación)"
 )
 async def update_subtask(
-    subtask_id: int,
+    ticket_id: UUID,
+    subtask_id: UUID,
     subtask_update: SubtaskUpdate,
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> SubtaskResponse:
     """
@@ -122,7 +154,7 @@ async def update_subtask(
         HTTPException: Si la subtarea no existe (404) o hay error en actualización (400)
     """
     result = await db.execute(
-        select(Subtask).where(Subtask.id == subtask_id)
+        select(Subtask).where(Subtask.id == subtask_id, Subtask.ticket_id == ticket_id)
     )
     subtask = result.scalar_one_or_none()
 
@@ -132,16 +164,28 @@ async def update_subtask(
             detail=f"Subtarea con ID {subtask_id} no encontrada"
         )
 
-    try:
-        # Obtener ticket para registrar evento
-        ticket = await db.execute(
-            select(Ticket).where(Ticket.id == subtask.ticket_id)
+    ticket_result = await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = ticket_result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado"
         )
-        ticket = ticket.scalar_one_or_none()
+    assert_can_manage_ticket(ticket, current_user)
 
+    try:
         # Aplicar cambios a los campos proporcionados
-        update_data = subtask_update.dict(exclude_unset=True)
+        update_data = subtask_update.model_dump(exclude_unset=True)
         old_completion_status = subtask.is_completed
+
+        # Lógica para registrar la fecha exacta en la que se completó
+        if "is_completed" in update_data:
+            if update_data["is_completed"] and not old_completion_status:
+                subtask.completed_at = datetime.now(timezone.utc)
+            elif not update_data["is_completed"] and old_completion_status:
+                subtask.completed_at = None
 
         for field, value in update_data.items():
             setattr(subtask, field, value)
@@ -150,14 +194,14 @@ async def update_subtask(
         await db.refresh(subtask)
 
         # Registrar evento si cambió el estado de completación
-        if old_completion_status != subtask.is_completed and ticket:
+        if old_completion_status != subtask.is_completed:
             event_type = TicketEventType.SUBTASK_COMPLETED if subtask.is_completed else TicketEventType.UPDATED
             await ticket_state_machine.log_ticket_event(
                 db, ticket.id, event_type,
                 current_user.id, f"Subtarea {subtask.title} - Completada: {subtask.is_completed}"
             )
 
-        return SubtaskResponse.from_orm(subtask)
+        return SubtaskResponse.model_validate(subtask)
 
     except Exception as e:
         await db.rollback()
@@ -174,8 +218,9 @@ async def update_subtask(
     description="Elimina una subtarea del ticket"
 )
 async def delete_subtask(
-    subtask_id: int,
-    current_user = Depends(get_current_user),
+    ticket_id: UUID,
+    subtask_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> None:
     """
@@ -190,7 +235,7 @@ async def delete_subtask(
         HTTPException: Si la subtarea no existe (404) o hay error en eliminación (400)
     """
     result = await db.execute(
-        select(Subtask).where(Subtask.id == subtask_id)
+        select(Subtask).where(Subtask.id == subtask_id, Subtask.ticket_id == ticket_id)
     )
     subtask = result.scalar_one_or_none()
 
@@ -200,9 +245,18 @@ async def delete_subtask(
             detail=f"Subtarea con ID {subtask_id} no encontrada"
         )
 
-    try:
-        ticket_id = subtask.ticket_id
+    ticket_result = await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = ticket_result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado"
+        )
+    assert_can_manage_ticket(ticket, current_user)
 
+    try:
         # Eliminar subtarea
         await db.delete(subtask)
         await db.commit()
@@ -210,7 +264,7 @@ async def delete_subtask(
         # Registrar evento en el ticket
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.SUBTASK_DELETED,
-            current_user.id, f"Subtarea eliminada"
+            current_user.id, "Subtarea eliminada"
         )
 
     except Exception as e:
@@ -228,8 +282,9 @@ async def delete_subtask(
     description="Cambia el orden de las subtareas dentro de un ticket (drag-drop)"
 )
 async def reorder_subtasks(
+    ticket_id: UUID,
     reorder_data: dict,
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[SubtaskResponse]:
     """
@@ -254,17 +309,30 @@ async def reorder_subtasks(
             detail="Lista de IDs de subtareas vacía"
         )
 
+    ticket_result = await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = ticket_result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado"
+        )
+    assert_can_manage_ticket(ticket, current_user)
+
     try:
         # Obtener todas las subtareas en el nuevo orden
         subtasks = []
-        for idx, subtask_id in enumerate(subtask_ids):
+        for idx, sid in enumerate(subtask_ids):
+            # Parseamos el id si viene como string
+            subtask_uuid = UUID(sid) if isinstance(sid, str) else sid
             result = await db.execute(
-                select(Subtask).where(Subtask.id == subtask_id)
+                select(Subtask).where(Subtask.id == subtask_uuid, Subtask.ticket_id == ticket_id)
             )
             subtask = result.scalar_one_or_none()
 
             if not subtask:
-                raise ValueError(f"Subtarea con ID {subtask_id} no encontrada")
+                raise ValueError(f"Subtarea con ID {sid} no encontrada")
 
             # Actualizar order_index
             subtask.order_index = idx
@@ -276,7 +344,7 @@ async def reorder_subtasks(
         for subtask in subtasks:
             await db.refresh(subtask)
 
-        return [SubtaskResponse.from_orm(st) for st in subtasks]
+        return [SubtaskResponse.model_validate(st) for st in subtasks]
 
     except ValueError as e:
         await db.rollback()

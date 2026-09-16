@@ -26,8 +26,12 @@
     <!--
       Componente global para mostrar notificaciones Toast
       Cualquier componente puede disparar notificaciones que aparecerán aquí
+      NO se muestra en la página de login
     -->
-    <NotificationContainer v-if="showNotifications" />
+    <NotificationContainer 
+      v-if="showNotifications && router.currentRoute.value.name !== 'Login'" 
+    />
+    <GlobalDialog />
   </div>
 </template>
 
@@ -38,8 +42,10 @@
 
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, setAuthTokens, clearAuthTokens } from '@/services/api'
 import NotificationContainer from '@/components/NotificationContainer.vue'
+import GlobalDialog from '@/components/common/GlobalDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 
 /**
  * ========================================
@@ -74,62 +80,19 @@ const router = useRouter()
  * - Configura listeners globales
  */
 const initializeApp = async (): Promise<void> => {
+  const authStore = useAuthStore()
   try {
-    /**
-     * Obtiene tokens del localStorage
-     * Se guardan después de login o cuando se renuevan
-     */
-    const accessToken = localStorage.getItem('accessToken')
-    const refreshToken = localStorage.getItem('refreshToken')
-
-    /**
-     * Si no hay tokens, el usuario no está autenticado
-     * El router guard lo redirigirá a login automáticamente
-     */
-    if (!accessToken || !refreshToken) {
-      return
-    }
-
-    /**
-     * Restaura los tokens en el servicio de API
-     * Necesario para que los interceptores funcionen
-     */
-    setAuthTokens({
-      accessToken,
-      refreshToken,
-      tokenType: 'Bearer'
-    })
-
-    /**
-     * Obtiene información del usuario actual del backend
-     * Valida que el token sea válido y el usuario exista
-     */
-    const response = await api.auth.getMe()
-
-    if (response.success && response.data) {
-      /**
-       * Guarda información del usuario en localStorage
-       * Se usa en guards de navegación y lógica de permisos
-       */
-      localStorage.setItem('userRole', response.data.role)
-      localStorage.setItem('userId', response.data.id)
-      localStorage.setItem('userName', response.data.fullName)
-    }
+    await authStore.initialize()
   } catch (error) {
-    /**
-     * Si falla la obtención del usuario, limpia tokens y redirige a login
-     * Probablemente el token expiró o es inválido
-     */
-    clearAuthTokens()
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    localStorage.removeItem('userRole')
-    localStorage.removeItem('userId')
-
-    /**
-     * Redirige a login solo si no está ya ahí
-     */
-    if (router.currentRoute.value.name !== 'Login') {
+    console.warn('Failed to initialize auth, clearing session', error)
+    // initialize() falla en CUALQUIER visita sin sesión (primera carga sin
+    // cookie, sesión expirada, etc.) — no es un error real, ver comentario
+    // en authStore.initialize(). Antes esto mandaba a /login comparando por
+    // nombre de ruta ('Login'), así que cualquier OTRA ruta pública (p. ej.
+    // /invite/:token, donde el invitado nunca tuvo sesión) también terminaba
+    // ahí. Se compara contra requiresAuth en vez de listar rutas públicas a
+    // mano, para que cubra cualquier ruta pública presente o futura.
+    if (router.currentRoute.value.meta.requiresAuth) {
       await router.push({ name: 'Login' })
     }
   }
@@ -142,71 +105,31 @@ const initializeApp = async (): Promise<void> => {
  * Los estilos de Tailwind se ajustan automáticamente con selectores dark:
  */
 const initializeDarkMode = (): void => {
-  /**
-   * Obtiene la preferencia de tema guardada
-   * Valores: 'dark', 'light', o null (seguir sistema)
-   */
-  const savedTheme = localStorage.getItem('theme')
-
-  /**
-   * Obtiene la preferencia del sistema operativo
-   */
-  const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-
-  /**
-   * Determina si debe aplicarse modo oscuro
-   * Prioridad: preferencia guardada > preferencia del sistema
-   */
-  const isDark = savedTheme ? savedTheme === 'dark' : systemPrefersDark
-
-  /**
-   * Aplica o remueve la clase 'dark' del elemento html
-   * Tailwind CSS usa esta clase para aplicar estilos oscuros
-   */
-  if (isDark) {
-    document.documentElement.classList.add('dark')
+  const themeStore = useThemeStore()
+  const savedTheme = localStorage.getItem('corestream-theme')
+  
+  if (!savedTheme) {
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    themeStore.applyTheme(systemPrefersDark ? 'dark' : 'light')
   } else {
-    document.documentElement.classList.remove('dark')
+    themeStore.applyTheme(savedTheme as 'dark' | 'light')
   }
 }
 
-/**
- * Escucha cambios en la preferencia de tema del sistema
- * Cuando el usuario cambia su preferencia OS, la aplicación se adapta
- */
-const setupDarkModeListener = (): void => {
-  /**
-   * Crea un listener para cambios en preferencia de tema del sistema
-   */
+const setupDarkModeListener = (): (() => void) => {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  const themeStore = useThemeStore()
 
-  /**
-   * Handler que se ejecuta cuando la preferencia cambia
-   */
   const handleChange = (e: MediaQueryListEvent | MediaQueryList): void => {
-    /**
-     * Solo se aplica si el usuario no ha guardado una preferencia manual
-     */
-    if (!localStorage.getItem('theme')) {
-      if (e.matches) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+    if (!localStorage.getItem('corestream-theme')) {
+      themeStore.applyTheme(e.matches ? 'dark' : 'light')
     }
   }
 
-  /**
-   * Agrega el listener (sintaxis moderna)
-   * En navegadores antiguos se usa addEventListener como fallback
-   */
   if (mediaQuery.addEventListener) {
     mediaQuery.addEventListener('change', handleChange)
   }
 
-  /**
-   * Retorna función para limpiar el listener (se usa en onUnmounted)
-   */
   return () => {
     if (mediaQuery.removeEventListener) {
       mediaQuery.removeEventListener('change', handleChange)

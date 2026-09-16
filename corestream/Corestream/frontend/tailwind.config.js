@@ -6,69 +6,64 @@
  */
 
 export default {
-  /**
-   * Especifica qué archivos Tailwind debe examinar para detectar clases utilizadas
-   * Solo incluye las clases que realmente se utilizan en la compilación final
-   */
   content: [
     './src/**/*.{vue,ts,tsx}',
     './index.html'
   ],
 
-  /**
-   * Tema personalizado que extiende los valores por defecto de Tailwind
-   * Define colores corporativos y estilos específicos de CoreStream
-   */
   theme: {
     extend: {
-      /**
-       * Colores personalizados de CoreStream
-       * Estos colores se utilizan en todo el proyecto para mantener consistencia visual
-       */
       colors: {
-        /**
-         * Color primario corporativo - Azul
-         * Utilizado en botones principales, enlaces y elementos destacados
-         */
-        primary: '#2563EB',
-
-        /**
-         * Color de éxito - Verde
-         * Utilizado en acciones completadas, estados exitosos y validaciones positivas
-         */
-        success: '#10B981',
-
-        /**
-         * Color de advertencia - Ámbar
-         * Utilizado en alertas, elementos pendientes y situaciones que requieren atención
-         */
+        lime: {
+          DEFAULT: '#ADEA4B',
+          90: '#B5EC5D', 80: '#BDEE6F', 70: '#C6F081', 60: '#CEF293',
+          50: '#D6F4A5', 40: '#DEF7B7', 30: '#E6F9C9', 20: '#EFFBDB', 10: '#F7FDED',
+        },
+        teal: {
+          DEFAULT: '#06B7B2',
+          90: '#1FBEBA', 80: '#38C5C1', 70: '#51CDC9', 60: '#6AD4D1',
+          50: '#82DBD8', 40: '#9BE2E0', 30: '#B4E9E8', 20: '#CDF1F0', 10: '#E6F8F7',
+          dark: '#046B74', darker: '#049A95',
+        },
+        'dark-gray': {
+          DEFAULT: '#142730',
+          90: '#2B3D45', 80: '#435259', 70: '#5A686E', 60: '#727D83',
+          50: '#899397', 40: '#A1A9AC', 30: '#B8BEC1', 20: '#D0D4D6', 10: '#E7E9EA',
+        },
+        accent: {
+          'warm-1': '#C1108B', 'warm-2': '#D07AB8', 'warm-3': '#E8B4DA',
+          'cold-1': '#1106C6', 'cold-2': '#2058D8', 'cold-3': '#82A6F7',
+        },
+        // Backward-compat aliases for existing text-primary, etc.
+        primary: '#ADEA4B',
+        success: '#06B7B2',
         warning: '#F59E0B',
-
-        /**
-         * Color de peligro/error - Rojo
-         * Utilizado en mensajes de error, eliminaciones y situaciones críticas
-         */
         danger: '#EF4444',
-
-        /**
-         * Color secundario - Índigo
-         * Utilizado en elementos secundarios, desplegables y componentes auxiliares
-         */
-        indigo: '#6366F1'
-      }
-    }
+        // Semantic colors using CSS variables (for theme system)
+        'semantic': {
+          'bg-app':    'var(--bg-app)',
+          'bg-card':   'var(--bg-card)',
+          'bg-sidebar':'var(--bg-sidebar)',
+          'bg-header': 'var(--bg-header)',
+          'bg-panel':  'var(--bg-panel)',
+          'bg-input':  'var(--bg-input)',
+          'bg-modal':  'var(--bg-modal)',
+          'bg-dropdown': 'var(--bg-dropdown)',
+          'bg-tag':    'var(--bg-tag)',
+          'text-base': 'var(--text-primary)',
+          'text-sub':  'var(--text-secondary)',
+          'text-muted':'var(--text-muted)',
+          'border':    'var(--border-color)',
+          'border-subtle': 'var(--border-subtle)',
+          'border-focus':  'var(--border-focus)',
+        }
+      },
+      fontFamily: {
+        sans: ['Nunito', 'Calibri', 'sans-serif'],
+      },
+    },
   },
 
-  /**
-   * Modo oscuro - Utiliza la clase 'dark' en el elemento raíz (HTML)
-   * Cuando se agrega la clase 'dark' al <html>, Tailwind aplica estilos oscuros
-   * Ejemplos: dark:bg-gray-900, dark:text-white, etc.
-   */
-  darkMode: 'class',
-
-  /**
-   * Configuración de complementos
-   * Extiende Tailwind con funcionalidades adicionales
-   */
+  darkMode: ['selector', '[data-theme="dark"]'],
   plugins: []
 }

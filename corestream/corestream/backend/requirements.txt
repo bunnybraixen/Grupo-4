@@ -1,31 +1,44 @@
-# Framework Web
-fastapi[standard]==0.115.0
-uvicorn[standard]==0.30.0
+# Dependencias de producción, con versión fijada (plan fase 9).
+#
+# Antes quince paquetes no tenían versión: una reconstrucción de la imagen
+# dentro de seis meses podía traer una versión mayor incompatible sin que
+# nadie lo notara hasta que algo rompiera en producción. Estas son las
+# versiones verificadas contra la suite completa de tests de este proyecto.
+#
+# Para actualizar deliberadamente: cambiar el pin aquí, reconstruir la
+# imagen, correr `pytest backend/tests` y solo entonces hacer commit.
 
-# Base de Datos
-sqlalchemy[asyncio]==2.0.29
-asyncpg==0.30.0
-alembic==1.14.0
+# Framework y Servidor
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
 
-# Validación de Datos
-pydantic==2.8.2
-pydantic-settings==2.3.1
-email-validator==2.1.1
+# Validación y Configuraciones (Pydantic V2)
+pydantic[email]==2.13.4
+pydantic-settings==2.14.2
+email-validator==2.3.0
 
-# Autenticación y Seguridad
-python-jose[cryptography]==3.3.0
+# Base de datos
+sqlalchemy==2.0.51
+asyncpg==0.31.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Redis + async task queue
+redis==5.3.1
+arq==0.28.0
+
+# Seguridad y Autenticación
 passlib[bcrypt]==1.7.4
-bcrypt==4.1.3
+python-jose[cryptography]==3.5.0
+python-multipart==0.0.32
+bcrypt==4.0.1
 
-# Caché y Notificaciones
-redis==5.0.8
+# Cliente HTTP async (usado por translation_service para llamar a Azure Translator)
+httpx==0.28.1
 
-# Utilidades
-python-multipart==0.0.7
-python-dotenv==1.0.1
-aiofiles==23.2.1
+# Extracción de texto para traducción de documentos binarios
+pypdf2==3.0.1
+python-docx==1.2.0
 
-# Desarrollo y Testing (opcional)
-pytest==8.3.5
-pytest-asyncio==0.24.0
-httpx==0.27.0
+# Observabilidad (plan fase 8)
+prometheus-fastapi-instrumentator==8.1.0

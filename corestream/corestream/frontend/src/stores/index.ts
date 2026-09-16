@@ -9,7 +9,7 @@
  * O:
  * import { useAuthStore } from '@/stores/auth'
  */
-
+ 
 // Autenticación
 export { useAuthStore } from './auth'
 
@@ -31,6 +31,9 @@ export { useNotificationsStore } from './notifications'
 // Equipo
 export { useTeamStore } from './team'
 
+// Tema
+export { useThemeStore } from './theme'
+
 /**
  * GUÍA DE TIENDAS
  * 
@@ -46,7 +49,7 @@ export { useTeamStore } from './team'
  * 
  * useEpicsStore
  *   - Estado: epics, collapsedEpics, isLoading, error
- *   - Acciones: fetchByApp, create, update, remove, reorder, toggleCollapse
+ *   - Acciones: fetchByApp, create, update, remove, reorderLocal, persistEpicReorder, toggleCollapse
  *   - Getters: sortedByOrder, withProgress, expandedEpics, overallEpicsProgress
  * 
  * useTicketsStore ⭐ LA MÁS IMPORTANTE
@@ -59,7 +62,7 @@ export { useTeamStore } from './team'
  * useAnalyticsStore
  *   - Estado: summary, performance, heatmapData, burndownData, dateRange
  *   - Acciones: fetchSummary, fetchPerformance, fetchHeatmap, fetchBurndown
- *              exportCsv, exportPdf, setDateRange, setSortColumn
+ *              setDateRange, setSortColumn
  *   - Getters: sortedPerformance, topPerformer, teamAverageVelocity, teamBlockedRate
  * 
  * useNotificationsStore
