@@ -98,7 +98,7 @@ services:
         condition: service_healthy
     environment:
       # URL de conexión a PostgreSQL desde el contenedor backend
-      DATABASE_URL: postgresql://corestream:corestream@postgres:5432/corestream
+      DATABASE_URL: postgresql+asyncpg://corestream:corestream@postgres:5432/corestream
       # URL de conexión a Redis desde el contenedor backend
       REDIS_URL: redis://redis:6379
       # Modo de desarrollo habilitado
