@@ -21,23 +21,35 @@ class TicketEventType(str, Enum):
     Tipos de eventos:
         CREATED: Evento de creación del ticket
         ASSIGNED: Evento de asignación del ticket a un usuario
+        TICKET_ASSIGNED: Evento de asignación (variante usada por redirecciones)
         STATUS_CHANGED: Evento de cambio de estado del ticket
+        MOVED: Evento de movimiento del ticket a otra épica
+        UPDATED: Evento de edición genérica de los campos del ticket
         QUESTION_RAISED: Evento de pregunta formulada sobre el ticket
         QUESTION_RESOLVED: Evento de resolución de una pregunta
         REDIRECTED: Evento de redirección a otro usuario
         COMPLETED: Evento de completitud del ticket
         COMMENT: Evento de comentario en el ticket
+        SUBTASK_CREATED: Evento de creación de una subtarea
+        SUBTASK_COMPLETED: Evento de completitud de una subtarea
+        SUBTASK_DELETED: Evento de borrado de una subtarea
         TIMER_START: Evento de inicio de seguimiento de tiempo
         TIMER_PAUSE: Evento de pausa de seguimiento de tiempo
     """
     CREATED = "CREATED"
     ASSIGNED = "ASSIGNED"
+    TICKET_ASSIGNED = "TICKET_ASSIGNED"
     STATUS_CHANGED = "STATUS_CHANGED"
+    MOVED = "MOVED"
+    UPDATED = "UPDATED"
     QUESTION_RAISED = "QUESTION_RAISED"
     QUESTION_RESOLVED = "QUESTION_RESOLVED"
     REDIRECTED = "REDIRECTED"
     COMPLETED = "COMPLETED"
     COMMENT = "COMMENT"
+    SUBTASK_CREATED = "SUBTASK_CREATED"
+    SUBTASK_COMPLETED = "SUBTASK_COMPLETED"
+    SUBTASK_DELETED = "SUBTASK_DELETED"
     TIMER_START = "TIMER_START"
     TIMER_PAUSE = "TIMER_PAUSE"
 

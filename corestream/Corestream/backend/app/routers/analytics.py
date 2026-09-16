@@ -73,7 +73,7 @@ async def get_application_summary(
     completed = await db.execute(
         select(func.count(Ticket.id))
         .join(Epic)
-        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.COMPLETED)
+        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.DONE)
     )
     completed_count = completed.scalar()
 

@@ -296,6 +296,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
@@ -317,6 +318,10 @@ const emit = defineEmits<{
 const ticketsStore = useTicketsStore()
 const authStore = useAuthStore()
 const dialogStore = useDialogStore()
+
+// Traducciones (TRV-04): los estados y prioridades salen del diccionario
+// central en lugar de estar hardcodeados en el componente.
+const { t } = useI18n()
 
 // Estado local
 const prLink = ref('')
@@ -389,24 +394,23 @@ const isOverdue = computed(() => {
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
-    TODO: 'Por Hacer',
-    IN_PROGRESS: 'En Progreso',
-    COMPLETED: 'Completado',
-    DONE: 'Completado',
-    BLOCKED: 'Bloqueado',
-    BLOCKED_QUESTION: 'Bloqueado',
-    REDIRECTED: 'Redirigido',
+    TODO: t('statuses.todo'),
+    IN_PROGRESS: t('statuses.inProgress'),
+    BLOCKED: t('statuses.blocked'),
+    BLOCKED_QUESTION: t('statuses.blocked'),
+    REDIRECTED: t('statuses.redirected'),
+    DONE: t('statuses.done'),
   }
+  // El fallback devuelve el código de estado, que no es texto de interfaz
   return map[props.ticket?.status || ''] || props.ticket?.status
 })
 
 const priorityLabel = computed(() => {
   const map: Record<string, string> = {
-    LOW: 'Baja',
-    MEDIUM: 'Media',
-    HIGH: 'Alta',
-    CRITICAL: 'Crítica',
-    URGENT: 'Urgente',
+    LOW: t('statuses.low'),
+    MEDIUM: t('statuses.medium'),
+    HIGH: t('statuses.high'),
+    URGENT: t('statuses.urgent'),
   }
   return map[props.ticket?.priority || ''] || props.ticket?.priority
 })

@@ -125,8 +125,8 @@ interface Assignee {
 interface Ticket {
   id: string
   title: string
-  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   assignee?: Assignee
   dueDate?: string
 }
@@ -225,7 +225,7 @@ const getPriorityColor = (priority: string): string => {
       return 'bg-yellow-500'
     case 'HIGH':
       return 'bg-orange-500'
-    case 'CRITICAL':
+    case 'URGENT':
       return 'bg-red-500'
     default:
       return 'bg-slate-500'

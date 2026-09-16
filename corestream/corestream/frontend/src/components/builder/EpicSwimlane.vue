@@ -189,8 +189,8 @@ import TicketCard from './TicketCard.vue'
 interface Ticket {
   id: string
   title: string
-  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  status: 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   assignee?: { id: string; name: string; avatar: string }
   dueDate?: string
 }

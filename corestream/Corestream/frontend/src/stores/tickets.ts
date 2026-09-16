@@ -9,7 +9,7 @@
  * - CRUD de tickets
  * - Filtrado por estado y fecha
  * - Gestión del workbench personal
- * - Transiciones de estado (TODO -> IN_PROGRESS -> COMPLETED)
+ * - Transiciones de estado (TODO -> IN_PROGRESS -> BLOCKED/REDIRECTED -> DONE)
  * - Validación de PRs y cambios
  * - Flujo de preguntas/respuestas
  * - Redireccionamiento de tickets
@@ -18,13 +18,17 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Ticket, TicketStatus } from '@/types'
+import { TicketStatus, TicketPriority } from '@/types'
+import type { Ticket } from '@/types'
 import { api } from '@/services/api'
 
 /**
  * Tipos de filtros disponibles
+ *
+ * Los valores reflejan los 5 estados reales de WEB-08
+ * (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE).
  */
-type StatusFilter = 'all' | 'todo' | 'in_progress' | 'completed' | 'blocked' | 'closed'
+type StatusFilter = 'all' | 'todo' | 'in_progress' | 'blocked' | 'redirected' | 'done'
 type DateFilter = 'all' | 'overdue' | 'today' | 'week' | 'later'
 
 interface TicketFilters {
@@ -97,11 +101,11 @@ export const useTicketsStore = defineStore('tickets', () => {
       result = result.filter(ticket => {
         const statusMap: Record<StatusFilter, TicketStatus | TicketStatus[]> = {
           'all': ticket.status,
-          'todo': 'TODO',
-          'in_progress': 'IN_PROGRESS',
-          'completed': 'COMPLETED',
-          'blocked': 'BLOCKED',
-          'closed': 'CLOSED',
+          'todo': TicketStatus.TODO,
+          'in_progress': TicketStatus.IN_PROGRESS,
+          'blocked': TicketStatus.BLOCKED,
+          'redirected': TicketStatus.REDIRECTED,
+          'done': TicketStatus.DONE,
         }
         const allowedStatus = statusMap[statusFilter.value]
         return Array.isArray(allowedStatus)
@@ -160,28 +164,35 @@ export const useTicketsStore = defineStore('tickets', () => {
    * Retorna todos los tickets en estado IN_PROGRESS
    */
   const inProgressTickets = computed((): Ticket[] => {
-    return tickets.value.filter(t => t.status === 'IN_PROGRESS')
+    return tickets.value.filter(t => t.status === TicketStatus.IN_PROGRESS)
   })
 
   /**
    * Retorna todos los tickets en estado TODO
    */
   const todoTickets = computed((): Ticket[] => {
-    return tickets.value.filter(t => t.status === 'TODO')
+    return tickets.value.filter(t => t.status === TicketStatus.TODO)
   })
 
   /**
-   * Retorna todos los tickets completados o cerrados
+   * Retorna todos los tickets completados (estado terminal DONE)
    */
   const completedTickets = computed((): Ticket[] => {
-    return tickets.value.filter(t => t.status === 'COMPLETED' || t.status === 'CLOSED')
+    return tickets.value.filter(t => t.status === TicketStatus.DONE)
   })
 
   /**
    * Retorna todos los tickets bloqueados
    */
   const blockedTickets = computed((): Ticket[] => {
-    return tickets.value.filter(t => t.status === 'BLOCKED')
+    return tickets.value.filter(t => t.status === TicketStatus.BLOCKED)
+  })
+
+  /**
+   * Retorna todos los tickets redirigidos a otro usuario
+   */
+  const redirectedTickets = computed((): Ticket[] => {
+    return tickets.value.filter(t => t.status === TicketStatus.REDIRECTED)
   })
 
   /**
@@ -221,16 +232,17 @@ export const useTicketsStore = defineStore('tickets', () => {
    * Retorna los tickets ordenados por prioridad
    */
   const sortedByPriority = computed((): Ticket[] => {
-    const priorityOrder: Record<string, number> = {
-      'CRITICAL': 0,
-      'HIGH': 1,
-      'MEDIUM': 2,
-      'LOW': 3,
+    // Orden de urgencia de mayor a menor (WEB-08: LOW, MEDIUM, HIGH, URGENT)
+    const priorityOrder: Record<TicketPriority, number> = {
+      [TicketPriority.URGENT]: 0,
+      [TicketPriority.HIGH]: 1,
+      [TicketPriority.MEDIUM]: 2,
+      [TicketPriority.LOW]: 3,
     }
 
     return [...tickets.value].sort((a, b) => {
-      const priorityA = priorityOrder[a.priority || 'MEDIUM'] ?? 2
-      const priorityB = priorityOrder[b.priority || 'MEDIUM'] ?? 2
+      const priorityA = priorityOrder[a.priority ?? TicketPriority.MEDIUM] ?? 2
+      const priorityB = priorityOrder[b.priority ?? TicketPriority.MEDIUM] ?? 2
       return priorityA - priorityB
     })
   })
@@ -298,8 +310,13 @@ export const useTicketsStore = defineStore('tickets', () => {
     epicId: string
     title: string
     description?: string
-    priority?: string
+    /** Prioridad: LOW, MEDIUM, HIGH o URGENT (WEB-08) */
+    priority?: TicketPriority
+    /** Estado inicial; el backend usa TODO por defecto (WEB-08) */
+    status?: TicketStatus
     dueDate?: string
+    /** Enlace opcional al Pull Request asociado (WEB-08) */
+    prLink?: string
     assignedTo?: string
   }): Promise<Ticket> => {
     isLoading.value = true
@@ -427,7 +444,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * 
    * VALIDACIONES:
    * - El prLink debe ser una URL válida de GitHub/GitLab
-   * - El estado actual debe permitir transición a COMPLETED
+   * - El estado actual debe permitir transición a DONE
    * 
    * Flujo:
    * 1. Valida el prLink
@@ -710,6 +727,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     todoTickets,
     completedTickets,
     blockedTickets,
+    redirectedTickets,
     completedCount,
     blockedCount,
     epicProgress,

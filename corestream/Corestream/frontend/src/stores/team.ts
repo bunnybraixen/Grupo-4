@@ -129,8 +129,9 @@ export const useTeamStore = defineStore('team', () => {
    * Retorna tickets sin asignar ordenados por prioridad
    */
   const unassignedSortedByPriority = computed((): Ticket[] => {
+    // Orden de urgencia de mayor a menor (WEB-08: LOW, MEDIUM, HIGH, URGENT)
     const priorityOrder: Record<string, number> = {
-      'CRITICAL': 0,
+      'URGENT': 0,
       'HIGH': 1,
       'MEDIUM': 2,
       'LOW': 3,

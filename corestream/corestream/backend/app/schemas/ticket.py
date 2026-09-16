@@ -5,9 +5,43 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel, field_validator
 
+from app.models.ticket import TicketPriority, TicketStatus
 from app.schemas.user import UserResponse
+
+# Dominios de repositorio aceptados para el enlace de Pull Request.
+# Se comparte entre TicketCreate, TicketUpdate y TicketComplete para que la
+# regla viva en un solo lugar (WEB-08: enlace de Pull Request del ticket).
+_PR_LINK_DOMAINS = ("github.com", "gitlab.com", "bitbucket.org")
+
+
+def _validate_pr_link(value: str) -> str:
+    """
+    Valida que un enlace de Pull Request sea una URL http(s) de un repositorio soportado.
+
+    Args:
+        value: URL del Pull Request a validar
+
+    Returns:
+        La URL validada
+
+    Raises:
+        ValueError: Si la URL no es válida o no pertenece a un repositorio soportado
+    """
+    if not value or not value.strip():
+        raise ValueError("El enlace de Pull Request no puede estar vacío")
+
+    normalized = value.strip()
+    if not normalized.startswith(("http://", "https://")):
+        raise ValueError(
+            "El enlace de Pull Request debe ser una URL válida comenzando con http:// o https://"
+        )
+
+    if not any(domain in normalized.lower() for domain in _PR_LINK_DOMAINS):
+        raise ValueError("El enlace de Pull Request debe ser de GitHub, GitLab o Bitbucket")
+
+    return normalized
 
 
 class TicketCreate(BaseModel):
@@ -20,15 +54,19 @@ class TicketCreate(BaseModel):
         description: Descripción detallada de la tarea (opcional)
         epic_id: UUID de la épica a la que pertenece el ticket
         assignee_id: UUID del usuario asignado (opcional)
-        priority: Nivel de prioridad del ticket (default: MEDIUM) - CRITICAL, HIGH, MEDIUM, LOW
+        priority: Nivel de prioridad del ticket (default: MEDIUM) - LOW, MEDIUM, HIGH, URGENT
+        status: Estado inicial del ticket (default: TODO) - TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE
         due_date: Fecha límite para completar el ticket (opcional)
+        pr_link: Enlace al Pull Request asociado (opcional)
     """
     title: str
     description: Optional[str] = None
     epic_id: UUID
     assignee_id: Optional[UUID] = None
-    priority: str = "MEDIUM"
+    priority: TicketPriority = TicketPriority.MEDIUM
+    status: TicketStatus = TicketStatus.TODO
     due_date: Optional[datetime] = None
+    pr_link: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -49,25 +87,21 @@ class TicketCreate(BaseModel):
             raise ValueError("El título del ticket no puede estar vacío")
         return v.strip()
 
-    @field_validator("priority")
+    @field_validator("pr_link")
     @classmethod
-    def validate_priority(cls, v: str) -> str:
+    def validate_pr_link(cls, v: Optional[str]) -> Optional[str]:
         """
-        Valida que la prioridad sea uno de los valores aceptados.
-        
+        Valida el enlace de Pull Request si se proporciona.
+
         Args:
-            v: Prioridad a validar
-            
+            v: URL del Pull Request a validar
+
         Returns:
-            La prioridad validada
-            
-        Raises:
-            ValueError: Si la prioridad no es válida
+            La URL validada o None
         """
-        valid_priorities = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
-        if v.upper() not in valid_priorities:
-            raise ValueError(f"La prioridad debe ser una de: {', '.join(valid_priorities)}")
-        return v.upper()
+        if v is None:
+            return v
+        return _validate_pr_link(v)
 
 
 class TicketUpdate(BaseModel):
@@ -78,14 +112,20 @@ class TicketUpdate(BaseModel):
     Atributos:
         title: Nuevo título (opcional)
         description: Nueva descripción (opcional)
-        priority: Nueva prioridad (opcional)
+        priority: Nueva prioridad (opcional) - LOW, MEDIUM, HIGH, URGENT
+        status: Nuevo estado (opcional) - TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE
+        assignee_id: Nuevo usuario asignado (opcional)
         due_date: Nueva fecha límite (opcional)
+        pr_link: Nuevo enlace de Pull Request (opcional)
         order_index: Índice para ordenar tickets dentro de la épica (opcional)
     """
     title: Optional[str] = None
     description: Optional[str] = None
-    priority: Optional[str] = None
+    priority: Optional[TicketPriority] = None
+    status: Optional[TicketStatus] = None
+    assignee_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
+    pr_link: Optional[str] = None
     order_index: Optional[int] = None
 
     @field_validator("title")
@@ -104,24 +144,21 @@ class TicketUpdate(BaseModel):
             raise ValueError("El título del ticket no puede estar vacío")
         return v.strip() if v else v
 
-    @field_validator("priority")
+    @field_validator("pr_link")
     @classmethod
-    def validate_priority(cls, v: Optional[str]) -> Optional[str]:
+    def validate_pr_link(cls, v: Optional[str]) -> Optional[str]:
         """
-        Valida que la prioridad, si se proporciona, sea válida.
-        
+        Valida el enlace de Pull Request si se proporciona.
+
         Args:
-            v: Prioridad a validar
-            
+            v: URL del Pull Request a validar
+
         Returns:
-            La prioridad validada o None
+            La URL validada o None
         """
         if v is None:
             return v
-        valid_priorities = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
-        if v.upper() not in valid_priorities:
-            raise ValueError(f"La prioridad debe ser una de: {', '.join(valid_priorities)}")
-        return v.upper()
+        return _validate_pr_link(v)
 
 
 class TicketMoveEpic(BaseModel):
@@ -151,25 +188,17 @@ class TicketComplete(BaseModel):
         """
         Valida que el enlace sea una URL válida hacia un repositorio soportado.
         Acepta URLs de GitHub, GitLab y Bitbucket.
-        
+
         Args:
             v: URL del PR a validar
-            
+
         Returns:
             La URL validada
-            
+
         Raises:
             ValueError: Si la URL no es válida o no es de un repositorio soportado
         """
-        valid_domains = ("github.com", "gitlab.com", "bitbucket.org")
-        if not any(domain in v.lower() for domain in valid_domains):
-            raise ValueError("El PR debe ser de GitHub, GitLab o Bitbucket")
-        
-        # Validar que sea una URL válida
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("El PR debe ser una URL válida comenzando con http:// o https://")
-        
-        return v
+        return _validate_pr_link(v)
 
 
 class TicketQuestion(BaseModel):
@@ -246,12 +275,15 @@ class TicketResponse(BaseModel):
         epic_id: UUID de la épica a la que pertenece
         assignee_id: UUID del usuario asignado (opcional)
         assignee: Datos completos del usuario asignado (opcional)
-        priority: Nivel de prioridad del ticket
+        priority: Nivel de prioridad del ticket (LOW, MEDIUM, HIGH, URGENT)
         due_date: Fecha límite del ticket
+        pr_link: Enlace al Pull Request asociado (opcional)
         order_index: Índice para ordenamiento
-        status: Estado actual del ticket (OPEN, IN_PROGRESS, COMPLETED, BLOCKED)
+        status: Estado actual del ticket (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)
         created_at: Fecha y hora de creación
+        updated_at: Fecha y hora de la última actualización
         completed_at: Fecha y hora de completación (opcional)
+        created_by_id: UUID del usuario que creó el ticket (opcional)
         epic_title: Título de la épica (para contexto)
         app_name: Nombre de la aplicación (para contexto)
         subtasks: Lista de subtareas asociadas al ticket
@@ -264,10 +296,13 @@ class TicketResponse(BaseModel):
     assignee: Optional[UserResponse] = None
     priority: str
     due_date: Optional[datetime] = None
+    pr_link: Optional[str] = None
     order_index: int
     status: str
     created_at: datetime
+    updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    created_by_id: Optional[UUID] = None
     epic_title: Optional[str] = None
     app_name: Optional[str] = None
     subtasks: list = []

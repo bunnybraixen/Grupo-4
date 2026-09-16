@@ -17,6 +17,7 @@ para garantizar transiciones válidas y consistencia de datos.
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
 
@@ -26,14 +27,42 @@ from app.models import (
     TicketEventType, Subtask
 )
 from app.schemas import (
-    TicketResponse, TicketCreate, TicketUpdate, 
-    TicketEventResponse
+    TicketResponse, TicketCreate, TicketUpdate,
+    TicketEventResponse, TicketQuestion
 )
 from app.services import ticket_state_machine, timer_service, notification_service
+from app.services.ticket_permissions import (
+    assert_can_manage_ticket,
+    assert_is_current_assignee,
+    claim_or_assert_assignee,
+    require_admin_or_leader,
+    require_non_admin,
+)
 from app.middleware.auth import get_current_user
 
 # Router para tickets con prefijo y etiqueta
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
+
+
+def _ticket_query():
+    """
+    Consulta base de Ticket con las relaciones que serializa TicketResponse.
+
+    `assignee` y `subtasks` son relaciones (lazy por defecto): si no se cargan
+    aquí, Pydantic intenta resolverlas al construir la respuesta y el lazy-load
+    ocurre fuera del contexto async -> MissingGreenlet (HTTP 500). Cargarlas de
+    forma explícita es además la convención documentada en app/models/base.py.
+    """
+    return select(Ticket).options(
+        selectinload(Ticket.assignee),
+        selectinload(Ticket.subtasks),
+    )
+
+
+async def _load_ticket(db: AsyncSession, ticket_id) -> Optional[Ticket]:
+    """Recarga un ticket por id con todas sus relaciones ya cargadas."""
+    result = await db.execute(_ticket_query().where(Ticket.id == ticket_id))
+    return result.scalar_one_or_none()
 
 
 @router.get(
@@ -46,7 +75,9 @@ async def get_epic_tickets(
     epic_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    status_filter: Optional[str] = Query(None, description="Filtrar por estado de ticket"),
+    status_filter: Optional[TicketStatus] = Query(
+        None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -78,8 +109,8 @@ async def get_epic_tickets(
             detail=f"Épica con ID {epic_id} no encontrada"
         )
 
-    # Construir consulta base
-    query = select(Ticket).where(Ticket.epic_id == epic_id)
+    # Construir consulta base (con relaciones ya cargadas)
+    query = _ticket_query().where(Ticket.epic_id == epic_id)
 
     # Aplicar filtro de estado si se proporciona
     if status_filter:
@@ -118,8 +149,8 @@ async def get_my_workbench(
     Returns:
         List[TicketResponse]: Tickets asignados al usuario ordenados por prioridad
     """
-    # Construir consulta para obtener tickets asignados
-    query = select(Ticket).where(Ticket.assigned_to == current_user.id)
+    # Construir consulta para obtener tickets asignados (con relaciones cargadas)
+    query = _ticket_query().where(Ticket.assignee_id == current_user.id)
 
     # Aplicar filtros si se proporcionan
     if status_filter:
@@ -173,16 +204,19 @@ async def create_ticket(
             detail=f"Épica con ID {ticket_data.epic_id} no encontrada"
         )
 
+    # WEB-08: crear tickets es una acción de gestión -> ADMIN o TEAM_LEADER.
+    require_admin_or_leader(current_user)
+
     try:
-        # Crear nuevo ticket con estado inicial TODO
+        # Crear nuevo ticket. `status` viene del payload (por defecto TODO) y la
+        # autoría se guarda en la FK `created_by_id`: `created_by` es la relación
+        # ORM, no una columna, y asignarle un UUID la rompía.
         new_ticket = Ticket(
-            **ticket_data.dict(),
-            status=TicketStatus.TODO,
-            created_by=current_user.id
+            **ticket_data.model_dump(),
+            created_by_id=current_user.id,
         )
         db.add(new_ticket)
         await db.commit()
-        await db.refresh(new_ticket)
 
         # Registrar evento de creación
         await ticket_state_machine.log_ticket_event(
@@ -190,7 +224,9 @@ async def create_ticket(
             current_user.id, f"Ticket creado por {current_user.name}"
         )
 
-        return TicketResponse.from_orm(new_ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        created_ticket = await _load_ticket(db, new_ticket.id)
+        return TicketResponse.from_orm(created_ticket)
 
     except Exception as e:
         await db.rollback()
@@ -225,10 +261,7 @@ async def get_ticket(
     Raises:
         HTTPException: Si el ticket no existe (404)
     """
-    result = await db.execute(
-        select(Ticket).where(Ticket.id == ticket_id)
-    )
-    ticket = result.scalar_one_or_none()
+    ticket = await _load_ticket(db, ticket_id)
 
     if not ticket:
         raise HTTPException(
@@ -236,9 +269,9 @@ async def get_ticket(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
-    # Precargar información relacionada
-    await db.refresh(ticket)
-
+    # Las relaciones ya vienen precargadas por _load_ticket/_ticket_query:
+    # refrescar aquí volvía a expirarlas y provocaba el 500 por MissingGreenlet
+    # al construir la respuesta.
     return TicketResponse.from_orm(ticket)
 
 
@@ -280,22 +313,38 @@ async def update_ticket(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: ADMIN/TEAM_LEADER siempre; un DEVELOPER solo sobre sus propios tickets
+    assert_can_manage_ticket(ticket, current_user)
+
+    # Estado previo: permite distinguir un cambio de estado de una edición normal
+    previous_status = ticket.status
+
     try:
-        # Aplicar cambios a los campos proporcionados
-        update_data = ticket_update.dict(exclude_unset=True)
+        # Aplicar solo los campos enviados (actualización parcial)
+        update_data = ticket_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(ticket, field, value)
 
         await db.commit()
         await db.refresh(ticket)
 
-        # Registrar evento de actualización
-        await ticket_state_machine.log_ticket_event(
-            db, ticket_id, TicketEventType.UPDATED,
-            current_user.id, "Ticket actualizado"
-        )
+        # Auditar el cambio: un cambio de estado se registra como STATUS_CHANGED,
+        # cualquier otra edición de campos como UPDATED (WEB-08: historial).
+        if previous_status != ticket.status:
+            previous_value = getattr(previous_status, "value", previous_status)
+            current_value = getattr(ticket.status, "value", ticket.status)
+            await ticket_state_machine.log_ticket_event(
+                db, ticket_id, TicketEventType.STATUS_CHANGED,
+                current_user.id, f"Estado cambiado: {previous_value} -> {current_value}"
+            )
+        else:
+            await ticket_state_machine.log_ticket_event(
+                db, ticket_id, TicketEventType.UPDATED,
+                current_user.id, "Ticket actualizado"
+            )
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -337,6 +386,9 @@ async def delete_ticket(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
+
+    # WEB-08: el borrado es permanente y en cascada -> solo ADMIN/TEAM_LEADER
+    require_admin_or_leader(current_user)
 
     try:
         # Detener temporizador si está activo
@@ -392,6 +444,9 @@ async def move_ticket_to_epic(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: mover de épica es una acción de gestión -> ADMIN/TEAM_LEADER o el asignado
+    assert_can_manage_ticket(ticket, current_user)
+
     new_epic_id = move_data.get("epic_id")
 
     # Verificar que la nueva épica existe
@@ -418,7 +473,8 @@ async def move_ticket_to_epic(
             current_user.id, f"Ticket movido de épica {old_epic_id} a {new_epic_id}"
         )
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -464,6 +520,11 @@ async def start_ticket_work(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: iniciar trabajo es una acción "de trabajo" -> un ADMIN no la ejecuta,
+    # y un DEVELOPER solo puede iniciar un ticket libre o ya asignado a él.
+    require_non_admin(current_user)
+    claim_or_assert_assignee(ticket, current_user)
+
     # Validar que el ticket está en estado TODO
     if ticket.status != TicketStatus.TODO:
         raise HTTPException(
@@ -484,7 +545,8 @@ async def start_ticket_work(
         # Enviar notificación
         await notification_service.notify_ticket_started(ticket, current_user, db)
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -533,6 +595,10 @@ async def complete_ticket(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: completar es una acción "de trabajo" -> solo el asignado actual
+    require_non_admin(current_user)
+    assert_is_current_assignee(ticket, current_user)
+
     if ticket.status != TicketStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -561,7 +627,8 @@ async def complete_ticket(
         # Enviar notificación
         await notification_service.notify_ticket_completed(ticket, current_user, db)
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -579,7 +646,7 @@ async def complete_ticket(
 )
 async def raise_ticket_question(
     ticket_id: int,
-    question_data: dict,
+    question_data: TicketQuestion,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> TicketResponse:
@@ -588,7 +655,7 @@ async def raise_ticket_question(
 
     Args:
         ticket_id (int): ID del ticket
-        question_data (dict): Contiene 'question' con el texto de la pregunta
+        question_data (TicketQuestion): Texto de la pregunta (mínimo 10 caracteres)
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -609,6 +676,10 @@ async def raise_ticket_question(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: plantear una pregunta bloqueante es una acción "de trabajo"
+    require_non_admin(current_user)
+    assert_is_current_assignee(ticket, current_user)
+
     if ticket.status != TicketStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -621,7 +692,7 @@ async def raise_ticket_question(
 
         # Marcar como bloqueado
         ticket.is_blocked = True
-        ticket.blocked_reason = question_data.get("question", "Pregunta sin especificar")
+        ticket.blocked_reason = question_data.question_text
 
         await db.commit()
         await db.refresh(ticket)
@@ -629,13 +700,14 @@ async def raise_ticket_question(
         # Registrar evento
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.QUESTION_RAISED,
-            current_user.id, question_data.get("question", "Pregunta planteada")
+            current_user.id, question_data.question_text
         )
 
         # Notificar al líder de equipo
         await notification_service.notify_question_raised(ticket, current_user, db)
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -683,6 +755,10 @@ async def resolve_ticket_question(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
+    # WEB-08: resolver la pregunta es del asignado; si es ajena, requiere gestión
+    if ticket.assignee_id != current_user.id:
+        require_admin_or_leader(current_user)
+
     if not ticket.is_blocked:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -706,7 +782,8 @@ async def resolve_ticket_question(
             current_user.id, resolution_data.get("resolution", "Pregunta resuelta")
         )
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
@@ -754,8 +831,24 @@ async def redirect_ticket(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
-    target_user_id = redirect_data.get("target_user_id")
-    reason = redirect_data.get("reason", "Sin motivo especificado")
+    # WEB-08: solo el asignado actual (o ADMIN/TEAM_LEADER) puede redirigir
+    if ticket.assignee_id not in (None, current_user.id):
+        require_admin_or_leader(current_user)
+
+    # La API acepta las dos formas de nombrar los campos: 'to_user_id' (contrato
+    # de los tests de integración) y 'target_user_id'/'reason' (forma histórica).
+    target_user_id = redirect_data.get("to_user_id") or redirect_data.get("target_user_id")
+    reason = (
+        redirect_data.get("justification")
+        or redirect_data.get("reason")
+        or "Sin motivo especificado"
+    )
+
+    if not target_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Se requiere 'to_user_id' con el usuario destino"
+        )
 
     # Verificar que el usuario destino existe
     user_check = await db.execute(
@@ -768,8 +861,8 @@ async def redirect_ticket(
         )
 
     try:
-        old_assignee = ticket.assigned_to
-        ticket.assigned_to = target_user_id
+        old_assignee = ticket.assignee_id
+        ticket.assignee_id = target_user_id
 
         # Pausar temporizador si estaba activo
         if ticket.status == TicketStatus.IN_PROGRESS:
@@ -787,7 +880,8 @@ async def redirect_ticket(
         # Notificar al nuevo asignado
         await notification_service.notify_ticket_redirected(ticket, current_user, db)
 
-        return TicketResponse.from_orm(ticket)
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
     except Exception as e:
         await db.rollback()
