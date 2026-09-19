@@ -22,3 +22,61 @@ Poner siguiente comando en la consola:
   console.log('¡Sesión actualizada como ADMIN!');
   window.location.href = '/admin/builder';
 })();
+
+Para entrar como group leader:
+
+(async () => {
+  const email = 'leader@corestream.com';
+  const password = 'LeaderPassword123!';
+  try {
+    await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, full_name: 'Team Leader' })
+    });
+  } catch (e) {}
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  localStorage.setItem('accessToken', data.access_token);
+  localStorage.setItem('refreshToken', data.refresh_token);
+  localStorage.setItem('authTokens', JSON.stringify({ accessToken: data.access_token, refreshToken: data.refresh_token, tokenType: 'bearer' }));
+  localStorage.setItem('userRole', 'GROUP_LEADER');
+  localStorage.setItem('userName', 'Team Leader');
+  console.log('¡Sesión iniciada como GROUP_LEADER!');
+  window.location.href = '/dev/team';
+})();
+
+Para entrar como dev:
+
+(async () => {
+  const email = 'dev@corestream.com';
+  const password = 'DevPassword123!';
+
+  try {
+    await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, full_name: 'Dev Tester' })
+    });
+  } catch (e) {}
+
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+  localStorage.setItem('accessToken', data.access_token);
+  localStorage.setItem('refreshToken', data.refresh_token);
+  localStorage.setItem('authTokens', JSON.stringify({ accessToken: data.access_token, refreshToken: data.refresh_token, tokenType: 'bearer' }));
+  localStorage.setItem('userRole', 'DEVELOPER');
+  localStorage.setItem('userName', 'Dev Tester');
+
+  console.log('¡Sesión iniciada como DEVELOPER!');
+  window.location.href = '/dev/workbench';
+})();
