@@ -111,7 +111,4 @@ class Epic(Base, BaseEntity):
         doc="Lista de documentos asociados a este épico"
     )
     
-    __table_args__ = (
-        Index('ix_epics_application_id', 'application_id'),
-        Index('ix_epics_order_index', 'order_index'),
-    )
+    __table_args__ = ()

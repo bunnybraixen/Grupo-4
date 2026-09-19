@@ -127,7 +127,4 @@ class Notification(Base, BaseEntity):
     )
     
     __table_args__ = (
-        Index('ix_notifications_user_id', 'user_id'),
-        Index('ix_notifications_is_read', 'is_read'),
-        Index('ix_notifications_ticket_id', 'ticket_id'),
     )

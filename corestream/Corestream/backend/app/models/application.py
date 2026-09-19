@@ -102,6 +102,4 @@ class Application(Base, BaseEntity):
     )
     
     __table_args__ = (
-        Index('ix_applications_owner_id', 'owner_id'),
-        Index('ix_applications_is_active', 'is_active'),
     )

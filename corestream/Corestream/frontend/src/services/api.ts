@@ -12,9 +12,9 @@
  */
 
 import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
+import { UserRole } from '@/types'
 import type {
   User,
-  UserRole,
   Application,
   Epic,
   Ticket,
@@ -50,10 +50,97 @@ interface AuthState {
  * En una aplicación real, esto vendría del store de Pinia
  * Aquí se mantiene por simplicidad
  */
+/**
+ * Claves de localStorage usadas por la sesión.
+ *
+ * El backend (routers/auth.py) devuelve los tokens en snake_case PLANO
+ * (`{ access_token, refresh_token, token_type }`), sin envoltorio
+ * `{ success, data }` ni anidado `{ tokens }`. Además, el guard del router
+ * (src/router/index.ts) y App.vue leen `accessToken`/`refreshToken` como
+ * claves sueltas. Antes NADA escribía esas claves: solo se guardaba
+ * `authTokens`, así que tras cualquier recarga la sesión se perdía y las
+ * peticiones salían sin cabecera Authorization -> FastAPI respondía
+ * 403 "Not authenticated" (HTTPBearer) en /api/applications/, /api/epics/, etc.
+ */
+const AUTH_TOKENS_KEY = 'authTokens'
+const ACCESS_TOKEN_KEY = 'accessToken'
+const REFRESH_TOKEN_KEY = 'refreshToken'
+
+/**
+ * Normaliza el rol que devuelve el backend para que coincida con los
+ * valores que espera el frontend (ADMIN, TEAM_LEADER, GROUP_LEADER, DEVELOPER).
+ */
+const normalizeRole = (role: unknown): UserRole => {
+  const value = String(role ?? '').toUpperCase()
+  // El backend puede llamar TEAM_LEADER a lo que el frontend llama GROUP_LEADER.
+  if (value === 'TEAM_LEADER') return UserRole.GROUP_LEADER
+  if (value === 'GROUP_LEADER') return UserRole.GROUP_LEADER
+  if (value === 'ADMIN') return UserRole.ADMIN
+  return UserRole.DEVELOPER
+}
+
+/**
+ * Normaliza la respuesta de usuario del backend (snake_case plano) al tipo
+ * `User` que usa el frontend.
+ */
+const normalizeUser = (raw: any): User => {
+  const source = raw?.data ?? raw ?? {}
+  return {
+    ...source,
+    id: source.id,
+    email: source.email,
+    fullName: source.fullName ?? source.full_name ?? '',
+    specialty: source.specialty ?? undefined,
+    role: normalizeRole(source.role),
+    avatarUrl: source.avatarUrl ?? source.avatar_url ?? undefined,
+    isActive: source.isActive ?? source.is_active ?? true,
+    createdAt: source.createdAt ?? source.created_at ?? undefined,
+    updatedAt: source.updatedAt ?? source.updated_at ?? undefined
+  } as User
+}
+
+/**
+ * Normaliza los tokens del backend a `AuthTokens` (camelCase).
+ * Acepta tanto la forma plana snake_case (`access_token`) como camelCase.
+ */
+const normalizeTokens = (raw: any): AuthTokens => {
+  const source = raw?.tokens ?? raw?.data?.tokens ?? raw?.data ?? raw ?? {}
+  return {
+    accessToken: source.accessToken ?? source.access_token ?? '',
+    refreshToken: source.refreshToken ?? source.refresh_token ?? '',
+    tokenType: source.tokenType ?? source.token_type ?? 'Bearer',
+    expiresIn: source.expiresIn ?? source.expires_in ?? undefined
+  }
+}
+
 let authState: AuthState = {
   accessToken: null,
   refreshToken: null
 }
+
+/**
+ * Hidrata el estado de autenticación desde localStorage al cargar el módulo.
+ *
+ * Sin esto, cualquier recarga de página dejaba `authState` vacío hasta que
+ * algo llamase a `setAuthTokens()`, y las peticiones salían sin Bearer.
+ */
+const hydrateAuthState = (): void => {
+  try {
+    const stored = localStorage.getItem(AUTH_TOKENS_KEY)
+    const parsed = stored ? JSON.parse(stored) : null
+    const tokens = normalizeTokens(parsed)
+
+    authState.accessToken =
+      tokens.accessToken || localStorage.getItem(ACCESS_TOKEN_KEY) || null
+    authState.refreshToken =
+      tokens.refreshToken || localStorage.getItem(REFRESH_TOKEN_KEY) || null
+  } catch {
+    // localStorage no disponible o contenido corrupto: se ignora y se
+    // seguirá el flujo normal (login) sin sesión restaurada.
+  }
+}
+
+hydrateAuthState()
 
 /**
  * Crea y configura la instancia de Axios
@@ -232,23 +319,28 @@ const createApiClient = (): AxiosInstance => {
             /**
              * Solicitud especial para renovar el token
              * Usa directamente axios (no la instancia con interceptores)
-             * para evitar recursión infinita
+             * para evitar recursión infinita.
+             *
+             * El backend espera `{ refresh_token }` y responde plano
+             * (`{ access_token, refresh_token, token_type }`).
              */
             const response = await axios.post('/api/auth/refresh', {
-              refreshToken: authState.refreshToken
+              refresh_token: authState.refreshToken
             })
 
-            /**
-             * Actualiza los tokens con la respuesta
-             */
-            if (response.data.data?.tokens) {
-              authState.accessToken = response.data.data.tokens.accessToken
-              authState.refreshToken = response.data.data.tokens.refreshToken
+            const newTokens = normalizeTokens(response.data)
+
+            if (newTokens.accessToken) {
+              /**
+               * Guarda los tokens normalizados (persiste en localStorage y
+               * actualiza el estado del interceptor).
+               */
+              setAuthTokens(newTokens)
 
               /**
                * Actualiza el header Authorization del request original
                */
-              originalRequest.headers.Authorization = `Bearer ${authState.accessToken}`
+              originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`
 
               /**
                * Reintenta el request original con el nuevo token
@@ -319,12 +411,22 @@ export const api = {
      * const response = await api.auth.login({ email: 'user@example.com', password: '123456' })
      * // Guarda tokens en el store y redirige al dashboard
      */
-    login: async (credentials: LoginRequest): Promise<ApiResponse<AuthResponse>> => {
-      const response = await apiClient.post<ApiResponse<AuthResponse>>(
-        '/auth/login',
-        credentials
-      )
-      return response.data
+    login: async (credentials: LoginRequest): Promise<{ tokens: AuthTokens; user?: User }> => {
+      /**
+       * El backend responde `{ access_token, refresh_token, token_type }`
+       * (snake_case plano, sin envoltorio). Se normaliza a camelCase y se
+       * deja activo en el interceptor para que el resto de peticiones
+       * (applications, epics, tickets) viajen con Authorization: Bearer.
+       */
+      const response = await apiClient.post('/auth/login', credentials)
+      const tokens = normalizeTokens(response.data)
+
+      if (!tokens.accessToken) {
+        throw new Error('El servidor no devolvió un access token válido')
+      }
+
+      setAuthTokens(tokens)
+      return { tokens }
     },
 
     /**
@@ -333,12 +435,13 @@ export const api = {
      * @param data - Datos del nuevo usuario (email, password, nombre, rol)
      * @returns Respuesta con usuario creado y tokens de autenticación
      */
-    register: async (data: RegisterRequest): Promise<ApiResponse<AuthResponse>> => {
-      const response = await apiClient.post<ApiResponse<AuthResponse>>(
-        '/auth/register',
-        data
-      )
-      return response.data
+    register: async (data: RegisterRequest): Promise<{ tokens?: AuthTokens; user: User }> => {
+      /**
+       * El backend devuelve el usuario creado (snake_case plano) y NO inicia
+       * sesión, así que aquí solo se normaliza el usuario.
+       */
+      const response = await apiClient.post('/auth/register', data)
+      return { user: normalizeUser(response.data) }
     },
 
     /**
@@ -348,12 +451,22 @@ export const api = {
      * @param refreshToken - Token de renovación
      * @returns Nuevos tokens de autenticación
      */
-    refresh: async (refreshToken: string): Promise<ApiResponse<AuthTokens>> => {
-      const response = await apiClient.post<ApiResponse<AuthTokens>>(
-        '/auth/refresh',
-        { refreshToken }
-      )
-      return response.data
+    refresh: async (refreshToken: string): Promise<AuthTokens> => {
+      /**
+       * El backend espera `{ refresh_token }` y responde plano
+       * `{ access_token, refresh_token, token_type }`.
+       */
+      const response = await apiClient.post('/auth/refresh', {
+        refresh_token: refreshToken
+      })
+      const tokens = normalizeTokens(response.data)
+
+      // Si el backend no rota el refresh token, se conserva el actual para
+      // no dejar la sesión sin forma de renovarse.
+      if (!tokens.refreshToken) tokens.refreshToken = refreshToken
+
+      setAuthTokens(tokens)
+      return tokens
     },
 
     /**
@@ -365,9 +478,22 @@ export const api = {
      * const currentUser = await api.auth.getMe()
      * // Útil al inicializar la aplicación para verificar si está autenticado
      */
-    getMe: async (): Promise<ApiResponse<User>> => {
-      const response = await apiClient.get<ApiResponse<User>>('/auth/me')
-      return response.data
+    getMe: async (): Promise<User> => {
+      /**
+       * El backend devuelve el usuario en snake_case plano
+       * (`{ id, email, full_name, role, ... }`), sin envoltorio ApiResponse.
+       */
+      const response = await apiClient.get('/auth/me')
+      return normalizeUser(response.data)
+    },
+
+    /**
+     * Alias de `getMe` — el store de auth (`stores/auth.ts`) llama
+     * `api.auth.me()`. Sin este alias el método era `undefined` y el login
+     * fallaba con TypeError justo después de autenticar.
+     */
+    me: async (): Promise<User> => {
+      return api.auth.getMe()
     },
 
     /**
@@ -516,7 +642,7 @@ export const api = {
       limit?: number
     }): Promise<ApiResponse<PaginatedResponse<Application>>> => {
       const response = await apiClient.get<ApiResponse<PaginatedResponse<Application>>>(
-        '/applications',
+        '/applications/',
         { params: filters }
       )
       return response.data
@@ -538,7 +664,7 @@ export const api = {
      */
     create: async (data: Omit<Application, 'id' | 'createdAt' | 'updatedAt' | 'ticketCount' | 'epicCount' | 'pendingCount' | 'delayedCount'>): Promise<ApiResponse<Application>> => {
       const response = await apiClient.post<ApiResponse<Application>>(
-        '/applications',
+        '/applications/',
         data
       )
       return response.data
@@ -1308,6 +1434,21 @@ export const api = {
 export const setAuthTokens = (tokens: AuthTokens): void => {
   authState.accessToken = tokens.accessToken
   authState.refreshToken = tokens.refreshToken
+
+  /**
+   * Persistencia: se guarda el objeto completo (`authTokens`) y además las
+   * claves sueltas `accessToken` / `refreshToken`, que son las que leen el
+   * guard del router (src/router/index.ts) y App.vue. Sin esto, cualquier
+   * recarga de página dejaba la SPA sin token y la API respondía 403.
+   */
+  try {
+    localStorage.setItem(AUTH_TOKENS_KEY, JSON.stringify(tokens))
+    localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken ?? '')
+    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken ?? '')
+  } catch {
+    // Modo privado / almacenamiento no disponible: la sesión seguirá viva
+    // en memoria hasta que se recargue la página.
+  }
 }
 
 /**
@@ -1317,6 +1458,14 @@ export const setAuthTokens = (tokens: AuthTokens): void => {
 export const clearAuthTokens = (): void => {
   authState.accessToken = null
   authState.refreshToken = null
+
+  try {
+    localStorage.removeItem(AUTH_TOKENS_KEY)
+    localStorage.removeItem(ACCESS_TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+  } catch {
+    // Ignorado: no hay nada que limpiar si el almacenamiento no está disponible.
+  }
 }
 
 /**

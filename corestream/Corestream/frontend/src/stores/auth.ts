@@ -12,7 +12,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, AuthTokens, UserRole } from '@/types'
-import { api } from '@/services/api'
+import { api, setAuthTokens, clearAuthTokens } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
   // ========== ESTADO REACTIVO ==========
@@ -100,6 +100,13 @@ export const useAuthStore = defineStore('auth', () => {
       if (storedTokens) {
         tokens.value = JSON.parse(storedTokens)
         isAuthenticated.value = true
+        /**
+         * Rehidrata el estado del cliente HTTP (Authorization: Bearer) a
+         * partir de los tokens persistidos. Sin esta llamada, tras recargar
+         * la página el interceptor no enviaba el token y la API respondía
+         * 403 "Not authenticated".
+         */
+        setAuthTokens(tokens.value)
         // El fetchMe() será llamado por el composable de autenticación
       }
     } catch (err) {
@@ -128,10 +135,13 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.auth.login({ email, password })
       
-      // Guardar tokens
+      // Guardar tokens y activarlos en el cliente HTTP
       tokens.value = response.tokens
+      setAuthTokens(response.tokens)
       localStorage.setItem('authTokens', JSON.stringify(response.tokens))
-      
+      localStorage.setItem('accessToken', response.tokens.accessToken)
+      localStorage.setItem('refreshToken', response.tokens.refreshToken)
+
       isAuthenticated.value = true
 
       // Obtener datos completos del usuario
@@ -172,7 +182,10 @@ export const useAuthStore = defineStore('auth', () => {
       // Opcionalmente autoautenticar
       if (response.tokens) {
         tokens.value = response.tokens
+        setAuthTokens(response.tokens)
         localStorage.setItem('authTokens', JSON.stringify(response.tokens))
+        localStorage.setItem('accessToken', response.tokens.accessToken)
+        localStorage.setItem('refreshToken', response.tokens.refreshToken)
         isAuthenticated.value = true
         await fetchMe()
       }
@@ -196,7 +209,12 @@ export const useAuthStore = defineStore('auth', () => {
    */
   const fetchMe = async (): Promise<User> => {
     try {
-      const userData = await api.auth.me()
+      /**
+       * `api.auth.getMe()` devuelve el usuario ya normalizado a camelCase
+       * (antes se llamaba a `api.auth.me`, que no existía y hacía fallar el
+       * login con un TypeError).
+       */
+      const userData = await api.auth.getMe()
       user.value = userData
       return userData
     } catch (err) {
@@ -220,7 +238,10 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const newTokens = await api.auth.refresh(tokens.value.refreshToken)
       tokens.value = newTokens
+      setAuthTokens(newTokens)
       localStorage.setItem('authTokens', JSON.stringify(newTokens))
+      localStorage.setItem('accessToken', newTokens.accessToken)
+      localStorage.setItem('refreshToken', newTokens.refreshToken)
       return newTokens
     } catch (err) {
       console.error('Error al refrescar token:', err)
@@ -306,6 +327,8 @@ export const useAuthStore = defineStore('auth', () => {
     tokens.value = null
     isAuthenticated.value = false
     error.value = null
+    // Limpia también el estado y la persistencia del cliente HTTP
+    clearAuthTokens()
     localStorage.removeItem('authTokens')
   }
 

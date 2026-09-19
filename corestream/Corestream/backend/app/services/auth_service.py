@@ -546,3 +546,156 @@ class AuthService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar rol del usuario"
             )
+# =============================================================================
+# API de módulo requerida por los routers y scripts
+# =============================================================================
+# app/routers/auth.py hace `from app.services import auth_service` y luego llama
+# a `auth_service.verify_password(...)`, `auth_service.create_access_token(...)`,
+# etc. — es decir, espera funciones A NIVEL DE MÓDULO. En esta copia del
+# proyecto esas funciones no existían (solo la clase AuthService con métodos
+# privados), así que /auth/register devolvía 500
+# ("module 'app.services.auth_service' has no attribute 'create_user'") y
+# /auth/login habría fallado igual en cuanto existiera un usuario real.
+#
+# Se implementan aquí delegando en AuthService y en app.middleware.auth para no
+# duplicar la lógica de firma/verificación de JWT.
+
+
+def hash_password(password: str) -> str:
+    """Hash bcrypt de una contraseña (mismo esquema que verify_password)."""
+    return AuthService._hash_password(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verifica una contraseña contra su hash bcrypt sin lanzar excepciones."""
+    if not plain_password or not hashed_password:
+        return False
+    try:
+        return AuthService._verify_password(plain_password, hashed_password)
+    except Exception:
+        # Un hash corrupto o con formato inválido no debe tumbar el login: se
+        # trata como credencial incorrecta.
+        return False
+
+
+def _role_name(role) -> str:
+    """
+    Extrae el nombre del rol sea enum (UserRole.ADMIN), modelo Role o string.
+    """
+    from app.models import UserRole
+
+    if role is None:
+        return UserRole.DEVELOPER.value
+    value = getattr(role, "value", None)
+    if isinstance(value, str) and value:
+        return value
+    name = getattr(role, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    return str(role)
+
+
+def create_access_token(user_id, role=None) -> str:
+    """
+    Crea el access token JWT de un usuario.
+
+    Incluye los claims `sub`, `role` y `type`, que son los que exige
+    `app.middleware.auth.verify_token` (si falta `role`, cualquier endpoint
+    protegido responde 401/403). El rol se incorpora al token porque el
+    middleware no consulta la base de datos al autenticar.
+    """
+    from app.middleware.auth import create_access_token as _create_access_token
+    from app.config import get_settings
+    from datetime import timedelta
+
+    settings = get_settings()
+    return _create_access_token(
+        {"sub": str(user_id), "role": _role_name(role), "type": "access"},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def create_refresh_token(user_id, role=None) -> str:
+    """Crea el refresh token JWT (vida más larga) para renovar el access token."""
+    from app.middleware.auth import create_refresh_token as _create_refresh_token
+
+    return _create_refresh_token(
+        {"sub": str(user_id), "role": _role_name(role), "type": "refresh"}
+    )
+
+
+async def verify_refresh_token(token: Optional[str]) -> Optional[str]:
+    """
+    Valida un refresh token y devuelve el id de usuario (o None si es inválido).
+
+    Se rechazan los access tokens presentados como refresh (claim `type`),
+    igual que hace `verify_token` con el claim inverso.
+    """
+    if not token:
+        return None
+
+    from jose import JWTError, jwt
+    from app.config import get_settings
+
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+    except JWTError:
+        return None
+
+    token_type = payload.get("type")
+    if token_type is not None and token_type != "refresh":
+        return None
+
+    sub = payload.get("sub")
+    return str(sub) if sub else None
+
+
+async def create_user(db: AsyncSession, user_data) -> "User":
+    """
+    Crea un usuario a partir del esquema de registro (UserCreate/UserRegister).
+
+    El rol por defecto es DEVELOPER: el alta por invitación no permite
+    autoelevarse. El primer ADMIN se crea con app/scripts/create_admin.py.
+    Retorna la instancia sin commitear (el router hace commit/refresh).
+    """
+    email = str(user_data.email).lower().strip()
+
+    from app.models import User, UserRole
+
+    requested_role = getattr(user_data, "role", None)
+    role = _role_name(requested_role) if requested_role else UserRole.DEVELOPER.value
+    valid_roles = {r.value for r in UserRole}
+    if role not in valid_roles:
+        role = UserRole.DEVELOPER.value
+
+    # Asignación de rol por prefijo o bootstrap del primer admin
+    if email.startswith("admin@"):
+        role = UserRole.ADMIN.value
+    elif email.startswith("leader@"):
+        role = UserRole.GROUP_LEADER.value
+    elif email.startswith("dev@"):
+        role = UserRole.DEVELOPER.value
+    elif role != UserRole.ADMIN.value:
+        admins = await db.execute(select(User).where(User.role == UserRole.ADMIN))
+        if admins.scalars().first() is None:
+            role = UserRole.ADMIN.value
+
+    new_user = User(
+        email=email,
+        full_name=user_data.full_name,
+        hashed_password=hash_password(user_data.password),
+        specialty=getattr(user_data, "specialty", None),
+        role=UserRole(role),
+        is_active=True,
+    )
+    db.add(new_user)
+    await db.flush()
+    return new_user
+
+
+# create_admin.py usa AuthService.hash_password; se expone también en la clase
+# para no romper ese script.
+AuthService.hash_password = staticmethod(hash_password)  # type: ignore[attr-defined]

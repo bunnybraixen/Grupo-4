@@ -94,8 +94,17 @@ async def create_application(
         )
 
     try:
+        actor_id = getattr(current_user, "id", None) or getattr(current_user, "sub", None)
+        try:
+            owner_uuid = actor_id if isinstance(actor_id, UUID) else UUID(str(actor_id))
+        except (TypeError, ValueError):
+            owner_uuid = None
+
         # Crear nueva instancia de aplicación
-        new_app = Application(**app_data.dict())
+        new_app = Application(
+            **app_data.dict(),
+            owner_id=owner_uuid
+        )
         db.add(new_app)
         await db.commit()
         await db.refresh(new_app)

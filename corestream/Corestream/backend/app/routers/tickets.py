@@ -246,13 +246,29 @@ async def create_ticket(
     # WEB-08: crear tickets es una acción de gestión -> ADMIN o TEAM_LEADER.
     require_admin_or_leader(current_user)
 
+    # `get_current_user` devuelve el TokenPayload del JWT (sub/role/exp), no la
+    # fila del usuario: `current_user.id` / `.name` no existen y la creación
+    # fallaba con 400. Se resuelve el usuario real a partir del claim `sub`.
+    actor_id = getattr(current_user, "id", None) or getattr(current_user, "sub", None)
+    try:
+        actor_uuid = actor_id if isinstance(actor_id, UUID) else UUID(str(actor_id))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de usuario inválido"
+        )
+
+    actor_result = await db.execute(select(User).where(User.id == actor_uuid))
+    actor = actor_result.scalar_one_or_none()
+    actor_name = actor.full_name if actor else "Sistema"
+
     try:
         # Crear nuevo ticket. `status` viene del payload (por defecto TODO) y la
         # autoría se guarda en la FK `created_by_id`: `created_by` es la relación
         # ORM, no una columna, y asignarle un UUID la rompía.
         new_ticket = Ticket(
             **ticket_data.model_dump(),
-            created_by_id=current_user.id,
+            created_by_id=actor_uuid,
         )
         db.add(new_ticket)
         await db.commit()
@@ -260,7 +276,7 @@ async def create_ticket(
         # Registrar evento de creación
         await ticket_state_machine.log_ticket_event(
             db, new_ticket.id, TicketEventType.CREATED,
-            current_user.id, f"Ticket creado por {current_user.name}"
+            actor_uuid, f"Ticket creado por {actor_name}"
         )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)

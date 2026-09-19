@@ -85,7 +85,4 @@ class Subtask(Base, BaseEntity):
         doc="Ticket contenedor de esta subtarea"
     )
     
-    __table_args__ = (
-        Index('ix_subtasks_ticket_id', 'ticket_id'),
-        Index('ix_subtasks_is_completed', 'is_completed'),
-    )
+    __table_args__ = ()

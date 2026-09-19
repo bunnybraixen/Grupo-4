@@ -1,0 +1,24 @@
+Poner siguiente comando en la consola:
+
+(async () => {
+  const email = 'admin@corestream.com';
+  const password = 'AdminPassword123!';
+
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+  const token = data.access_token;
+  const refreshToken = data.refresh_token;
+
+  localStorage.setItem('accessToken', token);
+  localStorage.setItem('refreshToken', refreshToken);
+  localStorage.setItem('authTokens', JSON.stringify({ accessToken: token, refreshToken, tokenType: 'bearer' }));
+  localStorage.setItem('userRole', 'ADMIN');
+
+  console.log('¡Sesión actualizada como ADMIN!');
+  window.location.href = '/admin/builder';
+})();

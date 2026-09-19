@@ -155,13 +155,13 @@ class EpicResponse(BaseModel):
     title: str
     description: Optional[str] = None
     application_id: UUID
-    order_index: int
+    order_index: int = 0
     due_date: Optional[datetime] = None
-    is_collapsed: bool
+    is_collapsed: bool = False
     created_at: datetime
-    progress: float
-    total_tickets: int
-    completed_tickets: int
+    progress: float = 0.0
+    total_tickets: int = 0
+    completed_tickets: int = 0
 
     model_config = {"from_attributes": True}
 

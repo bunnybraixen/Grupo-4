@@ -44,6 +44,7 @@
         rows="2"
         class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 mb-3 outline-none"
       ></textarea>
+      <p v-if="appError" class="text-xs text-red-400 mb-2 font-medium">{{ appError }}</p>
       <div class="flex gap-2">
         <button
           :disabled="!newAppName.trim() || working"
@@ -220,6 +221,7 @@ const selectedAppId = ref('')
 const showNewApp = ref(false)
 const newAppName = ref('')
 const newAppDescription = ref('')
+const appError = ref('')
 
 const showNewEpic = ref(false)
 const newEpicTitle = ref('')
@@ -249,6 +251,7 @@ const fetchEpics = async (): Promise<void> => {
 
 const createApp = async (): Promise<void> => {
   working.value = true
+  appError.value = ''
   try {
     const created = await api.applications.create({
       name: newAppName.value.trim(),
@@ -260,8 +263,13 @@ const createApp = async (): Promise<void> => {
     newAppDescription.value = ''
     showNewApp.value = false
     await fetchEpics()
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error al crear aplicación:', err)
+    if (err?.response?.status === 409) {
+      appError.value = `Ya existe una aplicación con el nombre "${newAppName.value.trim()}". Por favor elige otro nombre o selecciónala en la lista.`
+    } else {
+      appError.value = err?.response?.data?.detail || 'Error al crear la aplicación.'
+    }
   } finally {
     working.value = false
   }

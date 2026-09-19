@@ -146,7 +146,4 @@ class Document(Base, BaseEntity):
     )
     
     __table_args__ = (
-        Index('ix_documents_epic_id', 'epic_id'),
-        Index('ix_documents_ticket_id', 'ticket_id'),
-        Index('ix_documents_uploaded_by_id', 'uploaded_by_id'),
     )

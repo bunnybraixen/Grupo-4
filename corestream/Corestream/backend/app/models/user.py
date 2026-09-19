@@ -151,8 +151,3 @@ class User(Base, BaseEntity):
         doc="Lista de documentos subidos por este usuario"
     )
     
-    __table_args__ = (
-        Index('ix_users_email', 'email'),
-        Index('ix_users_role', 'role'),
-        Index('ix_users_is_active', 'is_active'),
-    )

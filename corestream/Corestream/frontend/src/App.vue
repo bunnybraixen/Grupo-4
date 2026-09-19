@@ -38,7 +38,8 @@
 
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api, setAuthTokens, clearAuthTokens } from '@/services/api'
+import { clearAuthTokens } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 
 /**
@@ -59,6 +60,12 @@ const showNotifications = ref(false)
 const router = useRouter()
 
 /**
+ * Store de autenticación: centraliza tokens, usuario y persistencia.
+ * Se usa aquí para restaurar la sesión tras recargar la página.
+ */
+const authStore = useAuthStore()
+
+/**
  * ========================================
  * MÉTODOS
  * ========================================
@@ -76,55 +83,41 @@ const router = useRouter()
 const initializeApp = async (): Promise<void> => {
   try {
     /**
-     * Obtiene tokens del localStorage
-     * Se guardan después de login o cuando se renuevan
+     * Restaura la sesión desde localStorage (`authTokens`, `accessToken`,
+     * `refreshToken`) y reactiva el token en el cliente HTTP. Antes este
+     * método leía claves que NADIE escribía y se salía sin restaurar nada.
      */
-    const accessToken = localStorage.getItem('accessToken')
-    const refreshToken = localStorage.getItem('refreshToken')
+    authStore.initialize()
 
-    /**
-     * Si no hay tokens, el usuario no está autenticado
-     * El router guard lo redirigirá a login automáticamente
-     */
-    if (!accessToken || !refreshToken) {
+    if (!authStore.tokens?.accessToken) {
+      /**
+       * Sin sesión persistida: el guard del router mandará a /login.
+       */
       return
     }
 
     /**
-     * Restaura los tokens en el servicio de API
-     * Necesario para que los interceptores funcionen
+     * Obtiene información del usuario actual del backend.
+     * Valida que el token sea válido y devuelve el usuario normalizado.
      */
-    setAuthTokens({
-      accessToken,
-      refreshToken,
-      tokenType: 'Bearer'
-    })
+    const user = await authStore.fetchMe()
 
     /**
-     * Obtiene información del usuario actual del backend
-     * Valida que el token sea válido y el usuario exista
+     * Guarda información del usuario en localStorage
+     * Se usa en guards de navegación y lógica de permisos
      */
-    const response = await api.auth.getMe()
-
-    if (response.success && response.data) {
-      /**
-       * Guarda información del usuario en localStorage
-       * Se usa en guards de navegación y lógica de permisos
-       */
-      localStorage.setItem('userRole', response.data.role)
-      localStorage.setItem('userId', response.data.id)
-      localStorage.setItem('userName', response.data.fullName)
-    }
+    localStorage.setItem('userRole', user.role)
+    localStorage.setItem('userId', user.id)
+    localStorage.setItem('userName', user.fullName ?? '')
   } catch (error) {
     /**
      * Si falla la obtención del usuario, limpia tokens y redirige a login
      * Probablemente el token expiró o es inválido
      */
     clearAuthTokens()
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
     localStorage.removeItem('userRole')
     localStorage.removeItem('userId')
+    localStorage.removeItem('userName')
 
     /**
      * Redirige a login solo si no está ya ahí

@@ -244,50 +244,36 @@ async def get_current_user(
         raise
 
 
-def require_role(required_roles: list[str]):
+def require_role(required_roles):
     """
     Factory que crea una dependencia para verificar que el usuario tiene uno de los roles requeridos.
     
     Se utiliza para autorización basada en roles (RBAC).
     
     Args:
-        required_roles: Lista de roles aceptados (ej: ["admin", "manager"])
+        required_roles: Rol o lista de roles aceptados (ej: UserRole.ADMIN o ["ADMIN", "GROUP_LEADER"])
         
     Returns:
         async function: Función que se puede usar como dependencia FastAPI
-        
-    Raises:
-        HTTPException: Si el usuario no tiene ninguno de los roles requeridos
-        
-    Ejemplo:
-        @app.delete("/users/{user_id}")
-        async def delete_user(
-            user_id: UUID,
-            current_user: TokenPayload = Depends(get_current_user),
-            _: None = Depends(require_role(["admin"]))
-        ):
-            # Solo usuarios con rol "admin" pueden ejecutar esta función
-            return {"message": "Usuario eliminado"}
     """
+    if not isinstance(required_roles, (list, tuple, set)):
+        roles_list = [required_roles]
+    else:
+        roles_list = list(required_roles)
+
+    normalized_required = {
+        getattr(r, "value", str(r)).upper() for r in roles_list
+    }
+
     async def verify_role(
         current_user: TokenPayload = Depends(get_current_user)
     ) -> TokenPayload:
-        """
-        Verifica que el usuario actual tenga uno de los roles requeridos.
-        
-        Args:
-            current_user: Datos del usuario extraídos del token JWT
-            
-        Returns:
-            TokenPayload: Los datos del usuario si tiene permisos
-            
-        Raises:
-            HTTPException: Si el usuario no tiene el rol requerido
-        """
-        if current_user.role not in required_roles:
+        user_role = str(current_user.role or "").upper()
+        # ADMIN siempre tiene acceso a todo, o si el rol coincide
+        if user_role != "ADMIN" and user_role not in normalized_required:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere uno de estos roles: {', '.join(required_roles)}"
+                detail=f"Se requiere uno de estos roles: {', '.join(normalized_required)}. Tu rol actual es: {user_role}"
             )
         
         return current_user

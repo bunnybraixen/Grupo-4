@@ -364,11 +364,15 @@ router.beforeEach(
     next: NavigationGuardNext
   ): Promise<void> => {
     /**
-     * Obtiene el token de autenticación almacenado
-     * Normalmente se guardaría en el store de Pinia
-     * Aquí se simplifca extrayéndolo del localStorage
+     * Obtiene el token de autenticación almacenado.
+     *
+     * `accessToken` lo escribe `setAuthTokens()` (services/api.ts) en cada
+     * login/refresh. Se acepta también `authTokens` (objeto con los tokens)
+     * como respaldo por si la sesión se restauró desde una versión anterior
+     * que solo persistía ese objeto.
      */
-    const token = localStorage.getItem('accessToken')
+    const token =
+      localStorage.getItem('accessToken') || localStorage.getItem('authTokens')
     const userRole = localStorage.getItem('userRole') as UserRole | null
 
     /**

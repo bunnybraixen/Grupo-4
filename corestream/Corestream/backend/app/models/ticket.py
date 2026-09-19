@@ -218,8 +218,4 @@ class Ticket(Base, BaseEntity):
     )
     
     __table_args__ = (
-        Index('ix_tickets_epic_id', 'epic_id'),
-        Index('ix_tickets_assignee_id', 'assignee_id'),
-        Index('ix_tickets_status', 'status'),
-        Index('ix_tickets_created_by_id', 'created_by_id'),
     )

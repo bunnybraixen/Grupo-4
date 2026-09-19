@@ -153,11 +153,11 @@ class ApplicationResponse(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
     icon: Optional[str] = None
-    owner_id: UUID
-    is_active: bool
+    owner_id: Optional[UUID] = None
+    is_active: bool = True
     created_at: datetime
-    epic_count: int
-    pending_count: int
-    delayed_count: int
+    epic_count: int = 0
+    pending_count: int = 0
+    delayed_count: int = 0
 
     model_config = {"from_attributes": True}

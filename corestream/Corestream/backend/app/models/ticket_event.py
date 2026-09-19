@@ -165,9 +165,4 @@ class TicketEvent(Base, BaseEntity):
         doc="Usuario destino en evento de redirección"
     )
     
-    __table_args__ = (
-        Index('ix_ticket_events_ticket_id', 'ticket_id'),
-        Index('ix_ticket_events_user_id', 'user_id'),
-        Index('ix_ticket_events_event_type', 'event_type'),
-        Index('ix_ticket_events_created_at', 'created_at'),
-    )
+    __table_args__ = ()

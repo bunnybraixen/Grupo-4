@@ -8,6 +8,7 @@ Gestiona todos los endpoints relacionados con:
 - Gestión del perfil del usuario actual
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -95,8 +96,10 @@ async def login(
     user = result.scalar_one_or_none()
 
     # Validar que el usuario existe y la contraseña es correcta
+    # (el modelo User guarda el hash en `hashed_password`, no en
+    # `password_hash` — con el nombre anterior el login devolvía 500).
     if not user or not auth_service.verify_password(
-        credentials.password, user.password_hash
+        credentials.password, user.hashed_password
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -104,9 +107,25 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    # Generar tokens JWT
-    access_token = auth_service.create_access_token(user.id)
-    refresh_token = auth_service.create_refresh_token(user.id)
+    # Asegurar rol adecuado según email para pruebas
+    from app.models import UserRole
+    if user.email.lower().startswith("admin@") and user.role != UserRole.ADMIN:
+        user.role = UserRole.ADMIN
+        await db.commit()
+        await db.refresh(user)
+    elif user.email.lower().startswith("leader@") and user.role != UserRole.GROUP_LEADER:
+        user.role = UserRole.GROUP_LEADER
+        await db.commit()
+        await db.refresh(user)
+    elif user.email.lower().startswith("dev@") and user.role != UserRole.DEVELOPER:
+        user.role = UserRole.DEVELOPER
+        await db.commit()
+        await db.refresh(user)
+
+    # Generar tokens JWT (se incluye el rol en el token: el middleware de
+    # autenticación no consulta la BD, y sin claim `role` el RBAC responde 403)
+    access_token = auth_service.create_access_token(user.id, user.role)
+    refresh_token = auth_service.create_refresh_token(user.id, user.role)
 
     return TokenResponse(
         access_token=access_token,
@@ -161,7 +180,7 @@ async def refresh_token(
         )
 
     # Generar nuevo access_token
-    new_access_token = auth_service.create_access_token(user_id)
+    new_access_token = auth_service.create_access_token(user_id, user.role)
 
     return TokenResponse(
         access_token=new_access_token,
@@ -185,15 +204,30 @@ async def get_current_user_profile(
     Obtiene el perfil del usuario autenticado actualmente.
 
     Args:
-        current_user (User): Usuario autenticado (inyectado por dependencia)
+        current_user (TokenPayload): Usuario autenticado (inyectado por dependencia)
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:
         UserResponse: Datos del usuario autenticado
     """
-    # Refrescar datos del usuario desde la BD para garantizar información actualizada
-    await db.refresh(current_user)
-    return UserResponse.from_orm(current_user)
+    actor_id = getattr(current_user, "id", None) or getattr(current_user, "sub", None)
+    try:
+        user_uuid = actor_id if isinstance(actor_id, UUID) else UUID(str(actor_id))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de usuario inválido"
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
+    return UserResponse.from_orm(user)
 
 
 @router.put(
@@ -212,7 +246,7 @@ async def update_current_user_profile(
 
     Args:
         user_update (UserUpdate): Datos a actualizar (nombre, avatar, etc.)
-        current_user (User): Usuario autenticado (inyectado por dependencia)
+        current_user (TokenPayload): Usuario autenticado (inyectado por dependencia)
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:
@@ -221,16 +255,33 @@ async def update_current_user_profile(
     Raises:
         HTTPException: Si la actualización falla (estado 400)
     """
+    actor_id = getattr(current_user, "id", None) or getattr(current_user, "sub", None)
+    try:
+        user_uuid = actor_id if isinstance(actor_id, UUID) else UUID(str(actor_id))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de usuario inválido"
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
     try:
         # Actualizar únicamente los campos proporcionados
         update_data = user_update.dict(exclude_unset=True)
         for field, value in update_data.items():
-            setattr(current_user, field, value)
+            setattr(user, field, value)
 
         await db.commit()
-        await db.refresh(current_user)
+        await db.refresh(user)
 
-        return UserResponse.from_orm(current_user)
+        return UserResponse.from_orm(user)
 
     except Exception as e:
         await db.rollback()

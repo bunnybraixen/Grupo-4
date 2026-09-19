@@ -28,8 +28,8 @@ import sys
 from sqlalchemy import select
 
 from app.database import get_session_maker
-from app.models import Role, User, UserRole
-from app.services.auth_service import AuthService
+from app.models import User, UserRole
+from app.services import auth_service
 
 
 def _generate_password(length: int = 20) -> str:
@@ -42,7 +42,7 @@ async def create_admin(email: str, password: str | None, full_name: str) -> None
 
     async with get_session_maker()() as db:
         existing_admin = await db.execute(
-            select(User).join(Role, User.role_id == Role.id).where(Role.name == UserRole.ADMIN.value)
+            select(User).where(User.role == UserRole.ADMIN)
         )
         if existing_admin.scalars().first() is not None:
             print(
@@ -57,29 +57,15 @@ async def create_admin(email: str, password: str | None, full_name: str) -> None
             print(f"Ya existe un usuario con el email {email}. Aborta.")
             sys.exit(1)
 
-        role_result = await db.execute(select(Role).where(Role.name == UserRole.ADMIN.value))
-        admin_role = role_result.scalars().first()
-        if admin_role is None:
-            print(
-                "El rol ADMIN no existe en la base de datos todavía. "
-                "Aplica las migraciones (alembic upgrade head) antes de correr esto."
-            )
-            sys.exit(1)
-
         final_password = password or _generate_password()
 
-        # AuthService.hash_password, NO middleware.auth.hash_password: el
-        # login (routers/auth.py) verifica con AuthService.verify_password,
-        # que antes de bcrypt aplica un pre-hash SHA-256 (evita el límite de
-        # 72 bytes de bcrypt). middleware.auth.hash_password es un bcrypt
-        # liso sin ese pre-hash — un hash suyo nunca verifica en el login.
-        # Se detectó porque este mismo bootstrap fallaba con "credenciales
-        # incorrectas" usando la contraseña recién creada.
+        # El rol ADMIN es un valor del enum `UserRole` en la columna `users.role`;
+        # no hay FK a una tabla `roles` en este esquema.
         admin_user = User(
             email=email,
             full_name=full_name,
-            hashed_password=AuthService.hash_password(final_password),
-            role_id=admin_role.id,
+            hashed_password=auth_service.hash_password(final_password),
+            role=UserRole.ADMIN,
             is_active=True,
         )
         db.add(admin_user)
