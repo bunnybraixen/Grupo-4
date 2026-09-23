@@ -231,6 +231,15 @@
         </div>
       </div>
 
+      <!-- Consulta de tickets: filtra por título o estado dentro de la aplicación -->
+      <div class="mb-4">
+        <input
+          v-model="searchQuery"
+          placeholder="Buscar tickets por título o estado…"
+          class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none focus:border-[var(--teal)]"
+        />
+      </div>
+
       <div v-if="epicsStore.isLoading" class="text-center py-12 text-[var(--text-muted)]">Cargando épicas…</div>
       <div v-else-if="epicsStore.error" class="text-center py-8 text-red-400 text-sm">{{ epicsStore.error }}</div>
       <div v-else-if="epics.length === 0" class="text-center py-12 text-[var(--text-muted)]">
@@ -385,9 +394,9 @@
 
         <p v-if="ticketError" class="px-3 py-2 text-xs text-red-400 border-t border-[var(--border-subtle)]">{{ ticketError }}</p>
 
-        <div v-if="(epicTickets[epic.id] || []).length" class="border-t border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
+        <div v-if="visibleTickets(epic.id).length" class="border-t border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
           <div
-            v-for="ticket in epicTickets[epic.id]"
+            v-for="ticket in visibleTickets(epic.id)"
             :key="ticket.id"
             class="p-3 flex flex-wrap items-center justify-between gap-2"
           >
@@ -422,6 +431,24 @@
               >
                 ☑ Subtareas ({{ (ticket.subtasks ?? []).length }})
               </button>
+              <button
+                @click="openTicketEditor(ticket)"
+                class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
+              >
+                ✏️ Editar
+              </button>
+              <button
+                @click="toggleTicketDetail(ticket)"
+                class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
+              >
+                👁 Detalle
+              </button>
+              <button
+                @click="deleteTicket(ticket)"
+                class="px-3 py-1 rounded-lg text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+              >
+                🗑 Eliminar
+              </button>
             </div>
 
             <!-- Subtareas del ticket (POST/PUT/DELETE /api/subtasks) -->
@@ -441,18 +468,43 @@
                     @change="toggleSubtask(ticket, sub)"
                     class="accent-[var(--teal)]"
                   />
-                  <span
-                    :class="sub.isCompleted ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-primary)]'"
-                    class="flex-1 min-w-0 truncate"
-                  >{{ sub.title }}</span>
-                  <button
-                    :disabled="working"
-                    @click="removeSubtask(ticket, sub)"
-                    class="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
-                    title="Eliminar subtarea"
-                  >
-                    ✕
-                  </button>
+                  <template v-if="editingSubtaskId === sub.id">
+                    <input
+                      v-model="editSubtaskTitle"
+                      @keyup.enter="saveSubtaskTitle(ticket)"
+                      class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded px-2 py-1 text-sm outline-none"
+                    />
+                    <button
+                      :disabled="working || !editSubtaskTitle.trim()"
+                      @click="saveSubtaskTitle(ticket)"
+                      class="text-xs text-[var(--teal)] font-medium disabled:opacity-50"
+                    >
+                      Guardar
+                    </button>
+                    <button @click="editingSubtaskId = null" class="text-xs text-[var(--text-muted)]">Cancelar</button>
+                  </template>
+                  <template v-else>
+                    <span
+                      :class="sub.isCompleted ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-primary)]'"
+                      class="flex-1 min-w-0 truncate"
+                    >{{ sub.title }}</span>
+                    <button
+                      :disabled="working"
+                      @click="startEditSubtask(sub)"
+                      class="text-xs text-[var(--text-muted)] hover:text-[var(--teal)] disabled:opacity-50"
+                      title="Renombrar subtarea"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      :disabled="working"
+                      @click="removeSubtask(ticket, sub)"
+                      class="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                      title="Eliminar subtarea"
+                    >
+                      ✕
+                    </button>
+                  </template>
                 </li>
               </ul>
               <div class="flex gap-2">
@@ -470,6 +522,118 @@
                   Añadir
                 </button>
               </div>
+            </div>
+
+            <!-- Edición de ticket: título, descripción, prioridad, fecha, PR, asignado y épica -->
+            <div
+              v-if="editingTicketId === ticket.id"
+              class="w-full mt-2 rounded-lg border border-[var(--teal)]/40 bg-[var(--bg-card)] p-3 space-y-2"
+            >
+              <input
+                v-model="editTicketForm.title"
+                placeholder="Título *"
+                class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 text-sm outline-none"
+              />
+              <textarea
+                v-model="editTicketForm.description"
+                placeholder="Descripción"
+                rows="3"
+                class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 text-sm outline-none"
+              ></textarea>
+              <div class="flex flex-wrap gap-2">
+                <select
+                  v-model="editTicketForm.priority"
+                  class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
+                >
+                  <option value="LOW">Prioridad: Baja</option>
+                  <option value="MEDIUM">Prioridad: Media</option>
+                  <option value="HIGH">Prioridad: Alta</option>
+                  <option value="URGENT">Prioridad: Urgente</option>
+                </select>
+                <input
+                  v-model="editTicketForm.dueDate"
+                  type="date"
+                  title="Fecha límite"
+                  class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
+                />
+              </div>
+              <input
+                v-model="editTicketForm.prLink"
+                placeholder="Enlace del PR (https://github.com/…)"
+                class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 text-sm outline-none"
+              />
+              <div class="flex flex-wrap gap-2">
+                <select
+                  v-model="editTicketForm.assigneeId"
+                  class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
+                >
+                  <option value="">Sin asignar</option>
+                  <option v-for="u in usersList" :key="u.id" :value="u.id">
+                    {{ u.fullName || u.email }}
+                  </option>
+                </select>
+                <select
+                  v-model="editTicketForm.epicId"
+                  class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
+                >
+                  <option v-for="e in epics" :key="e.id" :value="e.id">
+                    Épica: {{ e.title }}
+                  </option>
+                </select>
+              </div>
+              <p v-if="ticketError" class="text-xs text-red-400">{{ ticketError }}</p>
+              <div class="flex gap-2">
+                <button
+                  :disabled="working || !editTicketForm.title.trim()"
+                  @click="saveTicketEdits(ticket)"
+                  class="px-3 py-1.5 rounded-lg text-sm bg-[var(--teal)] hover:bg-[var(--teal-90)] disabled:opacity-50"
+                >
+                  Guardar cambios
+                </button>
+                <button @click="editingTicketId = null" class="text-[var(--text-muted)] px-3 py-1.5 text-sm">Cancelar</button>
+              </div>
+            </div>
+
+            <!-- Detalle del ticket (consulta completa) -->
+            <div
+              v-if="detailTicketId === ticket.id"
+              class="w-full mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)]/40 p-3 text-sm space-y-1.5"
+            >
+              <p>
+                <span class="text-[var(--text-muted)]">Descripción:</span>
+                {{ ticket.description || '—' }}
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">Épica:</span>
+                {{ epicTitleFor(ticket.epicId) }}
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">Asignado:</span>
+                {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : 'Sin asignar' }}
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">Estado:</span> {{ statusLabel(ticket.status) }}
+                · <span class="text-[var(--text-muted)]">Prioridad:</span> {{ priorityLabel(ticket.priority) }}
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">Fecha límite:</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}
+                · <span class="text-[var(--text-muted)]">Creado:</span> {{ ticket.createdAt ? ticket.createdAt.slice(0, 10) : '—' }}
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">PR:</span>
+                <a
+                  v-if="ticket.prLink"
+                  :href="ticket.prLink"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-[var(--teal)] underline break-all"
+                >{{ ticket.prLink }}</a>
+                <span v-else>—</span>
+              </p>
+              <p>
+                <span class="text-[var(--text-muted)]">Subtareas:</span>
+                {{ (ticket.subtasks ?? []).filter((s) => s.isCompleted).length }}/{{ (ticket.subtasks ?? []).length }} completadas
+              </p>
             </div>
           </div>
         </div>
@@ -492,7 +656,7 @@ import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
-import type { Epic, Subtask, Ticket } from '@/types'
+import type { Epic, Subtask, Ticket, User } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -544,6 +708,36 @@ const openSubtasksFor = ref<string | null>(null)
 const newSubtaskTitle = ref('')
 /** Mensaje de error de la última acción sobre un ticket */
 const ticketError = ref('')
+
+/** Texto de la consulta/búsqueda de tickets (título o estado) */
+const searchQuery = ref('')
+/** Usuarios del sistema para el combo "Asignado" (GET /api/users/, solo ADMIN) */
+const usersList = ref<User[]>([])
+/** Ticket cuyo formulario de edición está abierto */
+const editingTicketId = ref<string | null>(null)
+/** Ticket cuyo panel de detalle está abierto */
+const detailTicketId = ref<string | null>(null)
+/** Subtarea que se está renombrando */
+const editingSubtaskId = ref<string | null>(null)
+const editSubtaskTitle = ref('')
+/** Formulario de edición de ticket (título, desc, prioridad, fecha, PR, asignado, épica) */
+const editTicketForm = ref<{
+  title: string
+  description: string
+  priority: Priority
+  dueDate: string
+  prLink: string
+  assigneeId: string
+  epicId: string
+}>({
+  title: '',
+  description: '',
+  priority: 'MEDIUM',
+  dueDate: '',
+  prLink: '',
+  assigneeId: '',
+  epicId: ''
+})
 
 const epics = computed(() => epicsStore.epics)
 
@@ -932,6 +1126,139 @@ const removeSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
   } catch (err: any) {
     console.error('Error al eliminar subtarea:', err)
     ticketError.value = err?.response?.data?.detail || 'No se pudo eliminar la subtarea.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Tickets visibles de una épica según la búsqueda (consulta por título/estado) */
+const visibleTickets = (epicId: string): Ticket[] => {
+  const list = epicTickets.value[epicId] ?? []
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return list
+  return list.filter(
+    (t) =>
+      (t.title ?? '').toLowerCase().includes(q) ||
+      statusLabel(t.status).toLowerCase().includes(q)
+  )
+}
+
+/** Título de una épica por id (para el panel de detalle) */
+const epicTitleFor = (epicId: string): string =>
+  epics.value.find((e) => e.id === epicId)?.title ?? '—'
+
+/** Carga (una sola vez) la lista de usuarios para el combo "Asignado" */
+const loadUsers = async (): Promise<void> => {
+  if (usersList.value.length) return
+  try {
+    const res: any = await api.users.list({ limit: 100 })
+    usersList.value = Array.isArray(res) ? res : (res?.items ?? res?.data ?? [])
+  } catch (err) {
+    console.error('Error cargando usuarios:', err)
+  }
+}
+
+/** Abre/cierra el formulario de edición del ticket (y cierra detalle) */
+const openTicketEditor = async (ticket: Ticket): Promise<void> => {
+  detailTicketId.value = null
+  editingTicketId.value = editingTicketId.value === ticket.id ? null : ticket.id
+  ticketError.value = ''
+  if (!editingTicketId.value) return
+  editTicketForm.value = {
+    title: ticket.title ?? '',
+    description: ticket.description ?? '',
+    priority: (ticket.priority as Priority) ?? 'MEDIUM',
+    dueDate: ticket.dueDate ? String(ticket.dueDate).slice(0, 10) : '',
+    prLink: ticket.prLink ?? '',
+    assigneeId: ticket.assigneeId ?? '',
+    epicId: ticket.epicId
+  }
+  await loadUsers()
+}
+
+/** Abre/cierra el panel de detalle del ticket */
+const toggleTicketDetail = (ticket: Ticket): void => {
+  editingTicketId.value = null
+  ticketError.value = ''
+  detailTicketId.value = detailTicketId.value === ticket.id ? null : ticket.id
+}
+
+/**
+ * Guarda la edición (PUT /tickets/{id}) y, si cambió la épica, mueve el ticket
+ * (PATCH /tickets/{id}/move). `null` en dueDate/prLink/assigneeId limpia el
+ * campo en el backend (actualización parcial con exclude_unset).
+ */
+const saveTicketEdits = async (ticket: Ticket): Promise<void> => {
+  const f = editTicketForm.value
+  if (!f.title.trim()) return
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.update(ticket.id, {
+      title: f.title.trim(),
+      description: f.description.trim(),
+      priority: f.priority,
+      dueDate: f.dueDate || null,
+      prLink: f.prLink.trim() || null,
+      assigneeId: f.assigneeId || null
+    } as unknown as Partial<Ticket>)
+
+    const epicChanged = !!f.epicId && f.epicId !== ticket.epicId
+    if (epicChanged) {
+      await api.tickets.move(ticket.id, f.epicId)
+    }
+
+    editingTicketId.value = null
+    await loadTicketsFor(ticket.epicId)
+    if (epicChanged) await loadTicketsFor(f.epicId)
+  } catch (err: any) {
+    console.error('Error al guardar ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudieron guardar los cambios.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Elimina el ticket con confirmación (DELETE /tickets/{id}) */
+const deleteTicket = async (ticket: Ticket): Promise<void> => {
+  if (!window.confirm(`¿Eliminar el ticket "${ticket.title}"? Esta acción no se puede deshacer.`)) {
+    return
+  }
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.delete(ticket.id)
+    editingTicketId.value = null
+    detailTicketId.value = null
+    await loadTicketsFor(ticket.epicId)
+  } catch (err: any) {
+    console.error('Error al eliminar ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo eliminar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Activa el modo renombrar de una subtarea */
+const startEditSubtask = (sub: Subtask): void => {
+  editingSubtaskId.value = sub.id
+  editSubtaskTitle.value = sub.title
+  ticketError.value = ''
+}
+
+/** Guarda el nuevo nombre de la subtarea (PUT /api/subtasks/{id}) */
+const saveSubtaskTitle = async (ticket: Ticket): Promise<void> => {
+  const title = editSubtaskTitle.value.trim()
+  if (!title || !editingSubtaskId.value) return
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.updateSubtask(ticket.id, editingSubtaskId.value, { title })
+    editingSubtaskId.value = null
+    await loadTicketsFor(ticket.epicId)
+  } catch (err: any) {
+    console.error('Error al renombrar subtarea:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo renombrar la subtarea.'
   } finally {
     working.value = false
   }

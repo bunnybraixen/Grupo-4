@@ -547,7 +547,7 @@ export const api = {
       search?: string
     }): Promise<ApiResponse<PaginatedResponse<User>>> => {
       const response = await apiClient.get<ApiResponse<PaginatedResponse<User>>>(
-        '/users',
+        '/users/',
         { params: filters }
       )
       return response.data
