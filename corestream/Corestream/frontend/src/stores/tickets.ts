@@ -324,7 +324,7 @@ export const useTicketsStore = defineStore('tickets', () => {
 
     try {
       const created = await api.tickets.create(data)
-      tickets.value.push(created)
+      await fetchByEpic(data.epicId)
       return created
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al crear ticket'
@@ -620,6 +620,84 @@ export const useTicketsStore = defineStore('tickets', () => {
    * @returns Promise<Ticket>
    * @throws Error si la razón es muy corta
    */
+  const createSubtask = async (ticketId: string, title: string): Promise<Ticket['subtasks'][number]> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const created = await api.tickets.createSubtask(ticketId, title)
+      const ticketIndex = tickets.value.findIndex(t => t.id === ticketId)
+      if (ticketIndex !== -1) {
+        tickets.value[ticketIndex].subtasks = [...(tickets.value[ticketIndex].subtasks ?? []), created]
+      }
+      return created
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al crear subtarea'
+      error.value = message
+      console.error('Error en createSubtask:', err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const updateSubtask = async (ticketId: string, subtaskId: string, data: Partial<Ticket['subtasks'][number]>): Promise<Ticket['subtasks'][number]> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const updated = await api.tickets.updateSubtask(ticketId, subtaskId, data)
+      const ticketIndex = tickets.value.findIndex(t => t.id === ticketId)
+      if (ticketIndex !== -1) {
+        tickets.value[ticketIndex].subtasks = (tickets.value[ticketIndex].subtasks ?? []).map((subtask) =>
+          subtask.id === subtaskId ? { ...subtask, ...updated } : subtask
+        )
+      }
+      if (selectedTicket.value?.id === ticketId) {
+        selectedTicket.value = {
+          ...selectedTicket.value,
+          subtasks: (selectedTicket.value.subtasks ?? []).map((subtask) =>
+            subtask.id === subtaskId ? { ...subtask, ...updated } : subtask
+          )
+        }
+      }
+      return updated
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al actualizar subtarea'
+      error.value = message
+      console.error('Error en updateSubtask:', err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const deleteSubtask = async (ticketId: string, subtaskId: string): Promise<void> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await api.tickets.deleteSubtask(ticketId, subtaskId)
+      const ticketIndex = tickets.value.findIndex(t => t.id === ticketId)
+      if (ticketIndex !== -1) {
+        tickets.value[ticketIndex].subtasks = (tickets.value[ticketIndex].subtasks ?? []).filter(s => s.id !== subtaskId)
+      }
+      if (selectedTicket.value?.id === ticketId) {
+        selectedTicket.value = {
+          ...selectedTicket.value,
+          subtasks: (selectedTicket.value.subtasks ?? []).filter(s => s.id !== subtaskId)
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al eliminar subtarea'
+      error.value = message
+      console.error('Error en deleteSubtask:', err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   const redirectTicket = async (
     ticketId: string,
     toUserId: string,
@@ -742,6 +820,9 @@ export const useTicketsStore = defineStore('tickets', () => {
     moveToEpic,
     completeTicket,
     startWorking,
+    createSubtask,
+    updateSubtask,
+    deleteSubtask,
     raiseQuestion,
     resolveQuestion,
     redirectTicket,

@@ -41,6 +41,23 @@
   --color-indigo: #6366F1;
 
   /**
+   * Tema claro: fondo más neutro y alto contraste para lectura
+   */
+  --bg-app: #f3f7ff;
+  --bg-panel: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #eef4ff;
+  --bg-input: #f8fafc;
+  --bg-sidebar: #ebf3ff;
+  --border-subtle: #d9e3f2;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --teal: #0f766e;
+  --teal-90: #115e59;
+  --accent-cold-2: #60a5fa;
+
+  /**
    * Espaciado consistente
    */
   --spacing-xs: 0.25rem;
@@ -55,6 +72,22 @@
   --transition-fast: 150ms;
   --transition-normal: 300ms;
   --transition-slow: 500ms;
+}
+
+html.dark {
+  --bg-app: #0f172a;
+  --bg-panel: #111827;
+  --bg-card: #162033;
+  --bg-card-hover: #1f2a3d;
+  --bg-input: #0b1220;
+  --bg-sidebar: #0b1220;
+  --border-subtle: #334155;
+  --text-primary: #e2e8f0;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --teal: #2dd4bf;
+  --teal-90: #5eead4;
+  --accent-cold-2: #7dd3fc;
 }
 
 /**
@@ -86,6 +119,8 @@ body {
    * Fuente por defecto
    */
   font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-primary);
 
   /**
    * Suavizado antialiasing para texto

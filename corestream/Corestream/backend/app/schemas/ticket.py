@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from app.models.ticket import TicketPriority, TicketStatus
 from app.schemas.user import UserResponse
+from app.schemas.subtask import SubtaskResponse
 
 # Dominios de repositorio aceptados para el enlace de Pull Request.
 # Se comparte entre TicketCreate, TicketUpdate y TicketComplete para que la
@@ -305,6 +306,11 @@ class TicketResponse(BaseModel):
     created_by_id: Optional[UUID] = None
     epic_title: Optional[str] = None
     app_name: Optional[str] = None
-    subtasks: list = []
+    # Tipado explícito: con `list` a secas, Pydantic dejaba pasar objetos ORM
+    # Subtask crudos y la serialización a JSON fallaba con
+    # "Unable to serialize unknown type: app.models.subtask.Subtask" (HTTP 500)
+    # en GET /tickets/ y /tickets/by-epic/{id} en cuanto un ticket tenía
+    # subtareas. Con list[SubtaskResponse] se validan/codifican como corresponde.
+    subtasks: list[SubtaskResponse] = []
 
     model_config = {"from_attributes": True}

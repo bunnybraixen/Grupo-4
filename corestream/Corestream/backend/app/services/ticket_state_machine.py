@@ -21,6 +21,12 @@ from sqlalchemy.future import select
 from fastapi import HTTPException, status
 import json
 
+from app.models.ticket_event import TicketEvent, TicketEventType
+from app.models import Ticket, TicketStatus
+from app.services.ticket_permissions import get_user_id
+from app.services.transition_audit import TransitionAuditService
+from uuid import UUID
+
 # Importar modelos desde el paquete de modelos
 # from app.models import Ticket, TicketEvent, Notification
 
@@ -151,95 +157,178 @@ class TicketStateMachine:
         return int(round(delta))
 
     @staticmethod
+    async def log_ticket_event(
+        db: AsyncSession,
+        ticket_id: str,
+        event_type: str | TicketEventType,
+        user_id: str,
+        detail: Optional[str | dict] = None,
+    ) -> TicketEvent:
+        """Guarda un evento de auditoría asociado a un ticket."""
+        try:
+            normalized_event_type = (
+                TicketEventType(event_type)
+                if not isinstance(event_type, TicketEventType)
+                else event_type
+            )
+
+            detail_data = detail
+            if isinstance(detail_data, str):
+                try:
+                    parsed_detail = json.loads(detail_data)
+                    if isinstance(parsed_detail, dict):
+                        detail_data = parsed_detail
+                    else:
+                        detail_data = {"message": detail_data}
+                except json.JSONDecodeError:
+                    detail_data = {"message": detail_data}
+
+            if isinstance(detail_data, dict):
+                detail_data = dict(detail_data)
+                if "timestamp" not in detail_data:
+                    detail_data["timestamp"] = datetime.utcnow().isoformat()
+            elif detail_data is None:
+                detail_data = {"timestamp": datetime.utcnow().isoformat()}
+            else:
+                detail_data = {"value": detail_data, "timestamp": datetime.utcnow().isoformat()}
+
+            event = TicketEvent(
+                ticket_id=ticket_id,
+                user_id=user_id,
+                event_type=normalized_event_type,
+                detail=detail_data,
+            )
+            db.add(event)
+            await db.commit()
+            await db.refresh(event)
+            return event
+        except HTTPException:
+            raise
+        except Exception as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al crear evento de auditoría: {str(exc)}",
+            ) from exc
+
+    @staticmethod
+    def _to_uuid(value) -> Optional[UUID]:
+        """Normaliza a UUID los ids que llegan como str (claims del JWT)."""
+        if value is None:
+            return None
+        return value if isinstance(value, UUID) else UUID(str(value))
+
+    @staticmethod
+    async def transition_to_in_progress(ticket, current_user, db: AsyncSession) -> dict:
+        """
+        TODO -> IN_PROGRESS, usado por `POST /tickets/{id}/start`.
+
+        Esta función no existía en ningún sitio: el router la invocaba como
+        atributo del módulo (`ticket_state_machine.transition_to_in_progress`) y
+        reventaba con AttributeError, así que el botón "▶ Iniciar" del Builder
+        nunca llegó a cambiar el estado de un ticket.
+
+        Efectos:
+          - Valida la transición (HTTP 400 si no está permitida).
+          - Reclama el ticket para quien lo inicia si estaba libre.
+          - Registra el evento de auditoría (sin commit: lo hace el router,
+            para que el cambio de estado y el evento sean atómicos).
+        """
+        previous_status = getattr(ticket.status, "value", ticket.status)
+
+        if not TicketStateMachine.can_transition(
+            previous_status, TicketStatus.IN_PROGRESS.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Transición no permitida: {previous_status} -> IN_PROGRESS",
+            )
+
+        actor_uuid = TicketStateMachine._to_uuid(get_user_id(current_user))
+
+        # Flujo "tirar de la cola": si nadie tiene el ticket, lo reclama quien
+        # lo inicia. Si ya tiene asignado, el router validó el permiso antes.
+        if getattr(ticket, "assignee_id", None) is None:
+            ticket.assignee_id = actor_uuid
+
+        ticket.status = TicketStatus.IN_PROGRESS
+
+        await TransitionAuditService.record_transition(
+            db=db,
+            ticket_id=TicketStateMachine._to_uuid(ticket.id),
+            user_id=actor_uuid,
+            event_type=TicketEventType.STATUS_CHANGED,
+            from_status=str(previous_status),
+            to_status=TicketStatus.IN_PROGRESS.value,
+            extra={"action": "start"},
+        )
+
+        return {
+            "status": "success",
+            "ticket_id": str(ticket.id),
+            "previous_status": str(previous_status),
+            "new_status": TicketStatus.IN_PROGRESS.value,
+            "assignee_id": str(ticket.assignee_id) if ticket.assignee_id else None,
+        }
+
+    @staticmethod
+    async def transition_to_completed(ticket, current_user, pr_link, db: AsyncSession) -> dict:
+        """
+        IN_PROGRESS -> DONE, usado por `POST /tickets/{id}/complete`.
+
+        Mismo caso que `transition_to_in_progress`: no existía y el endpoint
+        fallaba con AttributeError antes de guardar nada.
+        """
+        previous_status = getattr(ticket.status, "value", ticket.status)
+
+        if not TicketStateMachine.can_transition(
+            previous_status, TicketStatus.DONE.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Transición no permitida: {previous_status} -> DONE",
+            )
+
+        actor_uuid = TicketStateMachine._to_uuid(get_user_id(current_user))
+
+        ticket.status = TicketStatus.DONE
+        if pr_link:
+            ticket.pr_link = pr_link
+
+        await TransitionAuditService.record_transition(
+            db=db,
+            ticket_id=TicketStateMachine._to_uuid(ticket.id),
+            user_id=actor_uuid,
+            event_type=TicketEventType.STATUS_CHANGED,
+            from_status=str(previous_status),
+            to_status=TicketStatus.DONE.value,
+            extra={"action": "complete", "pr_link": pr_link or None},
+        )
+
+        return {
+            "status": "success",
+            "ticket_id": str(ticket.id),
+            "previous_status": str(previous_status),
+            "new_status": TicketStatus.DONE.value,
+            "pr_link": pr_link or None,
+        }
+
+    @staticmethod
     async def _create_event(
         db: AsyncSession,
         ticket_id: str,
         user_id: str,
         event_type: str,
         detail: Optional[str] = None
-    ) -> dict:
-        """
-        Crea y registra un evento de auditoría para un ticket.
-        
-        Genera un registro histórico de todas las acciones realizadas en un ticket.
-        Estos eventos forman una cadena de auditoría completa que permite rastrear
-        cambios y analizar el flujo de trabajo del ticket.
-        
-        Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            ticket_id (str): ID del ticket al que pertenece el evento
-            user_id (str): ID del usuario que realizó la acción
-            event_type (str): Tipo de evento (debe estar en EVENT_TYPES)
-            detail (Optional[str]): Detalles adicionales del evento (JSON serializado)
-            
-        Returns:
-            dict: Diccionario con datos del evento creado
-            
-        Estructura de retorno:
-            {
-                'id': uuid,
-                'ticket_id': uuid,
-                'user_id': uuid,
-                'event_type': str,
-                'detail': dict,
-                'created_at': datetime
-            }
-            
-        Raises:
-            HTTPException(400): event_type no es válido
-            HTTPException(500): Error al crear el evento
-            
-        Detalle técnico:
-            - El detail se almacena como JSON para máxima flexibilidad
-            - Cada evento incluye timestamp automático de creación
-            - Los eventos no pueden ser modificados (son de solo lectura)
-            - Se indexan por ticket_id para búsquedas rápidas de historial
-        """
-        try:
-            # Validar que el tipo de evento es válido
-            if event_type not in TicketStateMachine.EVENT_TYPES:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Tipo de evento inválido: {event_type}"
-                )
-            
-            # Parsear detail como JSON si es string, o convertir a JSON string
-            detail_data = {}
-            if detail:
-                if isinstance(detail, str):
-                    detail_data = json.loads(detail)
-                else:
-                    detail_data = detail
-            
-            # Crear nueva instancia de evento
-            # new_event = TicketEvent(
-            #     ticket_id=UUID(ticket_id),
-            #     user_id=UUID(user_id),
-            #     event_type=event_type,
-            #     detail=detail_data
-            # )
-            
-            # Persistir evento en la base de datos
-            # db.add(new_event)
-            # await db.commit()
-            # await db.refresh(new_event)
-            
-            return {
-                # 'id': str(new_event.id),
-                # 'ticket_id': str(new_event.ticket_id),
-                # 'user_id': str(new_event.user_id),
-                # 'event_type': new_event.event_type,
-                # 'detail': new_event.detail,
-                # 'created_at': new_event.created_at.isoformat()
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al crear evento de auditoría"
-            )
+    ) -> TicketEvent:
+        """Alias conservador para compatibilidad con llamadas internas."""
+        return await TicketStateMachine.log_ticket_event(
+            db=db,
+            ticket_id=ticket_id,
+            event_type=event_type,
+            user_id=user_id,
+            detail=detail,
+        )
 
     @staticmethod
     async def transition(
@@ -941,3 +1030,35 @@ class TicketStateMachine:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al redirigir el ticket"
             )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API DE MÓDULO
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# `routers/tickets.py` y `routers/subtasks.py` importan el MÓDULO y llaman a
+# estos helpers como atributos suyos:
+#
+#     from app.services import ticket_state_machine
+#     await ticket_state_machine.log_ticket_event(db, ticket_id, event_type, user_id, detail)
+#
+# hasta ahora `log_ticket_event` existía SOLO como método de la clase, así que
+# esa llamada lanzaba:
+#
+#     AttributeError: module 'app.services.ticket_state_machine'
+#                     has no attribute 'log_ticket_event'
+#
+# En `routers/tickets.py::create_ticket` el evento se registra DESPUÉS del
+# `await db.commit()` que persiste el ticket, por lo que el AttributeError
+# terminaba en `except Exception` -> `db.rollback()` (inútil: el ticket ya
+# estaba commiteado) -> HTTP 400. Resultado visible: el ticket se creaba pero
+# el frontend recibía 400, no refrescaba la lista y solo se veía al recargar.
+#
+# Estos alias exponen en el módulo las mismas funciones que los tests y
+# `routers/support_tickets.py` ya invocan vía `TicketStateMachine.<nombre>`,
+# sin tocar los 11 puntos de llamada de los routers montados.
+log_ticket_event = TicketStateMachine.log_ticket_event
+_create_event = TicketStateMachine._create_event
+transition_to_in_progress = TicketStateMachine.transition_to_in_progress
+transition_to_completed = TicketStateMachine.transition_to_completed
+

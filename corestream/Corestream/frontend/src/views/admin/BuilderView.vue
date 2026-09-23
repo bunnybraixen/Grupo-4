@@ -11,19 +11,16 @@
       Crea y gestiona aplicaciones, épicas y tickets
     </p>
 
-    <!-- Selector de aplicación -->
-    <div class="mt-6 flex flex-wrap items-center gap-3">
-      <select
-        v-model="selectedAppId"
-        @change="fetchEpics()"
-        class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 outline-none focus:border-[var(--teal)]"
-      >
-        <option value="" disabled>Selecciona una aplicación…</option>
-        <option v-for="app in applicationsStore.applications" :key="app.id" :value="app.id">
-          {{ app.name }}
-        </option>
-      </select>
+    <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Aplicaciones activas</p>
+        <p class="text-sm text-[var(--text-muted)] mt-1">
+          {{ activeApplications.length }} proyecto{{ activeApplications.length === 1 ? '' : 's' }} disponible{{ activeApplications.length === 1 ? '' : 's' }}
+        </p>
+      </div>
+
       <button
+        v-if="canManageApplications"
         @click="showNewApp = !showNewApp"
         class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)] hover:bg-[var(--teal-90)]"
       >
@@ -31,8 +28,155 @@
       </button>
     </div>
 
+    <div v-if="activeApplications.length" class="mt-5 space-y-3">
+      <div
+        v-for="app in activeApplications"
+        :key="app.id"
+        class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm"
+      >
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3">
+              <span
+                class="inline-block h-3 w-3 rounded-full"
+                :style="{ backgroundColor: app.color || '#14b8a6' }"
+              ></span>
+              <h3 class="font-semibold text-lg text-[var(--text-primary)]">{{ app.name }}</h3>
+            </div>
+            <p class="mt-2 text-sm text-[var(--text-muted)]">
+              {{ app.description || 'Sin descripción disponible.' }}
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ app.epicCount ?? 0 }} épicas</span>
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ app.pendingCount ?? 0 }} pendientes</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              @click="selectApplication(app.id)"
+              :class="[
+                'px-3 py-2 rounded-lg text-sm transition-colors',
+                selectedAppId === app.id
+                  ? 'bg-[var(--teal)] text-white'
+                  : 'bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
+              ]"
+            >
+              {{ selectedAppId === app.id ? 'Seleccionada' : 'Seleccionar' }}
+            </button>
+
+            <button
+              v-if="canManageApplications"
+              @click="openAppEditor(app)"
+              class="px-3 py-2 rounded-lg text-sm bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
+            >
+              Editar
+            </button>
+
+            <button
+              v-if="canManageApplications"
+              @click="toggleAppArchive(app)"
+              class="px-3 py-2 rounded-lg text-sm border border-[var(--border-subtle)] bg-[var(--bg-app)] text-[var(--text-primary)] hover:border-amber-500"
+            >
+              {{ app.isActive === false ? 'Reactivar' : 'Archivar' }}
+            </button>
+
+            <button
+              @click="openEpicCreatorFor(app.id)"
+              class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30"
+            >
+              Crear épicas
+            </button>
+          </div>
+        </div>
+
+        <div v-if="editingAppId === app.id" class="mt-4 border-t border-[var(--border-subtle)] pt-4">
+          <div class="mb-3">
+            <label class="block text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] mb-2">Nombre</label>
+            <input
+              v-model="editAppForm.name"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none"
+              placeholder="Nombre del proyecto"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="block text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] mb-2">Descripción</label>
+            <textarea
+              v-model="editAppForm.description"
+              rows="2"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none"
+              placeholder="Descripción del proyecto"
+            ></textarea>
+          </div>
+
+          <div class="mb-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2">
+            <div>
+              <p class="text-sm font-medium">Estado del proyecto</p>
+              <p class="text-xs text-[var(--text-muted)]">{{ editAppForm.isArchived ? 'Archivado' : 'Activo' }}</p>
+            </div>
+            <label class="inline-flex items-center cursor-pointer">
+              <input v-model="editAppForm.isArchived" type="checkbox" class="h-4 w-4 rounded border-[var(--border-subtle)] text-[var(--teal)] focus:ring-[var(--teal)]" />
+              <span class="ml-2 text-sm text-[var(--text-primary)]">Archivado</span>
+            </label>
+          </div>
+
+          <p v-if="appError" class="text-xs text-red-400 mb-2 font-medium">{{ appError }}</p>
+
+          <div class="flex gap-2">
+            <button
+              :disabled="!editAppForm.name.trim() || working"
+              @click="saveAppEdits(app)"
+              class="bg-[var(--teal)] hover:bg-[var(--teal-90)] disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm"
+            >
+              Guardar cambios
+            </button>
+            <button @click="cancelAppEdit" class="text-[var(--text-muted)] px-4 py-1.5 text-sm">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="mt-5 rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
+      No hay aplicaciones activas para mostrar.
+    </div>
+
+    <div v-if="authStore.isAdmin && archivedApplications.length" class="mt-8">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h2 class="text-lg font-semibold text-[var(--text-primary)]">Archivados</h2>
+        <span class="rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-300 border border-amber-400/20">
+          {{ archivedApplications.length }} proyecto{{ archivedApplications.length === 1 ? '' : 's' }}
+        </span>
+      </div>
+
+      <div class="space-y-3">
+        <div
+          v-for="app in archivedApplications"
+          :key="app.id"
+          class="rounded-2xl border border-amber-500/30 bg-[var(--bg-card)] p-4 opacity-80"
+        >
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-3">
+              <span class="inline-block h-3 w-3 rounded-full bg-amber-500"></span>
+              <div>
+                <h3 class="font-semibold text-lg text-[var(--text-primary)]">{{ app.name }}</h3>
+                <p class="text-xs text-[var(--text-muted)] uppercase tracking-[0.18em]">Archivado</p>
+              </div>
+            </div>
+
+            <button
+              @click="toggleAppArchive(app)"
+              class="px-3 py-2 rounded-lg text-sm border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
+            >
+              Reactivar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Formulario nueva aplicación -->
-    <div v-if="showNewApp" class="mt-4 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--teal)]/50">
+    <div v-if="showNewApp" class="mt-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--teal)]/50">
       <input
         v-model="newAppName"
         placeholder="Nombre de la aplicación…"
@@ -58,7 +202,7 @@
     </div>
 
     <!-- Nueva épica -->
-    <div v-if="selectedAppId" class="mt-6">
+    <div v-if="selectedAppId" class="mt-8">
       <div v-if="!showNewEpic">
         <button
           @click="showNewEpic = true"
@@ -86,35 +230,119 @@
           <button @click="showNewEpic = false" class="text-[var(--text-muted)] px-4 py-1.5 text-sm">Cancelar</button>
         </div>
       </div>
-      <!-- Cargando / vacío -->
+
       <div v-if="epicsStore.isLoading" class="text-center py-12 text-[var(--text-muted)]">Cargando épicas…</div>
       <div v-else-if="epicsStore.error" class="text-center py-8 text-red-400 text-sm">{{ epicsStore.error }}</div>
       <div v-else-if="epics.length === 0" class="text-center py-12 text-[var(--text-muted)]">
         Todavía no hay épicas en esta aplicación.
       </div>
 
-      <!-- Lista de épicas -->
       <div
-        v-for="epic in epics"
+        v-for="(epic, index) in epics"
         :key="epic.id"
-        class="mt-4 border rounded-xl overflow-hidden bg-[var(--bg-card)]/50 border-[var(--border-subtle)]"
+        draggable="true"
+        @dragstart="handleEpicDragStart(epic.id)"
+        @dragenter.prevent="dropTargetEpicId = epic.id"
+        @dragleave="handleEpicDragLeave(epic.id)"
+        @dragover.prevent
+        @drop="handleEpicDrop(epic.id)"
+        @dragend="handleEpicDragEnd"
+        :class="[
+          'mt-4 border rounded-xl overflow-hidden cursor-move transition-all duration-150',
+          draggedEpicId === epic.id ? 'opacity-60 scale-[0.99]' : 'bg-[var(--bg-card)]/50',
+          dropTargetEpicId === epic.id
+            ? 'border-[var(--teal)] bg-[var(--teal)]/5 ring-2 ring-[var(--teal)]/40 shadow-lg'
+            : 'border-[var(--border-subtle)] bg-[var(--bg-card)]/50'
+        ]"
       >
-        <div class="p-4 flex items-center justify-between">
-          <div>
-            <h3 class="font-bold text-lg">{{ epic.title }}</h3>
-            <p class="text-xs text-[var(--text-muted)] mt-1">
-              {{ (epicTickets[epic.id] || []).length }} ticket(s)
-            </p>
-          </div>
-          <button
-            @click="openTicketFormFor = openTicketFormFor === epic.id ? null : epic.id"
-            class="px-3 py-1.5 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30"
-          >
-            + Nuevo ticket
-          </button>
+        <div v-if="dropTargetEpicId === epic.id" class="flex items-center justify-center border-b border-dashed border-[var(--teal)] bg-[var(--teal)]/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--teal)]">
+          Suelta aquí
         </div>
 
-        <!-- Formulario nuevo ticket -->
+        <div class="p-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-[var(--text-muted)] text-xs">#{{ index + 1 }}</span>
+            <div class="min-w-0">
+              <h3 class="font-bold text-lg">{{ epic.title }}</h3>
+              <div class="mt-2">
+                <div class="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                  <span>{{ getEpicProgress(epic.id).completed }}/{{ getEpicProgress(epic.id).total }} completados</span>
+                  <span
+                    :class="getEpicProgressBadgeClass(getEpicProgress(epic.id).percentage)"
+                    class="rounded-full px-2 py-0.5 font-semibold"
+                  >
+                    {{ getEpicProgress(epic.id).isComplete ? 'COMPLETO' : `Faltan ${getEpicProgress(epic.id).remaining}` }}
+                  </span>
+                </div>
+
+                <div class="mt-2 h-2.5 w-full rounded-full overflow-hidden bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                  <div
+                    class="h-full rounded-full transition-all duration-300"
+                    :class="getEpicProgressBarClass(getEpicProgress(epic.id).percentage)"
+                    :style="{ width: getEpicProgress(epic.id).percentage + '%' }"
+                  ></div>
+                </div>
+
+                <div class="mt-1 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>{{ getEpicProgress(epic.id).percentage }}%</span>
+                  <span>
+                    {{ getEpicProgress(epic.id).remaining === 0 ? 'Todo listo' : `${getEpicProgress(epic.id).remaining} por terminar` }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-if="canManageApplications"
+              @click="openEpicEditor(epic)"
+              class="px-3 py-1.5 rounded-lg text-sm bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
+            >
+              Editar
+            </button>
+            <button
+              @click="openTicketFormFor = openTicketFormFor === epic.id ? null : epic.id"
+              class="px-3 py-1.5 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30"
+            >
+              + Nuevo ticket
+            </button>
+          </div>
+        </div>
+
+        <div v-if="editingEpicId === epic.id" class="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/30">
+          <div class="mb-3">
+            <label class="block text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] mb-2">Nombre de la épica</label>
+            <input
+              v-model="editEpicForm.title"
+              class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none"
+              placeholder="Nombre de la épica"
+            />
+          </div>
+
+          <div class="mb-3">
+            <label class="block text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] mb-2">Descripción</label>
+            <textarea
+              v-model="editEpicForm.description"
+              rows="2"
+              class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none"
+              placeholder="Descripción de la épica"
+            ></textarea>
+          </div>
+
+          <p v-if="appError" class="text-xs text-red-400 mb-2 font-medium">{{ appError }}</p>
+
+          <div class="flex gap-2">
+            <button
+              :disabled="!editEpicForm.title.trim() || working"
+              @click="saveEpicEdits(epic)"
+              class="bg-[var(--teal)] hover:bg-[var(--teal-90)] disabled:opacity-50 px-4 py-1.5 rounded-lg text-sm"
+            >
+              Guardar cambios
+            </button>
+            <button @click="cancelEpicEdit" class="text-[var(--text-muted)] px-4 py-1.5 text-sm">Cancelar</button>
+          </div>
+        </div>
+
         <div v-if="openTicketFormFor === epic.id" class="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-app)]/30">
           <input
             v-model="ticketForm.title"
@@ -155,7 +383,8 @@
           </div>
         </div>
 
-        <!-- Tickets de la épica -->
+        <p v-if="ticketError" class="px-3 py-2 text-xs text-red-400 border-t border-[var(--border-subtle)]">{{ ticketError }}</p>
+
         <div v-if="(epicTickets[epic.id] || []).length" class="border-t border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
           <div
             v-for="ticket in epicTickets[epic.id]"
@@ -170,7 +399,7 @@
                 <span v-if="ticket.dueDate" class="text-[var(--text-muted)]">📅 {{ ticket.dueDate.slice(0, 10) }}</span>
               </div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <button
                 v-if="ticket.status === 'TODO'"
                 :disabled="working"
@@ -187,13 +416,66 @@
               >
                 ✓ Completar
               </button>
+              <button
+                @click="toggleSubtaskPanel(ticket.id)"
+                class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
+              >
+                ☑ Subtareas ({{ (ticket.subtasks ?? []).length }})
+              </button>
+            </div>
+
+            <!-- Subtareas del ticket (POST/PUT/DELETE /api/subtasks) -->
+            <div
+              v-if="openSubtasksFor === ticket.id"
+              class="w-full mt-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)]/40 p-2"
+            >
+              <p v-if="!(ticket.subtasks ?? []).length" class="text-xs text-[var(--text-muted)] mb-2">
+                Este ticket todavía no tiene subtareas.
+              </p>
+              <ul v-else class="space-y-1 mb-2">
+                <li v-for="sub in ticket.subtasks" :key="sub.id" class="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    :checked="sub.isCompleted"
+                    :disabled="working"
+                    @change="toggleSubtask(ticket, sub)"
+                    class="accent-[var(--teal)]"
+                  />
+                  <span
+                    :class="sub.isCompleted ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-primary)]'"
+                    class="flex-1 min-w-0 truncate"
+                  >{{ sub.title }}</span>
+                  <button
+                    :disabled="working"
+                    @click="removeSubtask(ticket, sub)"
+                    class="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                    title="Eliminar subtarea"
+                  >
+                    ✕
+                  </button>
+                </li>
+              </ul>
+              <div class="flex gap-2">
+                <input
+                  v-model="newSubtaskTitle"
+                  @keyup.enter="addSubtask(ticket)"
+                  placeholder="Nueva subtarea…"
+                  class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 text-sm outline-none"
+                />
+                <button
+                  :disabled="working || !newSubtaskTitle.trim()"
+                  @click="addSubtask(ticket)"
+                  class="px-3 py-1 rounded-lg text-xs bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30 disabled:opacity-50"
+                >
+                  Añadir
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Sin aplicaciones -->
     <div v-else-if="!showNewApp && applicationsStore.applications.length === 0" class="mt-10 text-center py-12 text-[var(--text-muted)]">
       No hay aplicaciones todavía. Crea la primera con «+ Nueva aplicación».
     </div>
@@ -208,20 +490,39 @@ import { ref, computed, onMounted } from 'vue'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
+import { useAuthStore } from '@/stores/auth'
 import { api } from '@/services/api'
-import type { Epic, Ticket } from '@/types'
+import type { Epic, Subtask, Ticket } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
 const applicationsStore = useApplicationsStore()
 const epicsStore = useEpicsStore()
 const ticketsStore = useTicketsStore()
+const authStore = useAuthStore()
 
 const selectedAppId = ref('')
 const showNewApp = ref(false)
 const newAppName = ref('')
 const newAppDescription = ref('')
 const appError = ref('')
+const editingAppId = ref<string | null>(null)
+const editAppForm = ref({ name: '', description: '', isArchived: false })
+const editingEpicId = ref<string | null>(null)
+const editEpicForm = ref({ title: '', description: '' })
+const draggedEpicId = ref<string | null>(null)
+const dropTargetEpicId = ref<string | null>(null)
+
+const canManageApplications = computed(() => authStore.isAdmin || authStore.isGroupLeader)
+const activeApplications = computed(() =>
+  applicationsStore.applications.filter((app) => app.isActive !== false)
+)
+const archivedApplications = computed(() =>
+  authStore.isAdmin ? applicationsStore.applications.filter((app) => app.isActive === false) : []
+)
+const selectedApp = computed(() =>
+  applicationsStore.applications.find((app) => app.id === selectedAppId.value) ?? null
+)
 
 const showNewEpic = ref(false)
 const newEpicTitle = ref('')
@@ -237,16 +538,217 @@ const ticketForm = ref<{ title: string; description: string; priority: Priority;
 const epicTickets = ref<Record<string, Ticket[]>>({})
 const working = ref(false)
 
+/** Id del ticket cuyo panel de subtareas está abierto (null = ninguno) */
+const openSubtasksFor = ref<string | null>(null)
+/** Título de la subtarea que se está escribiendo */
+const newSubtaskTitle = ref('')
+/** Mensaje de error de la última acción sobre un ticket */
+const ticketError = ref('')
+
 const epics = computed(() => epicsStore.epics)
+
+const getEpicProgress = (epicId: string) => {
+  const tickets = epicTickets.value[epicId] ?? []
+  const total = tickets.length
+  const completed = tickets.filter((ticket) => ticket.status === 'DONE' || ticket.status === 'COMPLETED').length
+  const remaining = Math.max(total - completed, 0)
+  const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
+
+  return {
+    total,
+    completed,
+    remaining,
+    percentage,
+    isComplete: total > 0 && completed === total
+  }
+}
+
+const getEpicProgressBarClass = (percentage: number): string => {
+  if (percentage >= 100) return 'bg-gradient-to-r from-emerald-500 to-green-500'
+  if (percentage >= 75) return 'bg-gradient-to-r from-emerald-500 to-green-400'
+  if (percentage >= 50) return 'bg-gradient-to-r from-amber-500 to-yellow-400'
+  if (percentage >= 25) return 'bg-gradient-to-r from-sky-500 to-blue-500'
+  return 'bg-gradient-to-r from-slate-500 to-slate-400'
+}
+
+const getEpicProgressBadgeClass = (percentage: number): string => {
+  if (percentage >= 100) return 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30'
+  if (percentage >= 75) return 'bg-emerald-500/10 text-emerald-300 border border-emerald-400/20'
+  if (percentage >= 50) return 'bg-amber-500/10 text-amber-300 border border-amber-400/20'
+  if (percentage >= 25) return 'bg-sky-500/10 text-sky-300 border border-sky-400/20'
+  return 'bg-slate-500/10 text-slate-300 border border-slate-400/20'
+}
 
 const loadTicketsFor = async (epicId: string): Promise<void> => {
   epicTickets.value[epicId] = await ticketsStore.fetchByEpic(epicId)
 }
 
+const selectApplication = async (appId: string): Promise<void> => {
+  selectedAppId.value = appId
+  showNewEpic.value = false
+  await fetchEpics()
+}
+
+const openEpicCreatorFor = (appId: string): void => {
+  selectedAppId.value = appId
+  showNewEpic.value = true
+  newEpicTitle.value = ''
+}
+
 const fetchEpics = async (): Promise<void> => {
-  if (!selectedAppId.value) return
+  if (!selectedAppId.value) {
+    epicsStore.epics = []
+    epicTickets.value = {}
+    return
+  }
+
+  epicTickets.value = {}
   const list = await epicsStore.fetchByApp(selectedAppId.value)
   await Promise.all(list.map((epic) => loadTicketsFor(epic.id)))
+}
+
+const openAppEditor = (app: { id: string; name: string; description?: string | null; isActive?: boolean }): void => {
+  appError.value = ''
+  editingAppId.value = app.id
+  editAppForm.value = {
+    name: app.name,
+    description: app.description || '',
+    isArchived: app.isActive === false
+  }
+}
+
+const cancelAppEdit = (): void => {
+  editingAppId.value = null
+  editAppForm.value = { name: '', description: '', isArchived: false }
+  appError.value = ''
+}
+
+const saveAppEdits = async (app: { id: string }): Promise<void> => {
+  const name = editAppForm.value.name.trim()
+  if (!name) {
+    appError.value = 'El nombre del proyecto no puede estar vacío.'
+    return
+  }
+
+  working.value = true
+  appError.value = ''
+
+  try {
+    await applicationsStore.update(app.id, {
+      name,
+      description: editAppForm.value.description.trim() || undefined,
+      isActive: !editAppForm.value.isArchived
+    })
+    editingAppId.value = null
+    editAppForm.value = { name: '', description: '', isArchived: false }
+  } catch (err: any) {
+    console.error('Error al actualizar aplicación:', err)
+    if (err?.response?.status === 409) {
+      appError.value = `Ya existe una aplicación con el nombre "${name}". Elige otro nombre.`
+    } else {
+      appError.value = err?.response?.data?.detail || 'Error al guardar los cambios del proyecto.'
+    }
+  } finally {
+    working.value = false
+  }
+}
+
+const openEpicEditor = (epic: { id: string; title: string; description?: string | null }): void => {
+  appError.value = ''
+  editingEpicId.value = epic.id
+  editEpicForm.value = {
+    title: epic.title,
+    description: epic.description || ''
+  }
+}
+
+const cancelEpicEdit = (): void => {
+  editingEpicId.value = null
+  editEpicForm.value = { title: '', description: '' }
+  appError.value = ''
+}
+
+const saveEpicEdits = async (epic: { id: string }): Promise<void> => {
+  const title = editEpicForm.value.title.trim()
+  if (!title) {
+    appError.value = 'El nombre de la épica no puede estar vacío.'
+    return
+  }
+
+  working.value = true
+  appError.value = ''
+
+  try {
+    await epicsStore.update(epic.id, {
+      title,
+      description: editEpicForm.value.description.trim() || undefined
+    })
+    editingEpicId.value = null
+    editEpicForm.value = { title: '', description: '' }
+    await fetchEpics()
+  } catch (err: any) {
+    console.error('Error al actualizar épica:', err)
+    appError.value = err?.response?.data?.detail || 'Error al guardar los cambios de la épica.'
+  } finally {
+    working.value = false
+  }
+}
+
+const handleEpicDragStart = (epicId: string): void => {
+  draggedEpicId.value = epicId
+  dropTargetEpicId.value = null
+}
+
+const handleEpicDragLeave = (epicId: string): void => {
+  if (dropTargetEpicId.value === epicId) {
+    dropTargetEpicId.value = null
+  }
+}
+
+const handleEpicDragEnd = (): void => {
+  draggedEpicId.value = null
+  dropTargetEpicId.value = null
+}
+
+const handleEpicDrop = async (targetEpicId: string): Promise<void> => {
+  if (!draggedEpicId.value || draggedEpicId.value === targetEpicId) {
+    handleEpicDragEnd()
+    return
+  }
+
+  const currentOrder = [...epics.value]
+  const fromIndex = currentOrder.findIndex((epic) => epic.id === draggedEpicId.value)
+  const toIndex = currentOrder.findIndex((epic) => epic.id === targetEpicId)
+
+  if (fromIndex === -1 || toIndex === -1) {
+    handleEpicDragEnd()
+    return
+  }
+
+  const [moved] = currentOrder.splice(fromIndex, 1)
+  currentOrder.splice(toIndex, 0, moved)
+
+  try {
+    const targetIndex = Math.max(0, Math.min(toIndex, currentOrder.length - 1))
+    await epicsStore.reorder(draggedEpicId.value, targetIndex)
+    handleEpicDragEnd()
+  } catch (err) {
+    console.error('Error al reordenar épicas:', err)
+    appError.value = 'No se pudo guardar el nuevo orden de la épica.'
+    handleEpicDragEnd()
+  }
+}
+
+const toggleAppArchive = async (app: { id: string; isActive?: boolean }): Promise<void> => {
+  try {
+    working.value = true
+    await applicationsStore.update(app.id, { isActive: app.isActive === false })
+  } catch (err) {
+    console.error('Error al cambiar el estado de archivado:', err)
+    appError.value = 'No se pudo cambiar el estado del proyecto.'
+  } finally {
+    working.value = false
+  }
 }
 
 const createApp = async (): Promise<void> => {
@@ -297,7 +799,13 @@ const createTicket = async (epic: Epic): Promise<void> => {
   if (!ticketForm.value.title.trim()) return
   working.value = true
   try {
-    await ticketsStore.create({
+    /**
+     * WEB-08: el POST /tickets/ devuelve el ticket recién creado, así que se
+     * pinta de inmediato en la lista del épico (sin esperar a otro fetch).
+     * Antes solo se creaba y se cerraba el formulario: el ticket aparecía
+     * únicamente al recargar la página (F5).
+     */
+    const created = await ticketsStore.create({
       epicId: epic.id,
       title: ticketForm.value.title.trim(),
       description: ticketForm.value.description.trim() || undefined,
@@ -306,6 +814,11 @@ const createTicket = async (epic: Epic): Promise<void> => {
     })
     ticketForm.value = { title: '', description: '', priority: 'MEDIUM', dueDate: '' }
     openTicketFormFor.value = null
+    epicTickets.value[epic.id] = [
+      created,
+      ...(epicTickets.value[epic.id] ?? []).filter((t) => t.id !== created.id)
+    ]
+    /** Reconciliar con el servidor (estado/prioridad reales del backend) */
     await loadTicketsFor(epic.id)
   } catch (err) {
     console.error('Error al crear ticket:', err)
@@ -314,29 +827,90 @@ const createTicket = async (epic: Epic): Promise<void> => {
   }
 }
 
-/** TODO -> IN_PROGRESS (POST /tickets/{id}/start vía api.tickets.updateStatus) */
+/** TODO -> IN_PROGRESS (POST /tickets/{id}/start) */
 const startTicket = async (ticket: Ticket): Promise<void> => {
   working.value = true
+  ticketError.value = ''
   try {
     await api.tickets.updateStatus(ticket.id, 'IN_PROGRESS')
     await loadTicketsFor(ticket.epicId)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error al iniciar ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo iniciar el ticket.'
   } finally {
     working.value = false
   }
 }
 
-/** IN_PROGRESS -> DONE (POST /tickets/{id}/complete con pr_link opcional) */
+/** IN_PROGRESS -> DONE (POST /tickets/{id}/complete) */
 const completeTicket = async (ticket: Ticket): Promise<void> => {
-  const prLink = window.prompt('Enlace del Pull Request (opcional):')
+  const prLink = window.prompt(
+    'Enlace del Pull Request para completar el ticket (un admin puede dejarlo vacío):'
+  )
   if (prLink === null) return
   working.value = true
+  ticketError.value = ''
   try {
-    await api.tickets.complete(ticket.id, prLink)
+    await api.tickets.complete(ticket.id, prLink.trim())
     await loadTicketsFor(ticket.epicId)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error al completar ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo completar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Abre o cierra el panel de subtareas de un ticket */
+const toggleSubtaskPanel = (ticketId: string): void => {
+  openSubtasksFor.value = openSubtasksFor.value === ticketId ? null : ticketId
+  newSubtaskTitle.value = ''
+  ticketError.value = ''
+}
+
+/** Crea una subtarea (POST /api/subtasks/) y refresca el ticket */
+const addSubtask = async (ticket: Ticket): Promise<void> => {
+  const title = newSubtaskTitle.value.trim()
+  if (!title) return
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.createSubtask(ticket.id, title)
+    newSubtaskTitle.value = ''
+    await loadTicketsFor(ticket.epicId)
+  } catch (err: any) {
+    console.error('Error al crear subtarea:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo crear la subtarea.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Marca/desmarca una subtarea (PUT /api/subtasks/{id}) */
+const toggleSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.updateSubtask(ticket.id, sub.id, { isCompleted: !sub.isCompleted })
+    await loadTicketsFor(ticket.epicId)
+  } catch (err: any) {
+    console.error('Error al actualizar subtarea:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo actualizar la subtarea.'
+  } finally {
+    working.value = false
+  }
+}
+
+/** Elimina una subtarea (DELETE /api/subtasks/{id}) */
+const removeSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.deleteSubtask(ticket.id, sub.id)
+    await loadTicketsFor(ticket.epicId)
+  } catch (err: any) {
+    console.error('Error al eliminar subtarea:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo eliminar la subtarea.'
   } finally {
     working.value = false
   }
@@ -368,8 +942,9 @@ const priorityClass = (priority: string): string =>
 onMounted(async () => {
   try {
     await applicationsStore.fetchAll()
-    if (applicationsStore.applications.length > 0) {
-      selectedAppId.value = applicationsStore.applications[0].id
+    const firstActiveApp = activeApplications.value[0]
+    if (firstActiveApp) {
+      selectedAppId.value = firstActiveApp.id
       await fetchEpics()
     }
   } catch (err) {

@@ -31,7 +31,7 @@ router = APIRouter(prefix="/applications", tags=["Aplicaciones"])
 async def list_applications(
     skip: int = Query(0, ge=0, description="Número de aplicaciones a saltar"),
     limit: int = Query(20, ge=1, le=100, description="Máximo de aplicaciones a retornar"),
-    current_user: Application = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[ApplicationResponse]:
     """
@@ -46,8 +46,13 @@ async def list_applications(
     Returns:
         List[ApplicationResponse]: Lista paginada de aplicaciones
     """
+    query = select(Application)
+
+    if str(getattr(current_user, 'role', '') or '').upper() != 'ADMIN':
+        query = query.where(Application.is_active.is_(True))
+
     result = await db.execute(
-        select(Application)
+        query
         .order_by(Application.created_at.desc())
         .offset(skip)
         .limit(limit)

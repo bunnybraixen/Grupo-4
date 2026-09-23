@@ -15,10 +15,15 @@ import { existsSync } from 'node:fs'
 
 /**
  * WEB-08: destino del proxy hacia el backend.
- * - Dentro de Docker (existe /.dockerenv): 'localhost' apunta al propio
- *   contenedor de Vite y el proxy daba ECONNREFUSED, así que usamos el
- *   nombre del servicio 'backend' de docker-compose en la red interna.
- * - Fuera de Docker (dev local): http://localhost:8000 como siempre.
+ * 
+ * Importante: el navegador siempre debe llamar a localhost:5173 y luego
+ * Vite proxy redirige /api internamente a la red Docker. Si el navegador
+ * alcanza directamente a backend:8000, significa que la app está usando
+ * un build viejo o una URL absoluta hardcodeada.
+ *
+ * - Dentro de Docker: el servicio Vite debe apuntar al nombre 'backend'
+ *   porque es la red interna de Docker.
+ * - Fuera de Docker: el backend está en localhost:8000.
  */
 const BACKEND_TARGET = existsSync('/.dockerenv')
   ? 'http://backend:8000'
@@ -42,30 +47,23 @@ export default defineConfig({
 
   // Configuración del servidor de desarrollo
   server: {
-    // Puerto en el que corre el servidor de desarrollo
+    host: '0.0.0.0',
     port: 5173,
 
-    // Proxy de solicitudes HTTP hacia el backend FastAPI
+    // Proxy de solicitudes HTTP hacia el backend FastAPI.
+    // El navegador nunca debe apuntar directamente a backend:8000.
     proxy: {
-      /**
-       * Cualquier solicitud a /api/... será redirigida a localhost:8000/api/...
-       * changeOrigin: true cambia el header 'Host' de la solicitud para que coincida con el servidor destino
-       */
       '/api': {
         target: BACKEND_TARGET,
-        changeOrigin: true
+        changeOrigin: true,
+        secure: false
       },
 
-      /**
-       * WebSocket proxy para comunicación en tiempo real
-       * Redirige conexiones ws://localhost:5173/ws al backend (misma lógica
-       * de detección de entorno que /api)
-       * ws: true activa el soporte de WebSocket
-       */
       '/ws': {
         target: BACKEND_TARGET.replace(/^http/, 'ws'),
         changeOrigin: true,
-        ws: true
+        ws: true,
+        secure: false
       }
     }
   },

@@ -720,6 +720,21 @@ export const api = {
    */
   epics: {
     /**
+     * Alias compatible con el código legacy del frontend.
+     * Algunas vistas llaman a `listByApplication` en lugar de `list`.
+     */
+    listByApplication: async (appId: string, filters?: {
+      page?: number
+      limit?: number
+    }): Promise<ApiResponse<PaginatedResponse<Epic>>> => {
+      const listFn = typeof api.epics?.list === 'function' ? api.epics.list : null
+      if (!listFn) {
+        throw new Error('La API de épicas no tiene el método list disponible')
+      }
+      return listFn(appId, filters)
+    },
+
+    /**
      * Obtiene lista de épicas de una aplicación
      * 
      * @param appId - ID de la aplicación
@@ -734,7 +749,7 @@ export const api = {
       limit?: number
     }): Promise<ApiResponse<PaginatedResponse<Epic>>> => {
       const response = await apiClient.get<ApiResponse<PaginatedResponse<Epic>>>(
-        `/applications/${appId}/epics`,
+        `/epics/by-app/${appId}`,
         { params: filters }
       )
       return response.data
@@ -749,8 +764,8 @@ export const api = {
      */
     create: async (appId: string, data: Omit<Epic, 'id' | 'createdAt' | 'updatedAt' | 'applicationId' | 'progress' | 'totalTickets' | 'completedTickets'>): Promise<ApiResponse<Epic>> => {
       const response = await apiClient.post<ApiResponse<Epic>>(
-        `/applications/${appId}/epics`,
-        data
+        '/epics/',
+        { ...data, applicationId: appId }
       )
       return response.data
     },
@@ -764,7 +779,7 @@ export const api = {
      */
     getById: async (appId: string, epicId: string): Promise<ApiResponse<Epic>> => {
       const response = await apiClient.get<ApiResponse<Epic>>(
-        `/applications/${appId}/epics/${epicId}`
+        `/epics/${epicId}`
       )
       return response.data
     },
@@ -772,14 +787,13 @@ export const api = {
     /**
      * Actualiza una épica existente
      * 
-     * @param appId - ID de la aplicación
      * @param epicId - ID de la épica
      * @param data - Campos a actualizar
      * @returns Épica actualizada
      */
-    update: async (appId: string, epicId: string, data: Partial<Epic>): Promise<ApiResponse<Epic>> => {
+    update: async (epicId: string, data: Partial<Epic>): Promise<ApiResponse<Epic>> => {
       const response = await apiClient.put<ApiResponse<Epic>>(
-        `/applications/${appId}/epics/${epicId}`,
+        `/epics/${epicId}`,
         data
       )
       return response.data
@@ -788,28 +802,23 @@ export const api = {
     /**
      * Elimina una épica
      * 
-     * @param appId - ID de la aplicación
      * @param epicId - ID de la épica
      */
-    delete: async (appId: string, epicId: string): Promise<ApiResponse<void>> => {
+    delete: async (epicId: string): Promise<ApiResponse<void>> => {
       const response = await apiClient.delete<ApiResponse<void>>(
-        `/applications/${appId}/epics/${epicId}`
+        `/epics/${epicId}`
       )
       return response.data
     },
 
     /**
-     * Reordena las épicas dentro de una aplicación
+     * Reordena una épica dentro de la aplicación
      * Se utiliza con drag & drop
-     * 
-     * @param appId - ID de la aplicación
-     * @param epicIds - Array de IDs de épicas en el nuevo orden
-     * @returns Épicas reordenadas
      */
-    reorder: async (appId: string, epicIds: string[]): Promise<ApiResponse<Epic[]>> => {
-      const response = await apiClient.post<ApiResponse<Epic[]>>(
-        `/applications/${appId}/epics/reorder`,
-        { epicIds }
+    reorder: async (data: { epicId: string; newIndex: number }): Promise<ApiResponse<Epic>> => {
+      const response = await apiClient.patch<ApiResponse<Epic>>(
+        `/epics/${data.epicId}/reorder`,
+        { new_index: data.newIndex }
       )
       return response.data
     },
@@ -827,7 +836,7 @@ export const api = {
       formData.append('file', file)
 
       const response = await apiClient.post<ApiResponse<Document>>(
-        `/applications/${appId}/epics/${epicId}/documents`,
+        `/epics/${epicId}/documents`,
         formData,
         {
           headers: {
@@ -860,9 +869,54 @@ export const api = {
      *   assigneeId: 'user-456'
      * })
      */
+    createSubtask: async (ticketId: string, title: string): Promise<ApiResponse<Subtask>> => {
+      const response = await apiClient.post<ApiResponse<Subtask>>(
+        '/subtasks/',
+        { ticket_id: ticketId, title }
+      )
+      return response.data
+    },
+
+    updateSubtask: async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<ApiResponse<Subtask>> => {
+      const payload: Record<string, any> = {}
+      if ('title' in data && data.title !== undefined) payload.title = data.title
+      if ('isCompleted' in data && data.isCompleted !== undefined) payload.is_completed = data.isCompleted
+      const response = await apiClient.put<ApiResponse<Subtask>>(
+        `/subtasks/${subtaskId}`,
+        payload
+      )
+      return response.data
+    },
+
+    deleteSubtask: async (_ticketId: string, subtaskId: string): Promise<ApiResponse<void>> => {
+      const response = await apiClient.delete<ApiResponse<void>>(
+        `/subtasks/${subtaskId}`
+      )
+      return response.data
+    },
+
+    reorderSubtasks: async (_ticketId: string, subtaskIds: string[]): Promise<ApiResponse<Subtask[]>> => {
+      const response = await apiClient.patch<ApiResponse<Subtask[]>>(
+        '/subtasks/reorder',
+        { subtask_ids: subtaskIds }
+      )
+      return response.data
+    },
+
     list: async (filters?: TicketFilters): Promise<ApiResponse<PaginatedResponse<Ticket>>> => {
+      /**
+       * WEB-08: la barra final es OBLIGATORIA.
+       *
+       * `routers/tickets.py` registra la lista como `@router.get("/")` sobre el
+       * prefijo `/api/tickets`, es decir la ruta real es `/api/tickets/`. Si se
+       * llama sin la barra, FastAPI/Starlette responde un 307 hacia
+       * `/api/tickets/` y, como el proxy de Vite usa `changeOrigin: true`, el
+       * `Location` sale con el host interno (`http://backend:8000/...`). El
+       * navegador no puede resolver `backend`, así que la petición falla con
+       * "DNS Resolution System / Transferred 0 B".
+       */
       const response = await apiClient.get<ApiResponse<PaginatedResponse<Ticket>>>(
-        '/tickets',
+        '/tickets/',
         { params: filters }
       )
       return response.data
@@ -875,8 +929,17 @@ export const api = {
      * @returns Ticket creado
      */
     create: async (data: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'createdById'>): Promise<ApiResponse<Ticket>> => {
+      /**
+       * La barra final es OBLIGATORIA (mismo motivo que en `list`).
+       *
+       * `routers/tickets.py` expone `POST /api/tickets/`; sin la barra FastAPI
+       * devuelve 307 y el navegador termina intentando ir a `backend:8000`
+       * (host interno de la red Docker), que no puede resolver -> crear ticket
+       * falla. Épicas (`'/epics/'`) y aplicaciones (`'/applications/'`) ya
+       * llamaban con barra final, por eso ellas sí funcionaban.
+       */
       const response = await apiClient.post<ApiResponse<Ticket>>(
-        '/tickets',
+        '/tickets/',
         data
       )
       return response.data

@@ -79,11 +79,13 @@ class ApplicationUpdate(BaseModel):
         description: Nueva descripción (opcional)
         color: Nuevo código de color (opcional)
         icon: Nuevo ícono (opcional)
+        is_active: Estado de visibilidad del proyecto (opcional)
     """
     name: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
     icon: Optional[str] = None
+    is_active: Optional[bool] = None
 
     @field_validator("name")
     @classmethod

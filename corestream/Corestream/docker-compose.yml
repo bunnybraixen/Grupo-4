@@ -5,8 +5,6 @@
 # Incluye: PostgreSQL, Redis, Backend (FastAPI) y Frontend (Vue.js)
 # =====================================================================
 
-version: '3.9'
-
 services:
   # ===================================================================
   # SERVICIO: PostgreSQL 15
@@ -153,8 +151,13 @@ services:
     # Reintentos automáticos si la aplicación falla
     restart: unless-stopped
     environment:
-      # URL base para llamadas API REST
-      VITE_API_BASE_URL: http://localhost:8000
+      # URL base para llamadas API REST. Usar /api fuerza al proxy de Vite
+      # y evita llamadas directas al host backend que disparan CORS.
+      # Importante: el navegador usa localhost:5173; el proxy interno usa
+      # backend:8000, así que no debe salir ninguna llamada directa desde
+      # el navegador a backend:8000.
+      VITE_API_BASE_URL: /api
+      VITE_BACKEND_URL: http://backend:8000
       # Habilitar modo desarrollo
       NODE_ENV: development
 

@@ -14,6 +14,9 @@ Matriz de permisos completa en docs/RBAC.md.
 
 from __future__ import annotations
 
+from enum import Enum
+from typing import Any
+
 from fastapi import HTTPException, status
 
 from app.models import Ticket, User
@@ -21,12 +24,29 @@ from app.models import Ticket, User
 _MANAGER_ROLES = {"ADMIN", "TEAM_LEADER"}
 
 
+def get_user_id(user: Any) -> str:
+    """Resuelve el identificador del usuario tanto desde un modelo ORM como desde un JWT."""
+    for attr in ("id", "sub", "user_id"):
+        value = getattr(user, attr, None)
+        if value is not None:
+            return str(value)
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se pudo identificar al usuario autenticado",
+    )
+
+
 def get_role_name(user: User) -> str:
     """Extrae el nombre del rol de forma segura, sin lazy-load implícito."""
     role_obj = getattr(user, "role", None)
     if role_obj is None:
         return ""
-    return role_obj.name if hasattr(role_obj, "name") else str(role_obj)
+    if isinstance(role_obj, Enum):
+        role_value = getattr(role_obj, "value", role_obj)
+        return str(role_value).upper()
+    if hasattr(role_obj, "name"):
+        return str(role_obj.name).upper()
+    return str(role_obj).upper()
 
 
 def is_admin_or_leader(user: User) -> bool:
@@ -70,7 +90,8 @@ def assert_can_manage_ticket(ticket: Ticket, current_user: User) -> None:
     """
     if is_admin_or_leader(current_user):
         return
-    if ticket.assignee_id == current_user.id:
+    user_id = get_user_id(current_user)
+    if str(ticket.assignee_id) == str(user_id):
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -85,7 +106,8 @@ def assert_is_current_assignee(ticket: Ticket, current_user: User) -> None:
     es el asignado no puede completar el trabajo de otro; para eso existe
     /redirect, no esto. (El ADMIN ya queda fuera antes, vía require_non_admin.)
     """
-    if ticket.assignee_id != current_user.id:
+    user_id = get_user_id(current_user)
+    if str(ticket.assignee_id) != str(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo el usuario asignado puede realizar esta acción",
@@ -105,9 +127,10 @@ def claim_or_assert_assignee(ticket: Ticket, current_user: User) -> None:
     para cuando esta se ejecuta, ticket.assignee_id ya es el correcto, y su
     propia asignación (redundante en ese punto) es un no-op.
     """
+    user_id = get_user_id(current_user)
     if ticket.assignee_id is None:
-        ticket.assignee_id = current_user.id
-    elif ticket.assignee_id != current_user.id:
+        ticket.assignee_id = user_id
+    elif str(ticket.assignee_id) != str(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Este ticket ya está asignado a otro usuario",

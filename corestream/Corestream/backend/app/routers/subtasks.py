@@ -19,6 +19,7 @@ from app.database import get_db
 from app.models import Subtask, Ticket, TicketEvent, TicketEventType
 from app.schemas import SubtaskResponse, SubtaskCreate, SubtaskUpdate
 from app.services import ticket_state_machine
+from app.services.ticket_permissions import get_user_id
 from app.middleware.auth import get_current_user
 
 # Router para subtareas
@@ -82,7 +83,7 @@ async def create_subtask(
         # Registrar evento en el ticket
         await ticket_state_machine.log_ticket_event(
             db, subtask_data.ticket_id, TicketEventType.SUBTASK_CREATED,
-            current_user.id, f"Subtarea creada: {subtask_data.title}"
+            get_user_id(current_user), f"Subtarea creada: {subtask_data.title}"
         )
 
         return SubtaskResponse.from_orm(new_subtask)
@@ -155,7 +156,7 @@ async def update_subtask(
             event_type = TicketEventType.SUBTASK_COMPLETED if subtask.is_completed else TicketEventType.UPDATED
             await ticket_state_machine.log_ticket_event(
                 db, ticket.id, event_type,
-                current_user.id, f"Subtarea {subtask.title} - Completada: {subtask.is_completed}"
+                get_user_id(current_user), f"Subtarea {subtask.title} - Completada: {subtask.is_completed}"
             )
 
         return SubtaskResponse.from_orm(subtask)
@@ -211,7 +212,7 @@ async def delete_subtask(
         # Registrar evento en el ticket
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.SUBTASK_DELETED,
-            current_user.id, f"Subtarea eliminada"
+            get_user_id(current_user), f"Subtarea eliminada"
         )
 
     except Exception as e:

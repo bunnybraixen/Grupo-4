@@ -68,8 +68,8 @@ export const useEpicsStore = defineStore('epics', () => {
    */
   const sortedByOrder = computed((): Epic[] => {
     return [...epics.value].sort((a, b) => {
-      const orderA = a.order ?? Number.MAX_SAFE_INTEGER
-      const orderB = b.order ?? Number.MAX_SAFE_INTEGER
+      const orderA = a.orderIndex ?? Number.MAX_SAFE_INTEGER
+      const orderB = b.orderIndex ?? Number.MAX_SAFE_INTEGER
       return orderA - orderB
     })
   })
@@ -143,9 +143,9 @@ export const useEpicsStore = defineStore('epics', () => {
 
     try {
       const data = await api.epics.listByApplication(appId)
-      epics.value = data
+      epics.value = Array.isArray(data) ? data : (data?.items ?? [])
       collapsedEpics.value.clear()
-      return data
+      return epics.value
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al obtener épicos'
       error.value = message
@@ -172,7 +172,8 @@ export const useEpicsStore = defineStore('epics', () => {
     error.value = null
 
     try {
-      const created = await api.epics.create(data)
+      const { applicationId, ...payload } = data
+      const created = await api.epics.create(applicationId, payload)
       epics.value.push(created)
       associatedTickets.value.set(created.id, [])
       return created
@@ -261,27 +262,23 @@ export const useEpicsStore = defineStore('epics', () => {
     error.value = null
 
     try {
-      // Validar índice
       if (newIndex < 0 || newIndex >= epics.value.length) {
         throw new Error('Índice fuera de rango')
       }
 
-      // Hacer cambio optimista en UI
-      const currentIndex = epics.value.findIndex(e => e.id === epicId)
+      const currentIndex = epics.value.findIndex((e) => e.id === epicId)
       if (currentIndex === -1) throw new Error('Épico no encontrado')
 
-      const [movedEpic] = epics.value.splice(currentIndex, 1)
-      epics.value.splice(newIndex, 0, movedEpic)
+      const reordered = [...epics.value]
+      const [movedEpic] = reordered.splice(currentIndex, 1)
+      reordered.splice(newIndex, 0, movedEpic)
+      epics.value = reordered
 
-      // Llamar API para persistir
-      const updated = await api.epics.reorder({
-        epicId,
-        newIndex,
-      })
+      const updated = await api.epics.reorder({ epicId, newIndex })
+      const finalOrder = [...epics.value].map((epic) => epic.id === epicId ? updated : epic)
+      epics.value = finalOrder
 
-      epics.value = updated
-
-      return updated
+      return finalOrder
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al reordenar épico'
       error.value = message

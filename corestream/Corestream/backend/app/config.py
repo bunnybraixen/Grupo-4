@@ -60,8 +60,18 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # Configuración de CORS
-    # Lista de orígenes (dominios) permitidos para solicitudes CORS desde JavaScript
-    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    # En desarrollo aceptamos los orígenes que usa Vite local y Docker
+    # para evitar que el navegador bloquee Requests del frontend.
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://frontend:5173",
+        "http://backend:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://frontend:8000",
+        "http://backend:8000",
+    ]
     
     # Configuración de la Aplicación
     # Nombre de la aplicación utilizado en documentación OpenAPI y metadatos

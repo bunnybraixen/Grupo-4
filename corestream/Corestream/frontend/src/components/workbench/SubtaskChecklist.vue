@@ -47,7 +47,7 @@
         <!-- Checkbox de completación -->
         <input
           type="checkbox"
-          :checked="subtask.completed"
+          :checked="getCompletionState(subtask)"
           @change="toggleSubtask(subtask)"
           class="w-4 h-4 cursor-pointer accent-green-500"
         />
@@ -56,7 +56,7 @@
         <label
           :class="[
             'flex-1 text-sm cursor-pointer transition-all',
-            subtask.completed
+            getCompletionState(subtask)
               ? 'text-slate-500 line-through'
               : 'text-slate-300'
           ]"
@@ -134,7 +134,8 @@ import { Icon } from '@iconify/vue'
 interface Subtask {
   id: string
   title: string
-  completed: boolean
+  isCompleted?: boolean
+  completed?: boolean
 }
 
 // =====================================================================
@@ -165,8 +166,10 @@ const newSubtaskTitle = ref('')
 /**
  * Calcula la cantidad de subtareas completadas
  */
+const getCompletionState = (subtask: Subtask) => Boolean(subtask.isCompleted ?? subtask.completed ?? false)
+
 const completedCount = computed(() => {
-  return props.subtasks.filter(s => s.completed).length
+  return props.subtasks.filter(s => getCompletionState(s)).length
 })
 
 /**
@@ -189,7 +192,7 @@ const toggleSubtask = (subtask: Subtask) => {
   // Emitir evento con subtarea actualizada
   emit('update', {
     ...subtask,
-    completed: !subtask.completed
+    isCompleted: !getCompletionState(subtask)
   })
 }
 
