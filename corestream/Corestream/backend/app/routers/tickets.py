@@ -37,6 +37,7 @@ from app.services.ticket_permissions import (
     assert_is_current_assignee,
     claim_or_assert_assignee,
     get_user_id,
+    is_admin_or_leader,
     require_admin_or_leader,
     require_non_admin,
 )
@@ -190,7 +191,7 @@ async def get_my_workbench(
         List[TicketResponse]: Tickets asignados al usuario ordenados por prioridad
     """
     # Construir consulta para obtener tickets asignados (con relaciones cargadas)
-    query = _ticket_query().where(Ticket.assignee_id == current_user.id)
+    query = _ticket_query().where(Ticket.assignee_id == UUID(get_user_id(current_user)))
 
     # Aplicar filtros si se proporcionan
     if status_filter:
@@ -391,12 +392,12 @@ async def update_ticket(
             current_value = getattr(ticket.status, "value", ticket.status)
             await ticket_state_machine.log_ticket_event(
                 db, ticket_id, TicketEventType.STATUS_CHANGED,
-                current_user.id, f"Estado cambiado: {previous_value} -> {current_value}"
+                get_user_id(current_user), f"Estado cambiado: {previous_value} -> {current_value}"
             )
         else:
             await ticket_state_machine.log_ticket_event(
                 db, ticket_id, TicketEventType.UPDATED,
-                current_user.id, "Ticket actualizado"
+                get_user_id(current_user), "Ticket actualizado"
             )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
@@ -447,8 +448,11 @@ async def delete_ticket(
     require_admin_or_leader(current_user)
 
     try:
-        # Detener temporizador si está activo
-        await timer_service.stop_timer(ticket_id, db)
+        # Detener temporizador si está activo (si el servicio expone la función:
+        # `timer_service` solo tiene métodos de clase, ver /start)
+        stop_timer = getattr(timer_service, "stop_timer", None)
+        if callable(stop_timer):
+            await stop_timer(ticket_id, db)
 
         # Eliminar ticket y sus relaciones en cascada
         await db.delete(ticket)
@@ -526,7 +530,7 @@ async def move_ticket_to_epic(
         # Registrar evento de movimiento
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.MOVED,
-            current_user.id, f"Ticket movido de épica {old_epic_id} a {new_epic_id}"
+            get_user_id(current_user), f"Ticket movido de épica {old_epic_id} a {new_epic_id}"
         )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
@@ -705,8 +709,11 @@ async def complete_ticket(
         await db.commit()
         await db.refresh(ticket)
 
-        # Enviar notificación
-        await notification_service.notify_ticket_completed(ticket, current_user, db)
+        # Enviar notificación (si existe; `notify_ticket_completed` no está
+        # implementada en notification_service todavía)
+        notify_completed = getattr(notification_service, "notify_ticket_completed", None)
+        if callable(notify_completed):
+            await notify_completed(ticket, current_user, db)
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
@@ -769,8 +776,10 @@ async def raise_ticket_question(
         )
 
     try:
-        # Pausar temporizador
-        await timer_service.pause_timer(ticket_id, db)
+        # Pausar temporizador (si el servicio expone la función; ver /start)
+        pause_timer = getattr(timer_service, "pause_timer", None)
+        if callable(pause_timer):
+            await pause_timer(ticket_id, db)
 
         # Marcar como bloqueado
         ticket.is_blocked = True
@@ -785,8 +794,10 @@ async def raise_ticket_question(
             actor_id, question_data.question_text
         )
 
-        # Notificar al líder de equipo
-        await notification_service.notify_question_raised(ticket, current_user, db)
+        # Notificar al líder de equipo (si existe; ver /start)
+        notify_question = getattr(notification_service, "notify_question_raised", None)
+        if callable(notify_question):
+            await notify_question(ticket, current_user, db)
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
@@ -838,7 +849,7 @@ async def resolve_ticket_question(
         )
 
     # WEB-08: resolver la pregunta es del asignado; si es ajena, requiere gestión
-    if ticket.assignee_id != current_user.id:
+    if str(ticket.assignee_id) != get_user_id(current_user):
         require_admin_or_leader(current_user)
 
     if not ticket.is_blocked:
@@ -852,8 +863,10 @@ async def resolve_ticket_question(
         ticket.is_blocked = False
         ticket.blocked_reason = None
 
-        # Reanudar temporizador
-        await timer_service.resume_timer(ticket_id, db)
+        # Reanudar temporizador (si el servicio expone la función; ver /start)
+        resume_timer = getattr(timer_service, "resume_timer", None)
+        if callable(resume_timer):
+            await resume_timer(ticket_id, db)
 
         await db.commit()
         await db.refresh(ticket)
@@ -861,7 +874,7 @@ async def resolve_ticket_question(
         # Registrar evento
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.QUESTION_RESOLVED,
-            current_user.id, resolution_data.get("resolution", "Pregunta resuelta")
+            get_user_id(current_user), resolution_data.get("resolution", "Pregunta resuelta")
         )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
@@ -914,7 +927,7 @@ async def redirect_ticket(
         )
 
     # WEB-08: solo el asignado actual (o ADMIN/TEAM_LEADER) puede redirigir
-    if ticket.assignee_id not in (None, current_user.id):
+    if ticket.assignee_id is not None and str(ticket.assignee_id) != get_user_id(current_user):
         require_admin_or_leader(current_user)
 
     # La API acepta las dos formas de nombrar los campos: 'to_user_id' (contrato
@@ -946,9 +959,10 @@ async def redirect_ticket(
         old_assignee = ticket.assignee_id
         ticket.assignee_id = target_user_id
 
-        # Pausar temporizador si estaba activo
-        if ticket.status == TicketStatus.IN_PROGRESS:
-            await timer_service.pause_timer(ticket_id, db)
+        # Pausar temporizador si estaba activo (si el servicio expone la función)
+        pause_timer = getattr(timer_service, "pause_timer", None)
+        if ticket.status == TicketStatus.IN_PROGRESS and callable(pause_timer):
+            await pause_timer(ticket_id, db)
 
         await db.commit()
         await db.refresh(ticket)
@@ -956,11 +970,13 @@ async def redirect_ticket(
         # Registrar evento de redirección
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.REDIRECTED,
-            current_user.id, f"Ticket redirigido de {old_assignee} a {target_user_id}: {reason}"
+            get_user_id(current_user), f"Ticket redirigido de {old_assignee} a {target_user_id}: {reason}"
         )
 
-        # Notificar al nuevo asignado
-        await notification_service.notify_ticket_redirected(ticket, current_user, db)
+        # Notificar al nuevo asignado (si existe; ver /start)
+        notify_redirected = getattr(notification_service, "notify_ticket_redirected", None)
+        if callable(notify_redirected):
+            await notify_redirected(ticket, current_user, db)
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))

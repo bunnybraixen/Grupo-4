@@ -414,7 +414,7 @@
                 @click="completeTicket(ticket)"
                 class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
               >
-                ✓ Completar
+                ✓ Finalizar
               </button>
               <button
                 @click="toggleSubtaskPanel(ticket.id)"
@@ -842,20 +842,25 @@ const startTicket = async (ticket: Ticket): Promise<void> => {
   }
 }
 
-/** IN_PROGRESS -> DONE (POST /tickets/{id}/complete) */
+/** IN_PROGRESS -> DONE: pide el PR (opcional para admin) y finaliza */
 const completeTicket = async (ticket: Ticket): Promise<void> => {
   const prLink = window.prompt(
-    'Enlace del Pull Request para completar el ticket (un admin puede dejarlo vacío):'
+    'Enlace del Pull Request para finalizar el ticket (un admin puede dejarlo vacío):'
   )
   if (prLink === null) return
+  await finalizeTicket(ticket, prLink.trim())
+}
+
+/** Finaliza el ticket (IN_PROGRESS -> DONE, POST /tickets/{id}/complete) */
+const finalizeTicket = async (ticket: Ticket, prLink: string): Promise<void> => {
   working.value = true
   ticketError.value = ''
   try {
-    await api.tickets.complete(ticket.id, prLink.trim())
+    await api.tickets.complete(ticket.id, prLink)
     await loadTicketsFor(ticket.epicId)
   } catch (err: any) {
-    console.error('Error al completar ticket:', err)
-    ticketError.value = err?.response?.data?.detail || 'No se pudo completar el ticket.'
+    console.error('Error al finalizar ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo finalizar el ticket.'
   } finally {
     working.value = false
   }
@@ -892,7 +897,23 @@ const toggleSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
   ticketError.value = ''
   try {
     await api.tickets.updateSubtask(ticket.id, sub.id, { isCompleted: !sub.isCompleted })
+    // Estado local tras el toggle, sin esperar al refetch
+    const subs = (ticket.subtasks ?? []).map((s) =>
+      s.id === sub.id ? { ...s, isCompleted: !sub.isCompleted } : s
+    )
     await loadTicketsFor(ticket.epicId)
+
+    // Todas las subtareas marcadas -> el ticket pasa a finalizado (DONE),
+    // lo que además mueve el % de "por terminar" de la épica.
+    const allDone = subs.length > 0 && subs.every((s) => s.isCompleted)
+    if (allDone && ticket.status !== 'DONE') {
+      // DONE solo se alcanza desde IN_PROGRESS: si aún estaba en TODO, se inicia.
+      if (ticket.status === 'TODO') {
+        await api.tickets.updateStatus(ticket.id, 'IN_PROGRESS')
+      }
+      // Admin puede finalizar sin PR (lo permite el backend)
+      await finalizeTicket(ticket, '')
+    }
   } catch (err: any) {
     console.error('Error al actualizar subtarea:', err)
     ticketError.value = err?.response?.data?.detail || 'No se pudo actualizar la subtarea.'
