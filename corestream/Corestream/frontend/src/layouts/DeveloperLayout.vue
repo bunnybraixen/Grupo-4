@@ -20,6 +20,13 @@
         </router-link>
         
         <router-link
+          to="/dev/my-incidents"
+          class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          Incidentes
+        </router-link>
+
+        <router-link
           to="/dev/uploads"
           class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
@@ -28,6 +35,7 @@
         
         <!-- Solo visible para líderes de grupo -->
         <router-link
+          v-if="isGroupLeader"
           to="/dev/team-assignment"
           class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
@@ -44,7 +52,12 @@
 </template>
 
 <script setup lang="ts">
-/**
- * DeveloperLayout - Componente de estructura para vistas de desarrollo
- */
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const isGroupLeader = computed(() => {
+  const role = authStore.user?.role || localStorage.getItem('userRole')
+  return role === 'GROUP_LEADER'
+})
 </script>

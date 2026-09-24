@@ -109,6 +109,7 @@ const initializeApp = async (): Promise<void> => {
     localStorage.setItem('userRole', user.role)
     localStorage.setItem('userId', user.id)
     localStorage.setItem('userName', user.fullName ?? '')
+    localStorage.setItem('userEmail', user.email ?? '')
   } catch (error) {
     /**
      * Si falla la obtención del usuario, limpia tokens y redirige a login

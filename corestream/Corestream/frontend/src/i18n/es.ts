@@ -299,4 +299,27 @@ export default {
     completeTicket: '¿Marcar como completado?',
     logout: '¿Cerrar sesión?',
   },
+
+  workbenchDashboard: {
+    myTickets: 'Mis Tickets',
+    refresh: 'Actualizar',
+    statusLabel: 'Estado:',
+    dateLabel: 'Fecha:',
+    statusAll: 'Todos',
+    statusInProgress: 'En progreso',
+    statusTodo: 'Por hacer',
+    statusBlocked: 'Bloqueado',
+    statusCompleted: 'Completados',
+    dateAll: 'Todas las fechas',
+    dateOverdue: 'Atrasados',
+    dateToday: 'Hoy',
+    dateThisWeek: 'Esta semana',
+    errorLoading: 'Error al cargar los tickets',
+    retry: 'Reintentar',
+    loading: 'Cargando tickets...',
+    noResults: 'No hay tickets con los filtros seleccionados',
+    clearFilters: 'Limpiar filtros',
+    noTickets: 'No tienes tickets asignados',
+    ticketsWillAppear: 'Las tareas que te asignen aparecerán aquí'
+  },
 }

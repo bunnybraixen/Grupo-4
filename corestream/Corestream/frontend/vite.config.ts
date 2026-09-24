@@ -36,12 +36,8 @@ export default defineConfig({
   // Resolución de módulos: configuramos alias para importaciones más limpias
   resolve: {
     alias: {
-      /**
-       * Alias '@' apunta al directorio 'src/'
-       * Permite escribir: import X from '@/components/...'
-       * En lugar de: import X from '../../../components/...'
-       */
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '@iconify/vue': path.resolve(__dirname, './src/components/common/IconFallback.vue')
     }
   },
 

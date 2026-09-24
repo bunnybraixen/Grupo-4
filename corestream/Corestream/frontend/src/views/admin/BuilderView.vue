@@ -47,8 +47,14 @@
               {{ app.description || 'Sin descripción disponible.' }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
-              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ app.epicCount ?? 0 }} épicas</span>
-              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ app.pendingCount ?? 0 }} pendientes</span>
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).totalEpics }} épicas</span>
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).remainingTickets }} pendientes</span>
+              <span
+                v-if="teamsStore.getTeamForApp(app.id)"
+                class="rounded-full bg-[var(--teal)]/15 text-[var(--teal)] border border-[var(--teal)]/30 px-2.5 py-1 font-semibold flex items-center gap-1"
+              >
+                👥 {{ teamsStore.getTeamForApp(app.id)?.name }}
+              </span>
             </div>
           </div>
 
@@ -74,7 +80,7 @@
             </button>
 
             <button
-              v-if="canManageApplications"
+              v-if="isAdmin"
               @click="toggleAppArchive(app)"
               class="px-3 py-2 rounded-lg text-sm border border-[var(--border-subtle)] bg-[var(--bg-app)] text-[var(--text-primary)] hover:border-amber-500"
             >
@@ -82,11 +88,38 @@
             </button>
 
             <button
+              v-if="canManageApplications"
               @click="openEpicCreatorFor(app.id)"
               class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30"
             >
               Crear épicas
             </button>
+          </div>
+        </div>
+
+        <!-- Avance del Proyecto (Barra de progreso) -->
+        <div class="mt-4 border-t border-[var(--border-subtle)] pt-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs uppercase tracking-[0.16em] text-[var(--text-muted)] mb-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-semibold text-[var(--text-primary)]">Avance del proyecto:</span>
+              <span>{{ getAppProgress(app.id).completedEpics }}/{{ getAppProgress(app.id).totalEpics }} épicas listas</span>
+              <span>·</span>
+              <span>{{ getAppProgress(app.id).completedTickets }}/{{ getAppProgress(app.id).totalTickets }} tickets completados</span>
+            </div>
+            <span
+              :class="getEpicProgressBadgeClass(getAppProgress(app.id).percentage)"
+              class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            >
+              {{ getAppProgress(app.id).isComplete ? 'PROYECTO COMPLETO' : `${getAppProgress(app.id).percentage}%` }}
+            </span>
+          </div>
+
+          <div class="h-2.5 w-full rounded-full overflow-hidden bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="getEpicProgressBarClass(getAppProgress(app.id).percentage)"
+              :style="{ width: getAppProgress(app.id).percentage + '%' }"
+            ></div>
           </div>
         </div>
 
@@ -110,7 +143,20 @@
             ></textarea>
           </div>
 
-          <div class="mb-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2">
+          <div class="mb-3">
+            <label class="block text-xs uppercase tracking-[0.15em] text-[var(--text-muted)] mb-2">Equipo Asignado</label>
+            <select
+              v-model="editAppForm.teamId"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none text-sm text-[var(--text-primary)]"
+            >
+              <option value="">Sin equipo asignado (Todos)</option>
+              <option v-for="t in teamsStore.teams" :key="t.id" :value="t.id">
+                {{ t.name }} ({{ t.memberEmails.length }} miembros)
+              </option>
+            </select>
+          </div>
+
+          <div v-if="isAdmin" class="mb-3 flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2">
             <div>
               <p class="text-sm font-medium">Estado del proyecto</p>
               <p class="text-xs text-[var(--text-muted)]">{{ editAppForm.isArchived ? 'Archivado' : 'Activo' }}</p>
@@ -141,7 +187,7 @@
       No hay aplicaciones activas para mostrar.
     </div>
 
-    <div v-if="authStore.isAdmin && archivedApplications.length" class="mt-8">
+    <div v-if="isAdmin && archivedApplications.length" class="mt-8">
       <div class="flex items-center justify-between gap-3 mb-3">
         <h2 class="text-lg font-semibold text-[var(--text-primary)]">Archivados</h2>
         <span class="rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-300 border border-amber-400/20">
@@ -188,6 +234,15 @@
         rows="2"
         class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 mb-3 outline-none"
       ></textarea>
+      <select
+        v-model="newAppTeamId"
+        class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 mb-3 outline-none text-sm text-[var(--text-primary)]"
+      >
+        <option value="">Seleccionar equipo asignado (Opcional)...</option>
+        <option v-for="t in teamsStore.teams" :key="t.id" :value="t.id">
+          {{ t.name }}
+        </option>
+      </select>
       <p v-if="appError" class="text-xs text-red-400 mb-2 font-medium">{{ appError }}</p>
       <div class="flex gap-2">
         <button
@@ -400,12 +455,25 @@
             :key="ticket.id"
             class="p-3 flex flex-wrap items-center justify-between gap-2"
           >
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <p class="font-medium truncate">{{ ticket.title }}</p>
               <div class="flex flex-wrap items-center gap-2 mt-1 text-xs">
                 <span :class="statusClass(ticket.status)" class="px-2 py-0.5 rounded-full font-medium">{{ statusLabel(ticket.status) }}</span>
                 <span :class="priorityClass(ticket.priority)" class="px-2 py-0.5 rounded-full font-medium">{{ priorityLabel(ticket.priority) }}</span>
                 <span v-if="ticket.dueDate" class="text-[var(--text-muted)]">📅 {{ ticket.dueDate.slice(0, 10) }}</span>
+              </div>
+              <!-- Barra de progreso de subtareas si existen -->
+              <div v-if="getSubtaskStats(ticket).total > 0" class="mt-2 text-xs">
+                <div class="flex items-center justify-between text-[11px] text-[var(--text-muted)] mb-1">
+                  <span>Subtareas: {{ getSubtaskStats(ticket).completed }}/{{ getSubtaskStats(ticket).total }} completadas</span>
+                  <span>{{ getSubtaskStats(ticket).percentage }}%</span>
+                </div>
+                <div class="h-1.5 w-full rounded-full overflow-hidden bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                  <div
+                    class="h-full rounded-full bg-[var(--teal)] transition-all duration-300"
+                    :style="{ width: getSubtaskStats(ticket).percentage + '%' }"
+                  ></div>
+                </div>
               </div>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -655,6 +723,7 @@ import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
+import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import type { Epic, Subtask, Ticket, User } from '@/types'
 
@@ -664,25 +733,35 @@ const applicationsStore = useApplicationsStore()
 const epicsStore = useEpicsStore()
 const ticketsStore = useTicketsStore()
 const authStore = useAuthStore()
+const teamsStore = useTeamsStore()
 
 const selectedAppId = ref('')
 const showNewApp = ref(false)
 const newAppName = ref('')
 const newAppDescription = ref('')
+const newAppTeamId = ref('')
 const appError = ref('')
 const editingAppId = ref<string | null>(null)
-const editAppForm = ref({ name: '', description: '', isArchived: false })
+const editAppForm = ref({ name: '', description: '', teamId: '', isArchived: false })
 const editingEpicId = ref<string | null>(null)
 const editEpicForm = ref({ title: '', description: '' })
 const draggedEpicId = ref<string | null>(null)
 const dropTargetEpicId = ref<string | null>(null)
 
-const canManageApplications = computed(() => authStore.isAdmin || authStore.isGroupLeader)
+const currentUserRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
+const isAdmin = computed(() => currentUserRole.value === 'ADMIN')
+const isGroupLeader = computed(() => currentUserRole.value === 'GROUP_LEADER')
+const isDeveloper = computed(() => currentUserRole.value === 'DEVELOPER')
+const canManageApplications = computed(() => isAdmin.value || isGroupLeader.value)
+
 const activeApplications = computed(() =>
-  applicationsStore.applications.filter((app) => app.isActive !== false)
+  applicationsStore.applications.filter((app) => {
+    if (app.isActive === false) return false
+    return teamsStore.isAppAssignedToUser(app.id, authStore.user?.email || localStorage.getItem('userEmail'), isAdmin.value)
+  })
 )
 const archivedApplications = computed(() =>
-  authStore.isAdmin ? applicationsStore.applications.filter((app) => app.isActive === false) : []
+  isAdmin.value ? applicationsStore.applications.filter((app) => app.isActive === false) : []
 )
 const selectedApp = computed(() =>
   applicationsStore.applications.find((app) => app.id === selectedAppId.value) ?? null
@@ -740,6 +819,57 @@ const editTicketForm = ref<{
 })
 
 const epics = computed(() => epicsStore.epics)
+const allAppEpics = ref<Record<string, Epic[]>>({})
+
+const loadAppProgress = async (appId: string): Promise<void> => {
+  try {
+    const list = await epicsStore.fetchByApp(appId)
+    allAppEpics.value[appId] = list
+    await Promise.all(list.map((epic) => loadTicketsFor(epic.id)))
+  } catch (err) {
+    console.error(`Error cargando avance de la aplicación ${appId}:`, err)
+  }
+}
+
+const loadAllApplicationsProgress = async (): Promise<void> => {
+  await Promise.all(activeApplications.value.map((app) => loadAppProgress(app.id)))
+}
+
+const getAppProgress = (appId: string) => {
+  const epicsList = allAppEpics.value[appId] ?? (appId === selectedAppId.value ? epics.value : [])
+  const totalEpics = epicsList.length
+
+  let totalTickets = 0
+  let completedTickets = 0
+  let completedEpics = 0
+
+  for (const epic of epicsList) {
+    const tickets = epicTickets.value[epic.id] ?? []
+    const epicTotal = tickets.length
+    const epicCompleted = tickets.filter((t) => t.status === 'DONE' || t.status === 'COMPLETED').length
+
+    totalTickets += epicTotal
+    completedTickets += epicCompleted
+    if (epicTotal > 0 && epicCompleted === epicTotal) {
+      completedEpics++
+    }
+  }
+
+  const remainingTickets = Math.max(totalTickets - completedTickets, 0)
+  const percentage = totalTickets === 0
+    ? (totalEpics === 0 ? 0 : Math.round((completedEpics / totalEpics) * 100))
+    : Math.round((completedTickets / totalTickets) * 100)
+
+  return {
+    totalEpics,
+    completedEpics,
+    totalTickets,
+    completedTickets,
+    remainingTickets,
+    percentage,
+    isComplete: (totalTickets > 0 && completedTickets === totalTickets) || (totalEpics > 0 && completedEpics === totalEpics)
+  }
+}
 
 const getEpicProgress = (epicId: string) => {
   const tickets = epicTickets.value[epicId] ?? []
@@ -755,6 +885,14 @@ const getEpicProgress = (epicId: string) => {
     percentage,
     isComplete: total > 0 && completed === total
   }
+}
+
+const getSubtaskStats = (ticket: Ticket) => {
+  const subs = ticket.subtasks ?? []
+  const total = subs.length
+  const completed = subs.filter((s) => s.isCompleted).length
+  const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
+  return { total, completed, percentage }
 }
 
 const getEpicProgressBarClass = (percentage: number): string => {
@@ -796,8 +934,8 @@ const fetchEpics = async (): Promise<void> => {
     return
   }
 
-  epicTickets.value = {}
   const list = await epicsStore.fetchByApp(selectedAppId.value)
+  allAppEpics.value[selectedAppId.value] = list
   await Promise.all(list.map((epic) => loadTicketsFor(epic.id)))
 }
 
@@ -807,13 +945,14 @@ const openAppEditor = (app: { id: string; name: string; description?: string | n
   editAppForm.value = {
     name: app.name,
     description: app.description || '',
+    teamId: teamsStore.getTeamForApp(app.id)?.id || '',
     isArchived: app.isActive === false
   }
 }
 
 const cancelAppEdit = (): void => {
   editingAppId.value = null
-  editAppForm.value = { name: '', description: '', isArchived: false }
+  editAppForm.value = { name: '', description: '', teamId: '', isArchived: false }
   appError.value = ''
 }
 
@@ -833,8 +972,9 @@ const saveAppEdits = async (app: { id: string }): Promise<void> => {
       description: editAppForm.value.description.trim() || undefined,
       isActive: !editAppForm.value.isArchived
     })
+    teamsStore.assignTeamToApp(app.id, editAppForm.value.teamId || null)
     editingAppId.value = null
-    editAppForm.value = { name: '', description: '', isArchived: false }
+    editAppForm.value = { name: '', description: '', teamId: '', isArchived: false }
   } catch (err: any) {
     console.error('Error al actualizar aplicación:', err)
     if (err?.response?.status === 409) {
@@ -953,10 +1093,14 @@ const createApp = async (): Promise<void> => {
       name: newAppName.value.trim(),
       description: newAppDescription.value.trim() || undefined
     })
+    if (newAppTeamId.value) {
+      teamsStore.assignTeamToApp(created.id, newAppTeamId.value)
+    }
     await applicationsStore.fetchAll()
     selectedAppId.value = created.id
     newAppName.value = ''
     newAppDescription.value = ''
+    newAppTeamId.value = ''
     showNewApp.value = false
     await fetchEpics()
   } catch (err: any) {
@@ -1290,6 +1434,7 @@ const priorityClass = (priority: string): string =>
 onMounted(async () => {
   try {
     await applicationsStore.fetchAll()
+    await loadAllApplicationsProgress()
     const firstActiveApp = activeApplications.value[0]
     if (firstActiveApp) {
       selectedAppId.value = firstActiveApp.id

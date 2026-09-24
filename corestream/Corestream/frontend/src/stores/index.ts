@@ -30,6 +30,7 @@ export { useNotificationsStore } from './notifications'
 
 // Equipo
 export { useTeamStore } from './team'
+export { useTeamsStore } from './teams'
 
 /**
  * GUÍA DE TIENDAS
