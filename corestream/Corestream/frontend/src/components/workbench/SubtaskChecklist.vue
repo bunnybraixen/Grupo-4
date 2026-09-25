@@ -80,7 +80,7 @@
     <!-- ================================================================ -->
     <!-- Input en línea para crear nueva subtarea -->
     <!-- ================================================================ -->
-    <div class="pt-2 border-t border-slate-700">
+    <div v-if="canCreate" class="pt-2 border-t border-slate-700">
       <button
         v-if="!isAddingSubtask"
         @click="isAddingSubtask = true"
@@ -145,9 +145,15 @@ interface Subtask {
 interface Props {
   subtasks: Subtask[]
   ticketId: string
+  /**
+   * Permite crear subtareas. Por defecto `true` para no romper a los usos
+   * existentes; el workbench de desarrollo lo pone a `false` para los
+   * DEVELOPER (solo ADMIN/TEAM_LEADER desglosan el trabajo).
+   */
+  canCreate?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { canCreate: true })
 
 // =====================================================================
 // ESTADO LOCAL

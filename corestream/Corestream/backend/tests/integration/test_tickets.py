@@ -236,10 +236,27 @@ async def test_no_se_puede_completar_desde_todo(client, dev_headers, ticket):
     assert res.status_code in (400, 409, 422)
 
 
-async def test_completar_exige_pr_link(client, dev_headers, ticket):
+async def test_completar_sin_pr_link_es_opcional(client, dev_headers, ticket):
+    """
+    El PR pasó a ser opcional (antes el backend respondía 400 "Pull request link
+    inválido requerido"): hay tickets que se cierran sin PR. El desarrollador
+    asignado puede completar su propio ticket sin enlace.
+    """
     await client.post(f"/api/tickets/{ticket['id']}/start", json={}, headers=dev_headers)
     res = await client.post(f"/api/tickets/{ticket['id']}/complete", json={}, headers=dev_headers)
-    assert res.status_code in (400, 422)
+    assert res.status_code == 200, res.text[:200]
+    assert res.json()["status"] in ("DONE", "COMPLETED")
+
+
+async def test_completar_con_pr_invalido_da_400(client, dev_headers, ticket):
+    """Si se informa un PR, debe ser una URL http(s)."""
+    await client.post(f"/api/tickets/{ticket['id']}/start", json={}, headers=dev_headers)
+    res = await client.post(
+        f"/api/tickets/{ticket['id']}/complete",
+        json={"pr_link": "github.com/owner/repo/pull/1"},
+        headers=dev_headers,
+    )
+    assert res.status_code == 400
 
 
 async def test_pregunta_exige_longitud_minima(client, dev_headers, ticket):

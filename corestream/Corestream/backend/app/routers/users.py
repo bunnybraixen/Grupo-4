@@ -20,17 +20,31 @@ from app.middleware.auth import get_current_user, require_role
 # Router con prefijo y etiqueta para la documentación
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
+# Roles que pueden listar usuarios. El proyecto arrastra dos nombres para el
+# mismo rol: `GROUP_LEADER` (valor del enum `users.role`, y por tanto el que
+# viaja en el JWT) y `TEAM_LEADER` (nombre usado en docs/RBAC.md y en la tabla
+# `roles`). Se aceptan ambos: si solo se aceptara uno, un líder real recibía
+# 403 al abrir el workbench y no podía ver a quién asignar tickets.
+# El filtrado por equipo NO se hace aquí: los equipos viven en el cliente
+# (localStorage), así que el frontend limita la lista a los miembros del
+# equipo del líder.
+USER_LIST_ROLES = ("ADMIN", "TEAM_LEADER", "GROUP_LEADER")
+
 
 @router.get(
     "/",
     response_model=List[UserResponse],
     summary="Listar todos los usuarios",
-    description="Obtiene una lista paginada de todos los usuarios del sistema"
+    description=(
+        "Obtiene una lista paginada de usuarios (ADMIN o TEAM_LEADER). El "
+        "workbench del líder filtra después el resultado a los miembros de su "
+        "equipo, porque los equipos no existen en el backend."
+    )
 )
 async def list_users(
     skip: int = Query(0, ge=0, description="Número de usuarios a saltar"),
     limit: int = Query(20, ge=1, le=100, description="Número máximo de usuarios a retornar"),
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    current_user: User = Depends(require_role(USER_LIST_ROLES)),
     db: AsyncSession = Depends(get_db)
 ) -> List[UserResponse]:
     """
@@ -39,7 +53,7 @@ async def list_users(
     Args:
         skip (int): Número de registros a omitir (para paginación)
         limit (int): Número máximo de registros a retornar
-        current_user (User): Usuario autenticado con rol ADMIN
+        current_user (User): Usuario autenticado con rol ADMIN o TEAM_LEADER
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:

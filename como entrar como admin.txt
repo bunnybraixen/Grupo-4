@@ -47,7 +47,7 @@ Para entrar como group leader:
   localStorage.setItem('userRole', 'GROUP_LEADER');
   localStorage.setItem('userName', 'Team Leader');
   console.log('¡Sesión iniciada como GROUP_LEADER!');
-  window.location.href = '/dev/team';
+  window.location.href = '/dev/workbench';
 })();
 
 Para entrar como dev:

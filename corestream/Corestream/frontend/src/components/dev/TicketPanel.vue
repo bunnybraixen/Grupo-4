@@ -71,7 +71,7 @@
         <!-- PR Link -->
         <div class="px-6 py-4 border-b border-[var(--border-subtle)]">
           <label class="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
-            Enlace del Pull Request
+            Enlace del Pull Request (opcional)
           </label>
           <input
             data-cy="pr-link-input"
@@ -99,6 +99,7 @@
           <SubtaskChecklist
             :subtasks="localSubtasks"
             :ticket-id="ticket.id"
+            :can-create="canManageSubtasks"
             @create="handleSubtaskCreate"
             @update="handleSubtaskUpdate"
             @delete="handleSubtaskDelete"
@@ -127,17 +128,17 @@
             data-cy="btn-completar"
             v-if="ticket?.status === 'IN_PROGRESS'"
             @click="handleComplete"
-            :disabled="!prLinkValid || isCompleting"
+            :disabled="!canComplete || isCompleting"
             class="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all duration-200 mb-3"
-            :class="prLinkValid
+            :class="canComplete
               ? 'bg-[var(--lime)] text-[var(--dark-gray)] hover:brightness-95 cursor-pointer'
               : 'bg-[var(--bg-panel)] text-[var(--text-muted)] cursor-not-allowed opacity-60'"
           >
             <span>✓</span>
             <span>{{ isCompleting ? 'Completando...' : 'Completar Ticket' }}</span>
           </button>
-          <p v-if="ticket?.status === 'IN_PROGRESS' && !prLinkValid" class="text-xs text-[var(--text-muted)] text-center mb-3">
-            ⚠ Requiere PR válido para completar
+          <p v-if="ticket?.status === 'IN_PROGRESS' && !canComplete" class="text-xs text-[var(--text-muted)] text-center mb-3">
+            ⚠ El enlace de PR no es válido (déjalo vacío para completar sin PR)
           </p>
 
           <div class="grid grid-cols-2 gap-3">
@@ -380,6 +381,19 @@ const prLinkValid = computed(() => {
   return patterns.some(p => p.test(prLink.value))
 })
 
+/**
+ * El PR es opcional: se puede completar con un enlace válido o directamente
+ * sin enlace. Solo se bloquea el envío si hay un enlace escrito pero inválido.
+ */
+const canComplete = computed(() => !prLink.value || prLinkValid.value)
+
+/**
+ * Solo ADMIN/TEAM_LEADER crean subtareas (mismo criterio que el backend:
+ * `POST /api/subtasks/` responde 403 a un DEVELOPER). Los desarrolladores
+ * siguen viendo y marcando las subtareas existentes.
+ */
+const canManageSubtasks = computed(() => authStore.isAdmin || authStore.isTeamLeader)
+
 const formattedTime = computed(() => {
   const h = Math.floor(elapsedSeconds.value / 3600)
   const m = Math.floor((elapsedSeconds.value % 3600) / 60)
@@ -514,7 +528,7 @@ async function handleStart() {
 }
 
 async function handleComplete() {
-  if (!prLinkValid.value || !props.ticket?.id || isCompleting.value) return
+  if (!canComplete.value || !props.ticket?.id || isCompleting.value) return
   isCompleting.value = true
   try {
     await ticketsStore.completeTicket(props.ticket.id, prLink.value)

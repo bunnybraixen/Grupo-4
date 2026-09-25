@@ -64,6 +64,17 @@ export const useAuthStore = defineStore('auth', () => {
   const isGroupLeader = computed(() => user.value?.role === 'GROUP_LEADER')
 
   /**
+   * Líder de equipo, aceptando los dos nombres que usa el proyecto:
+   * `GROUP_LEADER` (enum de `users.role`) y `TEAM_LEADER` (docs/RBAC.md y la
+   * tabla `roles`). Con solo uno de ellos, un líder real quedaba sin permisos
+   * de gestión en la interfaz (mismo desajuste que había en el backend).
+   */
+  const isTeamLeader = computed(() => {
+    const role = String(user.value?.role ?? localStorage.getItem('userRole') ?? '').toUpperCase()
+    return role === 'GROUP_LEADER' || role === 'TEAM_LEADER'
+  })
+
+  /**
    * Retorna el rol actual del usuario
    */
   const userRole = computed((): UserRole | undefined => user.value?.role)
@@ -388,6 +399,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isDeveloper,
     isGroupLeader,
+    isTeamLeader,
     userRole,
     fullName,
     userEmail,

@@ -95,13 +95,16 @@ Notas:
 
 ### Subtareas (`/api/tickets/{ticket_id}/subtasks`)
 
-Mismas reglas que la gestión de su ticket padre (`assert_can_manage_ticket`
-sobre el `Ticket` referenciado por `ticket_id`):
+La **creación** es una decisión de planificación y está reservada a gestión
+(`require_admin_or_leader`); el resto de operaciones siguen las reglas de su
+ticket padre (`assert_can_manage_ticket` sobre el `Ticket` referenciado por
+`ticket_id`):
 
 | Acción | ADMIN | TEAM_LEADER | DEVELOPER (asignado al ticket) | DEVELOPER (ajeno) |
 |---|---|---|---|---|
 | Listar | ✅ | ✅ | ✅ | ✅ |
-| Crear / editar / borrar / reordenar | ✅ | ✅ | ✅ | ❌ |
+| Crear | ✅ | ✅ | ❌ | ❌ |
+| Editar / borrar / reordenar | ✅ | ✅ | ✅ | ❌ |
 
 ### Documentos (`/api/documents`)
 
@@ -132,6 +135,30 @@ distinción de rol.
 | Editar / borrar / cambiar rol / resetear contraseña de otro usuario | ✅ | ❌ | ❌ |
 | Crear invitación | ✅ | ❌ | ❌ |
 | Aceptar invitación / consultar token | público (sin autenticar) | | |
+
+### Equipos (`/api/teams`)
+
+Los equipos (miembros por email + proyectos asignados) se persisten ahora en el
+backend. Antes vivían solo en el `localStorage` del navegador del ADMIN, así
+que en cualquier sesión nueva —otro navegador, otro equipo, una ventana
+privada— desaparecían mientras las aplicaciones y épicas sí llegaban del
+backend.
+
+| Acción | ADMIN | TEAM_LEADER | DEVELOPER |
+|---|---|---|---|
+| Listar | ✅ | ✅ | ✅ (el workbench lo necesita) |
+| Crear / editar / borrar | ✅ | ❌ | ❌ |
+
+El filtrado por equipo (qué proyectos ve cada usuario y a quién puede asignar
+tickets un líder) se aplica en el cliente a partir de estos datos, porque el
+workbench ya trabaja con ellos como listas.
+
+### Completar ticket (`POST /api/tickets/{id}/complete`)
+
+El enlace de pull request es **opcional** (antes el backend respondía 400 al
+desarrollador asignado si no lo informaba): hay tickets que se cierran sin PR
+(spikes, cambios de configuración, cancelados o duplicados). Si se informa un
+enlace, debe ser una URL `http(s)`.
 
 ### Reuniones (`/api/meetings`)
 
