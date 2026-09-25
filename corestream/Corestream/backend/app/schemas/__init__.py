@@ -59,6 +59,12 @@ from app.schemas.analytics import (
     AnalyticsSummary,
 )
 
+from app.schemas.ticket_comment import (
+    TicketCommentCreate,
+    TicketCommentResponse,
+)
+
+
 __all__ = [
     # Esquemas de Usuario
     "UserBase",
@@ -106,4 +112,6 @@ __all__ = [
     "BurndownPoint",
     "BurndownData",
     "AnalyticsSummary",
+    "TicketCommentCreate",
+    "TicketCommentResponse",
 ]

@@ -216,6 +216,14 @@ class Ticket(Base, BaseEntity):
         cascade="all, delete-orphan",
         doc="Lista de eventos de auditoría del ticket"
     )
+
+    comments = relationship(
+        "TicketComment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketComment.created_at",
+        doc="Lista de comentarios realizados sobre este ticket",
+    )
     
     __table_args__ = (
     )

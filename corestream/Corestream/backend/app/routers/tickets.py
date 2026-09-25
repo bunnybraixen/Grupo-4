@@ -24,12 +24,23 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models import (
-    Ticket, User, Epic, TicketStatus, TicketEvent, 
-    TicketEventType, Subtask
+    Ticket,
+    User,
+    Epic,
+    TicketStatus,
+    TicketEvent,
+    TicketEventType,
+    Subtask,
+    TicketComment,
 )
 from app.schemas import (
-    TicketResponse, TicketCreate, TicketUpdate,
-    TicketEventResponse, TicketQuestion
+    TicketResponse,
+    TicketCreate,
+    TicketUpdate,
+    TicketEventResponse,
+    TicketQuestion,
+    TicketCommentCreate,
+    TicketCommentResponse,
 )
 from app.services import ticket_state_machine, timer_service, notification_service
 from app.services.ticket_permissions import (
@@ -293,12 +304,90 @@ async def create_ticket(
         )
 
 
-@router.get(
-    "/{ticket_id}",
-    response_model=TicketResponse,
-    summary="Obtener ticket por ID",
-    description="Recupera todos los detalles de un ticket incluyendo subtareas y asignado"
+@router.post(
+    "/{ticket_id}/comments",
+    response_model=TicketCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear comentario en ticket",
+    description="Crea un comentario asociado al ticket y al usuario autenticado",
 )
+async def create_ticket_comment(
+    ticket_id: UUID,
+    comment_data: TicketCommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketCommentResponse:
+
+    # Verificar que el ticket existe
+    ticket_result = await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = ticket_result.scalar_one_or_none()
+
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado",
+        )
+
+    # Obtener el UUID real del usuario desde el JWT
+    try:
+        actor_id = get_user_id(current_user)
+        actor_uuid = (
+            actor_id
+            if isinstance(actor_id, UUID)
+            else UUID(str(actor_id))
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de usuario inválido",
+        )
+
+    # Verificar que el usuario exista en PostgreSQL
+    user_result = await db.execute(
+        select(User).where(User.id == actor_uuid)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario autenticado no encontrado",
+        )
+
+    try:
+        # Crear comentario
+        new_comment = TicketComment(
+            ticket_id=ticket_id,
+            user_id=actor_uuid,
+            content=comment_data.content,
+        )
+
+        db.add(new_comment)
+
+        # Persistir en PostgreSQL
+        await db.commit()
+
+        # Recargar el comentario incluyendo el usuario.
+        # Esto evita problemas de lazy-loading con AsyncSession.
+        comment_result = await db.execute(
+            select(TicketComment)
+            .options(selectinload(TicketComment.user))
+            .where(TicketComment.id == new_comment.id)
+        )
+
+        created_comment = comment_result.scalar_one()
+
+        return TicketCommentResponse.from_orm(created_comment)
+
+    except Exception as e:
+        await db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error al crear comentario: {str(e)}",
+        )
 async def get_ticket(
     ticket_id: UUID,
     current_user: User = Depends(get_current_user),

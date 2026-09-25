@@ -151,3 +151,9 @@ class User(Base, BaseEntity):
         doc="Lista de documentos subidos por este usuario"
     )
     
+    ticket_comments = relationship(
+        "TicketComment",
+        back_populates="user",
+        foreign_keys="TicketComment.user_id",
+        doc="Comentarios realizados por este usuario en tickets"
+    )

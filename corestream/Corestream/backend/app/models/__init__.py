@@ -40,10 +40,12 @@ from .user import User, UserRole
 from .application import Application
 from .epic import Epic
 from .ticket import Ticket, TicketStatus, TicketPriority
+from .ticket_comment import TicketComment
 from .subtask import Subtask
 from .ticket_event import TicketEvent, TicketEventType
 from .notification import Notification, NotificationType
 from .document import Document, DocumentType
+
 
 # Exportar todas las clases públicas
 __all__ = [
@@ -65,6 +67,7 @@ __all__ = [
     "Ticket",
     "TicketStatus",
     "TicketPriority",
+    "TicketComment",
     
     # Subtask
     "Subtask",
@@ -80,4 +83,5 @@ __all__ = [
     # Document
     "Document",
     "DocumentType",
+    
 ]
