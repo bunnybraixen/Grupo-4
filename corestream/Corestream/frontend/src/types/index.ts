@@ -588,6 +588,36 @@ export interface Ticket {
 }
 
 /**
+ * Representa un comentario realizado sobre un ticket
+ */
+export interface TicketComment {
+  /**
+   * Identificador único del comentario
+   */
+  id: string
+
+  /**
+   * ID del ticket al que pertenece
+   */
+  ticketId: string
+
+  /**
+   * Usuario que realizó el comentario
+   */
+  user: User
+
+  /**
+   * Contenido del comentario
+   */
+  content: string
+
+  /**
+   * Fecha de creación
+   */
+  createdAt: string
+}
+
+/**
  * Representa una subtarea dentro de un ticket
  * Las subtareas son pasos más pequeños necesarios para completar un ticket
  */

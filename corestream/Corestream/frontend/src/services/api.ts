@@ -18,6 +18,7 @@ import type {
   Application,
   Epic,
   Ticket,
+  TicketComment,
   Subtask,
   TicketStatus,
   TicketPriority,
@@ -1052,6 +1053,24 @@ export const api = {
       return response.data
     },
 
+    /**
+     * Crea un comentario en un ticket
+     *
+     * @param ticketId - ID del ticket
+     * @param content - Contenido del comentario
+     * @returns Comentario creado
+     */
+    createComment: async (
+      ticketId: string,
+      content: string
+    ): Promise<TicketComment> => {
+      const response = await apiClient.post<TicketComment>(
+        `/tickets/${ticketId}/comments`,
+        { content }
+      )
+
+      return response.data
+    },
     /**
      * Actualiza un ticket existente
      * 

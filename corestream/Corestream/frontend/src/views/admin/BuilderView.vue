@@ -702,6 +702,75 @@
                 <span class="text-[var(--text-muted)]">Subtareas:</span>
                 {{ (ticket.subtasks ?? []).filter((s) => s.isCompleted).length }}/{{ (ticket.subtasks ?? []).length }} completadas
               </p>
+              <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+  <div class="flex items-center justify-between mb-2">
+    <span class="font-medium text-[var(--text-primary)]">
+      Comentarios
+    </span>
+
+    <span class="text-xs text-[var(--text-muted)]">
+      {{ newCommentText.length }}/{{ COMMENT_MAX_LENGTH }}
+    </span>
+  </div>
+
+  <textarea
+    v-model="newCommentText"
+    :maxlength="COMMENT_MAX_LENGTH"
+    rows="3"
+    placeholder="Escribe un comentario..."
+    :disabled="creatingComment"
+    @input="commentError = ''"
+    class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--teal)]"
+  ></textarea>
+
+  <p
+    v-if="commentError"
+    class="mt-1 text-xs text-red-400"
+  >
+    {{ commentError }}
+  </p>
+
+  <div class="mt-2 flex justify-end">
+    <button
+      type="button"
+      :disabled="creatingComment || !newCommentText.trim()"
+      @click="createTicketComment(ticket.id)"
+      class="px-3 py-1.5 rounded-lg text-sm bg-[var(--teal)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {{ creatingComment ? 'Publicando...' : 'Comentar' }}
+    </button>
+  </div>
+
+  <div
+    v-if="(ticketComments[ticket.id] ?? []).length"
+    class="mt-4 space-y-2"
+  >
+    <div
+      v-for="comment in ticketComments[ticket.id]"
+      :key="comment.id"
+      class="rounded-lg border border-[var(--border-subtle)] p-3"
+    >
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span class="text-xs font-semibold text-[var(--text-primary)]">
+          {{ comment.user?.role || 'Usuario' }}
+        </span>
+
+        <span class="text-[10px] text-[var(--text-muted)]">
+          {{ comment.createdAt
+            ? comment.createdAt.slice(0, 16).replace('T', ' ')
+            : ''
+          }}
+        </span>
+      </div>
+
+      <p
+        class="text-sm text-[var(--text-secondary)] whitespace-pre-wrap break-words"
+      >
+        {{ comment.content }}
+      </p>
+    </div>
+  </div>
+</div>
             </div>
           </div>
         </div>
@@ -725,7 +794,7 @@ import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
-import type { Epic, Subtask, Ticket, User } from '@/types'
+import type { Epic, Subtask, Ticket, TicketComment, User } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -796,6 +865,19 @@ const usersList = ref<User[]>([])
 const editingTicketId = ref<string | null>(null)
 /** Ticket cuyo panel de detalle está abierto */
 const detailTicketId = ref<string | null>(null)
+/** Comentarios del ticket seleccionado */
+const ticketComments = ref<Record<string, TicketComment[]>>({})
+
+/** Texto del nuevo comentario */
+const newCommentText = ref('')
+
+/** Estado de creación del comentario */
+const creatingComment = ref(false)
+
+/** Error al crear comentario */
+const commentError = ref('')
+
+const COMMENT_MAX_LENGTH = 5000
 /** Subtarea que se está renombrando */
 const editingSubtaskId = ref<string | null>(null)
 const editSubtaskTitle = ref('')
@@ -1324,7 +1406,60 @@ const openTicketEditor = async (ticket: Ticket): Promise<void> => {
 const toggleTicketDetail = (ticket: Ticket): void => {
   editingTicketId.value = null
   ticketError.value = ''
+  commentError.value = ''
+  newCommentText.value = ''
+
   detailTicketId.value = detailTicketId.value === ticket.id ? null : ticket.id
+
+  if (detailTicketId.value === ticket.id && !ticketComments.value[ticket.id]) {
+    ticketComments.value[ticket.id] = []
+  }
+}
+
+/** Crea un comentario asociado al ticket y al usuario autenticado */
+const createTicketComment = async (ticketId: string): Promise<void> => {
+  const content = newCommentText.value.trim()
+
+  commentError.value = ''
+
+  if (!content) {
+    commentError.value = 'El comentario no puede estar vacío.'
+    return
+  }
+
+  if (content.length > COMMENT_MAX_LENGTH) {
+    commentError.value = `El comentario no puede superar los ${COMMENT_MAX_LENGTH} caracteres.`
+    return
+  }
+
+  creatingComment.value = true
+
+  try {
+    const created = await api.tickets.createComment(ticketId, content)
+
+    const existing = ticketComments.value[ticketId] ?? []
+
+    ticketComments.value[ticketId] = [
+      ...existing,
+      created
+    ]
+
+    newCommentText.value = ''
+  } catch (err: any) {
+    console.error('Error creando comentario:', err)
+
+    const detail = err?.response?.data?.detail
+
+    if (Array.isArray(detail)) {
+      commentError.value =
+        detail[0]?.msg || 'No se pudo crear el comentario.'
+    } else {
+      commentError.value =
+        detail || 'No se pudo crear el comentario.'
+    }
+  } finally {
+    creatingComment.value = false
+  }
 }
 
 /**
