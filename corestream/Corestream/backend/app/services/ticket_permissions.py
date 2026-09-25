@@ -21,7 +21,12 @@ from fastapi import HTTPException, status
 
 from app.models import Ticket, User
 
-_MANAGER_ROLES = {"ADMIN", "TEAM_LEADER"}
+# El proyecto arrastra dos nombres para el mismo rol: `GROUP_LEADER` (valor del
+# enum `users.role` y, por tanto, el que llega en el JWT) y `TEAM_LEADER`
+# (nombre usado en docs/RBAC.md y en la tabla `roles`). Con solo "TEAM_LEADER",
+# un líder real no contaba como manager y recibía 403 al asignar/crear/editar
+# tickets en el workbench.
+_MANAGER_ROLES = {"ADMIN", "TEAM_LEADER", "GROUP_LEADER"}
 
 
 def get_user_id(user: Any) -> str:

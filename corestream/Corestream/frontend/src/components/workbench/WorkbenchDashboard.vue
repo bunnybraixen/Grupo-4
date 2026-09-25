@@ -199,7 +199,7 @@
               class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)] disabled:opacity-50"
             >
               <option value="">👤 Asignar a...</option>
-              <option v-for="u in availableUsers" :key="u.id" :value="u.id">
+              <option v-for="u in assignableUsers" :key="u.id" :value="u.id">
                 {{ u.fullName || u.email }}
               </option>
             </select>
@@ -259,7 +259,10 @@
                 </span>
               </li>
             </ul>
-            <div class="flex gap-2 pt-1 border-t border-[var(--border-subtle)]">
+            <div
+              v-if="canManageSubtasks"
+              class="flex gap-2 pt-1 border-t border-[var(--border-subtle)]"
+            >
               <input
                 v-model="newSubtaskTitle"
                 @keyup.enter="addSubtask(ticket)"
@@ -299,6 +302,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
+import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import type { Subtask, Ticket, User } from '@/types'
 
@@ -314,10 +318,20 @@ const { tickets, statusFilter, dateFilter, isLoading, error, setStatusFilter, se
 // =====================================================================
 
 const authStore = useAuthStore()
+const teamsStore = useTeamsStore()
 const userRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
-const isGroupLeader = computed(() => userRole.value === 'GROUP_LEADER')
+const isGroupLeader = computed(() => {
+  const role = String(userRole.value || '').toUpperCase()
+  return role === 'GROUP_LEADER' || role === 'TEAM_LEADER'
+})
 const isAdmin = computed(() => userRole.value === 'ADMIN')
 const canAssignTickets = computed(() => isGroupLeader.value || isAdmin.value)
+
+/**
+ * Solo ADMIN/TEAM_LEADER crean subtareas (el backend responde 403 a un
+ * DEVELOPER en `POST /api/subtasks/`).
+ */
+const canManageSubtasks = computed(() => authStore.isTeamLeader || isAdmin.value)
 
 // =====================================================================
 // ESTADO LOCAL
@@ -329,6 +343,19 @@ const newSubtaskTitle = ref('')
 const working = ref(false)
 const actionError = ref('')
 const availableUsers = ref<User[]>([])
+
+/**
+ * Solo los miembros del equipo del líder pueden recibir el ticket; un ADMIN
+ * asigna a cualquiera. `availableUsers` trae la lista completa de la API y el
+ * filtro se hace aquí porque los equipos viven en el cliente (localStorage).
+ */
+const assignableUsers = computed(() =>
+  teamsStore.filterUsersByTeams(
+    availableUsers.value,
+    authStore.user?.email || localStorage.getItem('userEmail'),
+    isAdmin.value
+  )
+)
 
 // =====================================================================
 // HELPERS

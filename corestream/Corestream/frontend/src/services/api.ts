@@ -35,6 +35,20 @@ import type {
   HeatmapData,
   BurndownData
 } from '@/types'
+// Import de tipo (se borra al compilar, así que no crea un ciclo real con el
+// store, que a su vez importa este servicio).
+import type { Team } from '@/stores/teams'
+
+/**
+ * Payload de escritura de un equipo. Se envía en camelCase: el interceptor de
+ * `apiClient` lo convierte a snake_case para el backend FastAPI.
+ */
+export interface TeamPayload {
+  name: string
+  description?: string | null
+  memberEmails: string[]
+  applicationIds: string[]
+}
 
 /**
  * Interfaz para estado de autenticación
@@ -100,6 +114,25 @@ const normalizeUser = (raw: any): User => {
 }
 
 /**
+ * Normaliza la respuesta de equipo del backend al tipo `Team` del store.
+ * Acepta camelCase (respuesta ya convertida por el interceptor) y snake_case.
+ */
+const normalizeTeam = (raw: any): Team => {
+  const source = raw?.data ?? raw ?? {}
+  const emails = source.memberEmails ?? source.member_emails ?? []
+  const appIds = source.applicationIds ?? source.application_ids ?? []
+  return {
+    id: String(source.id ?? ''),
+    name: source.name ?? '',
+    description: source.description ?? '',
+    memberEmails: (Array.isArray(emails) ? emails : [])
+      .map((email: any) => String(email).trim().toLowerCase())
+      .filter(Boolean),
+    applicationIds: (Array.isArray(appIds) ? appIds : []).map((appId: any) => String(appId))
+  }
+}
+
+/**
  * Normaliza los tokens del backend a `AuthTokens` (camelCase).
  * Acepta tanto la forma plana snake_case (`access_token`) como camelCase.
  */
@@ -161,7 +194,7 @@ hydrateAuthState()
  * módulos de épicas/tickets/aplicaciones/subtareas, dejando intacto
  * el resto (por ejemplo /auth) para no romper flujos existentes.
  */
-const CONVERTIBLE_URL_RE = /\/(tickets|epics|applications|subtasks)(\/|\?|$)/
+const CONVERTIBLE_URL_RE = /\/(tickets|epics|applications|subtasks|teams)(\/|\?|$)/
 
 const shouldConvertCase = (url?: string): boolean =>
   !!url && CONVERTIBLE_URL_RE.test(url)
@@ -617,6 +650,67 @@ export const api = {
         `/users/${userId}/stats`
       )
       return response.data
+    }
+  },
+
+  /**
+   * ========================================
+   * MÓDULO DE EQUIPOS
+   * ========================================
+   *
+   * Los equipos (miembros y proyectos asignados) se guardaban SOLO en el
+   * localStorage del navegador del admin: en cualquier sesión nueva —otro
+   * navegador, otro equipo, una ventana privada— desaparecían, mientras las
+   * aplicaciones y épicas sí llegaban del backend. Ahora se persisten en el
+   * backend y el store los trae de aquí.
+   *
+   * Lectura: cualquier usuario autenticado (el workbench la necesita).
+   * Escritura: solo ADMIN.
+   */
+  teams: {
+    /**
+     * Lista todos los equipos del sistema.
+     *
+     * @returns Array de equipos
+     */
+    list: async (): Promise<Team[]> => {
+      const response = await apiClient.get<any>('/teams/')
+      const raw = response.data
+      const items = Array.isArray(raw) ? raw : (raw?.items ?? raw?.data ?? [])
+      return (items as any[]).map(normalizeTeam)
+    },
+
+    /**
+     * Crea un equipo (solo ADMIN).
+     *
+     * @param payload - Nombre, descripción, miembros y aplicaciones
+     * @returns Equipo creado
+     */
+    create: async (payload: TeamPayload): Promise<Team> => {
+      const response = await apiClient.post<any>('/teams/', payload)
+      return normalizeTeam(response.data)
+    },
+
+    /**
+     * Actualiza un equipo: renombrar, cambiar miembros o asignar/quitar
+     * aplicaciones (solo ADMIN). Admite actualización parcial.
+     *
+     * @param teamId - ID del equipo
+     * @param payload - Campos a modificar
+     * @returns Equipo actualizado
+     */
+    update: async (teamId: string, payload: Partial<TeamPayload>): Promise<Team> => {
+      const response = await apiClient.put<any>(`/teams/${teamId}`, payload)
+      return normalizeTeam(response.data)
+    },
+
+    /**
+     * Elimina un equipo (solo ADMIN).
+     *
+     * @param teamId - ID del equipo a eliminar
+     */
+    remove: async (teamId: string): Promise<void> => {
+      await apiClient.delete(`/teams/${teamId}`)
     }
   },
 

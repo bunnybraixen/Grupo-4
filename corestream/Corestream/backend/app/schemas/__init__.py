@@ -38,6 +38,11 @@ from app.schemas.subtask import (
     SubtaskUpdate,
     SubtaskResponse,
 )
+from app.schemas.team import (
+    TeamCreate,
+    TeamUpdate,
+    TeamResponse,
+)
 from app.schemas.notification import (
     NotificationResponse,
     NotificationMarkRead,
@@ -90,6 +95,10 @@ __all__ = [
     "SubtaskCreate",
     "SubtaskUpdate",
     "SubtaskResponse",
+    # Esquemas de Equipo
+    "TeamCreate",
+    "TeamUpdate",
+    "TeamResponse",
     # Esquemas de Notificación
     "NotificationResponse",
     "NotificationMarkRead",

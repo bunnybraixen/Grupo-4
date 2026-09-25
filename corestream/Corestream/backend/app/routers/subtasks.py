@@ -19,7 +19,7 @@ from app.database import get_db
 from app.models import Subtask, Ticket, TicketEvent, TicketEventType
 from app.schemas import SubtaskResponse, SubtaskCreate, SubtaskUpdate
 from app.services import ticket_state_machine
-from app.services.ticket_permissions import get_user_id
+from app.services.ticket_permissions import get_user_id, require_admin_or_leader
 from app.middleware.auth import get_current_user
 
 # Router para subtareas
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/subtasks", tags=["Subtareas"])
     response_model=SubtaskResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear nueva subtarea",
-    description="Crea una subtarea dentro de un ticket específico"
+    description="Crea una subtarea dentro de un ticket específico (solo ADMIN o TEAM_LEADER)"
 )
 async def create_subtask(
     subtask_data: SubtaskCreate,
@@ -41,16 +41,21 @@ async def create_subtask(
     """
     Crea una nueva subtarea dentro de un ticket.
 
+    Solo ADMIN o TEAM_LEADER: desglosar el trabajo es una decisión de
+    planificación del equipo, no del desarrollador. Los desarrolladores sí
+    pueden marcar/desmarcar las subtareas que ya existen.
+
     Args:
         subtask_data (SubtaskCreate): Datos de la nueva subtarea (título, ticket_id)
-        current_user (User): Usuario autenticado
+        current_user (User): Usuario autenticado (ADMIN o TEAM_LEADER)
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:
         SubtaskResponse: Subtarea creada
 
     Raises:
-        HTTPException: Si el ticket no existe (404) o hay error en creación (400)
+        HTTPException: Si el ticket no existe (404), falta permiso (403) o hay
+                       error en creación (400)
     """
     # Verificar que el ticket existe
     ticket_check = await db.execute(
@@ -61,6 +66,9 @@ async def create_subtask(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket con ID {subtask_data.ticket_id} no encontrado"
         )
+
+    # Solo gestión: ADMIN/TEAM_LEADER (un DEVELOPER recibe 403).
+    require_admin_or_leader(current_user)
 
     try:
         # Obtener el siguiente order_index disponible

@@ -35,6 +35,15 @@
       </div>
     </div>
 
+    <!-- Mis Tickets: para un DEVELOPER va ARRIBA, por delante de los proyectos
+         (es su trabajo del día). Para líderes/admin se mantiene al final. -->
+    <div
+      v-if="isDeveloper"
+      class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm"
+    >
+      <WorkbenchDashboard />
+    </div>
+
     <!-- Proyectos Asignados a mi Equipo -->
     <div class="space-y-4">
       <div class="flex items-center justify-between">
@@ -129,10 +138,18 @@
         :key="epic.id"
         class="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)]/50 overflow-hidden"
       >
-        <!-- Encabezado de la Épica -->
-        <div class="p-4 bg-[var(--bg-card)]/60 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[var(--border-subtle)]">
+        <!-- Encabezado de la Épica: clic para plegar/desplegar sus tickets -->
+        <div
+          @click="toggleEpic(epic.id)"
+          :aria-expanded="isEpicExpanded(epic.id)"
+          class="p-4 bg-[var(--bg-card)]/60 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[var(--border-subtle)] cursor-pointer select-none hover:bg-[var(--bg-card)]/80 transition-colors"
+        >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
+              <span
+                class="text-[10px] text-[var(--teal)] transition-transform duration-200"
+                :class="isEpicExpanded(epic.id) ? 'rotate-90' : ''"
+              >▶</span>
               <span class="text-xs text-[var(--text-muted)] font-mono">#{{ index + 1 }}</span>
               <h3 class="font-bold text-base text-[var(--text-primary)]">{{ epic.title }}</h3>
             </div>
@@ -163,12 +180,15 @@
           </span>
         </div>
 
-        <!-- Lista de Tickets de la Épica -->
-        <div v-if="(epicTicketsMap[epic.id] ?? []).length === 0" class="p-4 text-xs text-[var(--text-muted)] italic">
+        <!-- Lista de Tickets de la Épica (solo visible si la épica está desplegada) -->
+        <div
+          v-if="isEpicExpanded(epic.id) && (epicTicketsMap[epic.id] ?? []).length === 0"
+          class="p-4 text-xs text-[var(--text-muted)] italic"
+        >
           No hay tickets creados en esta épica.
         </div>
 
-        <div v-else class="divide-y divide-[var(--border-subtle)]">
+        <div v-else-if="isEpicExpanded(epic.id)" class="divide-y divide-[var(--border-subtle)]">
           <div
             v-for="ticket in (epicTicketsMap[epic.id] ?? [])"
             :key="ticket.id"
@@ -219,10 +239,16 @@
                   class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
                 >
                   <option value="">👤 Asignar a...</option>
-                  <option v-for="u in availableAssignees" :key="u.id" :value="u.id">
+                  <option v-for="u in assignableUsers" :key="u.id" :value="u.id">
                     {{ u.fullName || u.email }}
                   </option>
                 </select>
+                <span
+                  v-if="canAssignTickets && !assignableUsers.length"
+                  class="text-[11px] text-[var(--text-muted)]"
+                >
+                  No hay miembros de tu equipo para asignar
+                </span>
 
                 <button
                   v-if="ticket.status === 'TODO'"
@@ -274,7 +300,7 @@
                   </span>
                 </li>
               </ul>
-              <div class="flex gap-2 pt-1 border-t border-[var(--border-subtle)]">
+              <div v-if="canManageSubtasks" class="flex gap-2 pt-1 border-t border-[var(--border-subtle)]">
                 <input
                   v-model="newSubtaskTitle"
                   @keyup.enter="addSubtask(ticket)"
@@ -305,7 +331,10 @@
     </div>
 
     <!-- Componente de Mis Tickets (Workbench Dashboard) -->
-    <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
+    <div
+      v-if="!isDeveloper"
+      class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm"
+    >
       <WorkbenchDashboard />
     </div>
   </div>
@@ -345,9 +374,50 @@ const userEmail = computed(() => authStore.user?.email || localStorage.getItem('
 
 const isGroupLeader = computed(() => userRole.value === 'GROUP_LEADER')
 const isAdmin = computed(() => userRole.value === 'ADMIN')
+const isDeveloper = computed(() => userRole.value === 'DEVELOPER')
 const canAssignTickets = computed(() => isGroupLeader.value || isAdmin.value)
 
+/**
+ * Solo ADMIN/TEAM_LEADER crean subtareas: mismo criterio que el backend
+ * (`POST /api/subtasks/` responde 403 a un DEVELOPER). Los desarrolladores
+ * siguen viendo y marcando las subtareas que ya existen.
+ */
+const canManageSubtasks = computed(() => authStore.isTeamLeader || isAdmin.value)
+
+/**
+ * Épicas desplegadas por id. Arranca vacío: todas las épicas se muestran
+ * plegadas y solo se despliegan los tickets al hacer clic en su cabecera.
+ */
+const expandedEpics = ref<Record<string, boolean>>({})
+
+const isEpicExpanded = (epicId: string): boolean => expandedEpics.value[epicId] === true
+
+const toggleEpic = (epicId: string) => {
+  expandedEpics.value = { ...expandedEpics.value, [epicId]: !isEpicExpanded(epicId) }
+}
+
 const userTeams = computed(() => teamsStore.getUserTeams(userEmail.value))
+
+/**
+ * Usuarios que el líder puede asignar: solo los miembros del equipo asignado
+ * al proyecto seleccionado (o, si no hay proyecto/equipo, los de sus propios
+ * equipos). Un ADMIN no se filtra: gestiona todos los equipos.
+ *
+ * `availableAssignees` guarda la lista completa que devuelve la API; el
+ * filtro se aplica aquí porque los equipos viven en el cliente
+ * (localStorage) y el backend no los conoce.
+ */
+const assignableUsers = computed(() => {
+  const appTeamId = selectedAppId.value
+    ? teamsStore.getTeamForApp(selectedAppId.value)?.id ?? null
+    : null
+  return teamsStore.filterUsersByTeams(
+    availableAssignees.value,
+    userEmail.value,
+    isAdmin.value,
+    appTeamId
+  )
+})
 
 const selectedApp = computed(() =>
   teamApplications.value.find((a) => a.id === selectedAppId.value) ?? null

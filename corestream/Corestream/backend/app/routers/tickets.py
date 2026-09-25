@@ -633,7 +633,7 @@ async def start_ticket_work(
     "/{ticket_id}/complete",
     response_model=TicketResponse,
     summary="Completar ticket",
-    description="Cambia estado IN_PROGRESS -> COMPLETED (requiere pull request link válido)"
+    description="Cambia estado IN_PROGRESS -> COMPLETED (el enlace de pull request es opcional)"
 )
 async def complete_ticket(
     ticket_id: UUID,
@@ -642,11 +642,12 @@ async def complete_ticket(
     db: AsyncSession = Depends(get_db)
 ) -> TicketResponse:
     """
-    Completa un ticket validando que hay un pull request link.
+    Completa un ticket. El enlace de pull request es opcional; si se envía,
+    debe ser una URL http(s) válida.
 
     Args:
         ticket_id (int): ID del ticket a completar
-        completion_data (dict): Contiene 'pr_link' con el enlace al pull request
+        completion_data (dict): Puede incluir 'pr_link' con el enlace al pull request
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -655,7 +656,7 @@ async def complete_ticket(
 
     Raises:
         HTTPException: Si el ticket no existe (404), no está en IN_PROGRESS (400),
-                      o no tiene PR link válido (400)
+                      o el PR informado no es una URL válida (400)
     """
     result = await db.execute(
         select(Ticket).where(Ticket.id == ticket_id)
@@ -682,17 +683,14 @@ async def complete_ticket(
         )
 
     pr_link = (completion_data.get("pr_link") or "").strip()
-    # El PR sigue siendo obligatorio para el desarrollador que cierra su propio
-    # trabajo; un manager puede cerrar un ticket sin PR (cancelado/duplicado).
+    # El PR es OPCIONAL: hay tickets que se cierran legítimamente sin PR
+    # (spikes, cambios de configuración, tickets cancelados o duplicados), y
+    # exigirlo bloqueaba al propio desarrollador asignado (400). Si se informa
+    # un enlace, sí se valida que sea una URL http(s).
     if pr_link and not pr_link.startswith(("http://", "https://")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El enlace del Pull Request debe empezar por http:// o https://"
-        )
-    if not pr_link and not is_admin_or_leader(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pull request link inválido requerido para completar ticket"
         )
 
     try:
