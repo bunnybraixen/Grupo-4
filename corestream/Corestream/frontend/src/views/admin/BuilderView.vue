@@ -1403,15 +1403,48 @@ const openTicketEditor = async (ticket: Ticket): Promise<void> => {
 }
 
 /** Abre/cierra el panel de detalle del ticket */
-const toggleTicketDetail = (ticket: Ticket): void => {
+const toggleTicketDetail = async (ticket: Ticket): Promise<void> => {
+  console.log('========== TOGGLE INICIO ==========')
+  console.log('TICKET:', ticket)
+
   editingTicketId.value = null
   ticketError.value = ''
   commentError.value = ''
   newCommentText.value = ''
 
-  detailTicketId.value = detailTicketId.value === ticket.id ? null : ticket.id
+  const isOpening = detailTicketId.value !== ticket.id
 
-  if (detailTicketId.value === ticket.id && !ticketComments.value[ticket.id]) {
+  console.log('IS OPENING:', isOpening)
+
+  detailTicketId.value = isOpening ? ticket.id : null
+
+  if (!isOpening) {
+    console.log('CERRANDO DETALLE')
+    return
+  }
+
+  console.log('ANTES DE GET COMMENTS')
+
+  try {
+    const comments = await api.tickets.getComments(ticket.id)
+
+    console.log('COMENTARIOS CARGADOS:', comments)
+
+    ticketComments.value[ticket.id] = comments
+
+    console.log(
+      'ESTADO ticketComments:',
+      ticketComments.value[ticket.id]
+    )
+
+    console.log('========== TOGGLE FIN ==========')
+  } catch (err: any) {
+    console.error('ERROR OBTENIENDO COMENTARIOS:', err)
+
+    commentError.value =
+      err?.response?.data?.detail ||
+      'No se pudo cargar el historial de comentarios.'
+
     ticketComments.value[ticket.id] = []
   }
 }

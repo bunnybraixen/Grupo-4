@@ -1071,6 +1071,23 @@ export const api = {
 
       return response.data
     },
+
+    /**
+     * Obtiene el historial de comentarios de un ticket
+     *
+     * @param ticketId - ID del ticket
+     * @returns Lista de comentarios del ticket
+     */
+    getComments: async (
+      ticketId: string
+    ): Promise<TicketComment[]> => {
+      const response = await apiClient.get<TicketComment[]>(
+        `/tickets/${ticketId}/comments`
+      )
+
+      return response.data
+    },
+
     /**
      * Actualiza un ticket existente
      * 

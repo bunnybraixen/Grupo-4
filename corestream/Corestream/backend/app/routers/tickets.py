@@ -388,6 +388,47 @@ async def create_ticket_comment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al crear comentario: {str(e)}",
         )
+
+@router.get(
+    "/{ticket_id}/comments",
+    response_model=List[TicketCommentResponse],
+    summary="Obtener comentarios de un ticket",
+    description="Obtiene el historial de comentarios asociados a un ticket, ordenados por fecha de creación",
+)
+async def get_ticket_comments(
+    ticket_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[TicketCommentResponse]:
+
+    # Verificar que el ticket existe
+    ticket_result = await db.execute(
+        select(Ticket).where(Ticket.id == ticket_id)
+    )
+    ticket = ticket_result.scalar_one_or_none()
+
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado",
+        )
+
+    # Obtener los comentarios junto con el usuario que los creó.
+    # Se cargan explícitamente para evitar lazy-loading con AsyncSession.
+    comments_result = await db.execute(
+        select(TicketComment)
+        .options(selectinload(TicketComment.user))
+        .where(TicketComment.ticket_id == ticket_id)
+        .order_by(TicketComment.created_at.asc())
+    )
+
+    comments = comments_result.scalars().all()
+
+    return [
+        TicketCommentResponse.from_orm(comment)
+        for comment in comments
+    ]
+    
 async def get_ticket(
     ticket_id: UUID,
     current_user: User = Depends(get_current_user),
