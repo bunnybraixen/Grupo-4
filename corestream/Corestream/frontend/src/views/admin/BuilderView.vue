@@ -772,6 +772,15 @@
       >
         Editar
       </button>
+
+      <button
+        v-if="comment.user?.id === authStore.user?.id"
+        type="button"
+        class="text-xs text-red-400 hover:text-red-300"
+        @click="deleteComment(ticket.id, comment.id)"
+      >
+        Eliminar
+      </button>
     </div>
   </div>
 
@@ -1614,6 +1623,52 @@ const saveCommentEdit = async (
     }
   } finally {
     commentSaving.value = false
+  }
+}
+
+/** Elimina un comentario */
+const deleteComment = async (
+  ticketId: string,
+  commentId: string
+): Promise<void> => {
+  const confirmed = window.confirm(
+    '¿Estás seguro de que quieres eliminar este comentario?'
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  commentError.value = ''
+
+  try {
+    await api.tickets.deleteComment(
+      ticketId,
+      commentId
+    )
+
+    const comments = ticketComments.value[ticketId] ?? []
+
+    ticketComments.value[ticketId] = comments.filter(
+      (comment) => comment.id !== commentId
+    )
+
+    if (editingCommentId.value === commentId) {
+      editingCommentId.value = null
+      editingCommentText.value = ''
+    }
+  } catch (err: any) {
+    console.error('Error eliminando comentario:', err)
+
+    const detail = err?.response?.data?.detail
+
+    if (Array.isArray(detail)) {
+      commentError.value =
+        detail[0]?.msg || 'No se pudo eliminar el comentario.'
+    } else {
+      commentError.value =
+        detail || 'No se pudo eliminar el comentario.'
+    }
   }
 }
 

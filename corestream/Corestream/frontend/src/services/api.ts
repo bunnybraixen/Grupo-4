@@ -1099,6 +1099,15 @@ export const api = {
       )
       return response.data
     },
+    
+    deleteComment: async (
+      ticketId: string,
+      commentId: string
+    ): Promise<void> => {
+      await apiClient.delete(
+        `/tickets/${ticketId}/comments/${commentId}`
+      )
+    },
 
     /**
      * Actualiza un ticket existente

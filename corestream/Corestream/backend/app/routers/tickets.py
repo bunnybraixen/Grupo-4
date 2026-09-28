@@ -21,7 +21,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
-
+import re
 from app.database import get_db
 from app.models import (
     Ticket,
@@ -58,6 +58,61 @@ from app.middleware.auth import get_current_user
 # Router para tickets con prefijo y etiqueta
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
+def extract_mentions(content: str) -> list[str]:
+    """
+    Extrae posibles menciones con formato @Nombre.
+
+    Ejemplo:
+        "@Administrador revisa este comentario"
+
+    Retorna:
+        ["Administrador"]
+    """
+    matches = re.findall(
+        r"@([A-Za-zÁÉÍÓÚáéíóúÑñÜü0-9_.-]+)",
+        content,
+    )
+
+    return list(dict.fromkeys(matches))
+
+async def resolve_mentions(
+    mention_candidates: list[str],
+    db: AsyncSession,
+) -> list[User]:
+    """
+    Resuelve las menciones contra usuarios activos de CoreStream.
+
+    La comparación se realiza usando el nombre completo o el correo
+    electrónico del usuario, ignorando mayúsculas y minúsculas.
+    """
+    if not mention_candidates:
+        return []
+
+    result = await db.execute(
+        select(User).where(
+            User.is_active.is_(True)
+        )
+    )
+
+    users = result.scalars().all()
+
+    resolved_users: list[User] = []
+
+    for candidate in mention_candidates:
+        candidate_normalized = candidate.strip().lower()
+
+        for user in users:
+            full_name_normalized = user.full_name.strip().lower()
+            email_normalized = user.email.strip().lower()
+
+            if (
+                full_name_normalized == candidate_normalized
+                or email_normalized == candidate_normalized
+            ):
+                if user not in resolved_users:
+                    resolved_users.append(user)
+
+    return resolved_users
 
 def _ticket_query():
     """
@@ -330,6 +385,30 @@ async def create_ticket_comment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ticket con ID {ticket_id} no encontrado",
         )
+
+    mention_candidates = extract_mentions(comment_data.content)
+
+    mentioned_users = await resolve_mentions(
+        mention_candidates,
+        db,
+    )
+
+    print(
+    "MENCIONES DETECTADAS:",
+    mention_candidates,
+    )
+
+    print(
+        "USUARIOS MENCIONADOS:",
+        [
+            {
+                "id": str(user.id),
+                "full_name": user.full_name,
+                "email": user.email,
+            }
+            for user in mentioned_users
+        ],
+    )
 
     # Obtener el UUID real del usuario desde el JWT
     try:
