@@ -617,6 +617,17 @@ export interface TicketComment {
   createdAt: string
 }
 
+export interface Notification {
+  id: string
+  userId: string
+  title: string
+  message: string
+  type: string
+  isRead: boolean
+  ticketId?: string | null
+  createdAt: string
+}
+
 /**
  * Representa una subtarea dentro de un ticket
  * Las subtareas son pasos más pequeños necesarios para completar un ticket

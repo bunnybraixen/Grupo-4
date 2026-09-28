@@ -44,6 +44,7 @@ from app.schemas import (
     TicketCommentResponse,
 )
 from app.services import ticket_state_machine, timer_service, notification_service
+
 from app.services.ticket_permissions import (
     assert_can_manage_ticket,
     assert_is_current_assignee,
@@ -445,6 +446,25 @@ async def create_ticket_comment(
 
         db.add(new_comment)
         await db.commit()
+
+        # Crear notificaciones para los usuarios mencionados
+        for mentioned_user in mentioned_users:
+
+            # No notificar al propio autor del comentario
+            if mentioned_user.id == actor_uuid:
+                continue
+
+            await notification_service.NotificationService.create_notification(
+                db=db,
+                user_id=str(mentioned_user.id),
+                title="Te mencionaron en un comentario",
+                message=(
+                    f"{user.full_name} te mencionó en un comentario "
+                    f"del ticket: {ticket.title}"
+                ),
+                notification_type="SYSTEM",
+                ticket_id=str(ticket_id),
+            )
 
         comment_result = await db.execute(
             select(TicketComment)

@@ -16,11 +16,14 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from typing import List
-from datetime import datetime
-
+from uuid import UUID
+from app.services.ticket_permissions import get_user_id
 from app.database import get_db
 from app.models import Notification, User, NotificationType
-from app.schemas import NotificationResponse
+from app.schemas import (
+    NotificationResponse,
+    NotificationMarkRead,
+)
 from app.middleware.auth import get_current_user
 
 # Router para notificaciones
@@ -55,7 +58,7 @@ async def get_user_notifications(
     """
     # Construir consulta base
     query = select(Notification).where(
-        Notification.user_id == current_user.id
+        Notification.user_id == UUID(get_user_id(current_user))
     )
 
     # Filtrar por estado de lectura si se solicita
@@ -96,7 +99,7 @@ async def get_unread_count(
     result = await db.execute(
         select(func.count(Notification.id)).where(
             and_(
-                Notification.user_id == current_user.id,
+                Notification.user_id == UUID(get_user_id(current_user)),
                 Notification.is_read == False
             )
         )
@@ -105,7 +108,6 @@ async def get_unread_count(
 
     return {
         "unread_count": unread_count,
-        "user_id": current_user.id
     }
 
 
@@ -115,49 +117,29 @@ async def get_unread_count(
     description="Marca un conjunto de notificaciones específicas como leídas"
 )
 async def mark_notifications_as_read(
-    notification_ids: dict,
+    notification_ids: NotificationMarkRead,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """
-    Marca notificaciones específicas como leídas.
 
-    Args:
-        notification_ids (dict): Contiene 'notification_ids' lista de IDs
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        dict: Diccionario con cantidad de notificaciones marcadas
-
-    Raises:
-        HTTPException: Si hay error en la operación (400)
-    """
-    ids = notification_ids.get("notification_ids", [])
-
-    if not ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Lista de IDs de notificaciones vacía"
-        )
+    ids = notification_ids.notification_ids
 
     try:
-        # Obtener notificaciones del usuario actual
         result = await db.execute(
             select(Notification).where(
                 and_(
                     Notification.id.in_(ids),
-                    Notification.user_id == current_user.id
+                    Notification.user_id == UUID(get_user_id(current_user))
                 )
             )
         )
+
         notifications = result.scalars().all()
 
-        # Marcar como leídas
         count = 0
+
         for notification in notifications:
             notification.is_read = True
-            notification.read_at = datetime.utcnow()
             count += 1
 
         await db.commit()
@@ -169,6 +151,7 @@ async def mark_notifications_as_read(
 
     except Exception as e:
         await db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al marcar notificaciones: {str(e)}"
@@ -180,6 +163,7 @@ async def mark_notifications_as_read(
     summary="Marcar todas las notificaciones como leídas",
     description="Marca todas las notificaciones no leídas del usuario como leídas"
 )
+
 async def mark_all_notifications_as_read(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -202,7 +186,7 @@ async def mark_all_notifications_as_read(
         result = await db.execute(
             select(Notification).where(
                 and_(
-                    Notification.user_id == current_user.id,
+                    Notification.user_id == UUID(get_user_id(current_user)),
                     Notification.is_read == False
                 )
             )
@@ -213,14 +197,12 @@ async def mark_all_notifications_as_read(
         count = 0
         for notification in notifications:
             notification.is_read = True
-            notification.read_at = datetime.utcnow()
             count += 1
 
         await db.commit()
 
         return {
             "marked_as_read": count,
-            "timestamp": datetime.utcnow().isoformat()
         }
 
     except Exception as e:

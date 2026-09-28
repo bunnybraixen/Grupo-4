@@ -1581,59 +1581,74 @@ export const api = {
    */
   notifications: {
     /**
-     * Obtiene lista de notificaciones del usuario
-     * 
-     * @param filters - Filtros opcionales (leídas/no leídas, tipo, etc.)
-     * @returns Array de notificaciones
+     * Obtiene las notificaciones del usuario autenticado.
+     *
+     * Backend:
+     * GET /api/notifications/
      */
-    list: async (filters?: {
-      unreadOnly?: boolean
-      type?: string
-      page?: number
-      limit?: number
-    }): Promise<ApiResponse<PaginatedResponse<Notification>>> => {
-      const response = await apiClient.get<ApiResponse<PaginatedResponse<Notification>>>(
-        '/notifications',
-        { params: filters }
+    getNotifications: async (
+      skip: number = 0,
+      limit: number = 20,
+      unreadOnly: boolean = false
+    ): Promise<Notification[]> => {
+      const response = await apiClient.get<any[]>(
+        '/notifications/',
+        {
+          params: {
+            skip,
+            limit,
+            unread_only: unreadOnly
+          }
+        }
       )
-      return response.data
+
+      return response.data.map(normalizeNotification)
     },
 
     /**
-     * Obtiene el número de notificaciones no leídas
-     * Útil para mostrar un badge en la interfaz
-     * 
-     * @returns Número de notificaciones no leídas
+     * Obtiene el número de notificaciones no leídas.
+     *
+     * Backend:
+     * GET /api/notifications/unread-count
      */
-    getUnreadCount: async (): Promise<ApiResponse<{ count: number }>> => {
-      const response = await apiClient.get<ApiResponse<{ count: number }>>(
+    getUnreadCount: async (): Promise<number> => {
+      const response = await apiClient.get<{ unread_count: number }>(
         '/notifications/unread-count'
       )
-      return response.data
+
+      return response.data.unread_count
     },
 
     /**
-     * Marca una notificación como leída
-     * 
-     * @param notificationId - ID de la notificación
-     * @returns Notificación actualizada
+     * Marca una o varias notificaciones como leídas.
+     *
+     * Backend:
+     * POST /api/notifications/mark-read
      */
-    markRead: async (notificationId: string): Promise<ApiResponse<Notification>> => {
-      const response = await apiClient.put<ApiResponse<Notification>>(
-        `/notifications/${notificationId}/read`
+    markRead: async (
+      notificationIds: string[]
+    ): Promise<{ marked_as_read: number }> => {
+      const response = await apiClient.post<{ marked_as_read: number }>(
+        '/notifications/mark-read',
+        {
+          notification_ids: notificationIds
+        }
       )
+
       return response.data
     },
 
     /**
-     * Marca todas las notificaciones como leídas
-     * 
-     * @returns Número de notificaciones marcadas
+     * Marca todas las notificaciones como leídas.
+     *
+     * Backend:
+     * POST /api/notifications/mark-all-read
      */
-    markAllRead: async (): Promise<ApiResponse<{ markedCount: number }>> => {
-      const response = await apiClient.post<ApiResponse<{ markedCount: number }>>(
+    markAllRead: async (): Promise<{ marked_as_read: number }> => {
+      const response = await apiClient.post<{ marked_as_read: number }>(
         '/notifications/mark-all-read'
       )
+
       return response.data
     }
   }
@@ -1686,3 +1701,14 @@ export const clearAuthTokens = (): void => {
  * Exporta la instancia de Axios por si se necesita usar directamente
  */
 export default apiClient
+
+const normalizeNotification = (notification: any): Notification => ({
+  id: notification.id,
+  userId: notification.user_id,
+  title: notification.title,
+  message: notification.message,
+  type: notification.type,
+  isRead: notification.is_read,
+  ticketId: notification.ticket_id,
+  createdAt: notification.created_at,
+})

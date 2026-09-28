@@ -12,10 +12,14 @@ Canales Redis:
 
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import and_
 from fastapi import HTTPException, status
+
+from app.models import Notification, User, Ticket
+
 import json
 import redis
 
@@ -66,56 +70,9 @@ class NotificationService:
         ticket_id: Optional[str] = None
     ) -> dict:
         """
-        Crea una nueva notificación para un usuario.
-        
-        Inserta una notificación en la base de datos y la marca como no leída.
-        Las notificaciones pueden estar vinculadas a un ticket específico
-        para contexto adicional y acciones rápidas.
-        
-        Args:
-            db (AsyncSession): Sesión asincrónica de SQLAlchemy para acceso a BD
-            user_id (str): ID del usuario que recibe la notificación
-            title (str): Título breve de la notificación (max 200 caracteres)
-            message (str): Mensaje detallado (max 1000 caracteres)
-            notification_type (str): Tipo de notificación (debe estar en NOTIFICATION_TYPES)
-            ticket_id (Optional[str]): ID del ticket asociado (si aplica)
-            
-        Returns:
-            dict: Diccionario con datos de la notificación creada
-            
-        Estructura de retorno:
-            {
-                'id': uuid,
-                'user_id': uuid,
-                'title': str,
-                'message': str,
-                'type': str,
-                'ticket_id': Optional[uuid],
-                'is_read': False,
-                'created_at': datetime,
-                'read_at': None
-            }
-            
-        Raises:
-            HTTPException(400): Tipo de notificación inválido
-            HTTPException(400): Datos requeridos faltantes o inválidos
-            HTTPException(404): Usuario no encontrado
-            HTTPException(500): Error al crear notificación
-            
-        Validaciones:
-            - notification_type debe estar en NOTIFICATION_TYPES
-            - title no debe estar vacío (1-200 caracteres)
-            - message no debe estar vacío (1-1000 caracteres)
-            - user_id debe corresponder a usuario existente
-            - ticket_id (si se proporciona) debe existir
-            
-        Detalle técnico:
-            - is_read se inicializa siempre en False
-            - read_at se inicializa en None
-            - created_at se asigna automáticamente
-            - Se indexa por user_id y created_at para búsquedas rápidas
-            - No se borra automáticamente (retención por defecto 90 días)
+        Crea y persiste una nueva notificación para un usuario.
         """
+
         try:
             # Validar tipo de notificación
             if notification_type not in NotificationService.NOTIFICATION_TYPES:
@@ -123,91 +80,122 @@ class NotificationService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Tipo de notificación inválido: {notification_type}"
                 )
-            
-            # Validar datos requeridos
+
+            # Validar título
             if not title or not title.strip():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El título de la notificación es requerido"
                 )
-            
+
+            if len(title.strip()) > 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El título no puede exceder 200 caracteres"
+                )
+
+            # Validar mensaje
             if not message or not message.strip():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El mensaje de la notificación es requerido"
                 )
-            
-            # Validar longitud de campos
-            if len(title) > 200:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El título no puede exceder 200 caracteres"
-                )
-            
-            if len(message) > 1000:
+
+            if len(message.strip()) > 1000:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El mensaje no puede exceder 1000 caracteres"
                 )
-            
-            # Buscar usuario para validar que existe
-            # stmt = select(User).where(User.id == UUID(user_id))
-            # result = await db.execute(stmt)
-            # user = result.scalars().first()
-            
-            # if not user:
-            #     raise HTTPException(
-            #         status_code=status.HTTP_404_NOT_FOUND,
-            #         detail="Usuario no encontrado"
-            #     )
-            
-            # Validar ticket si se proporciona
-            # if ticket_id:
-            #     stmt_ticket = select(Ticket).where(Ticket.id == UUID(ticket_id))
-            #     result_ticket = await db.execute(stmt_ticket)
-            #     ticket = result_ticket.scalars().first()
-            #     if not ticket:
-            #         raise HTTPException(
-            #             status_code=status.HTTP_404_NOT_FOUND,
-            #             detail="Ticket no encontrado"
-            #         )
-            
-            # Crear nueva notificación
-            # new_notification = Notification(
-            #     user_id=UUID(user_id),
-            #     title=title.strip(),
-            #     message=message.strip(),
-            #     type=notification_type,
-            #     ticket_id=UUID(ticket_id) if ticket_id else None,
-            #     is_read=False,
-            #     read_at=None
-            # )
-            
-            # Persistir en base de datos
-            # db.add(new_notification)
-            # await db.commit()
-            # await db.refresh(new_notification)
-            
+
+            # Convertir UUID del usuario
+            try:
+                user_uuid = UUID(str(user_id))
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="ID de usuario inválido"
+                )
+
+            # Verificar que el usuario exista
+            user_result = await db.execute(
+                select(User).where(User.id == user_uuid)
+            )
+
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Usuario no encontrado"
+                )
+
+            # Convertir ticket si existe
+            ticket_uuid = None
+
+            if ticket_id:
+                try:
+                    ticket_uuid = UUID(str(ticket_id))
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="ID de ticket inválido"
+                    )
+
+                # Verificar que el ticket exista
+                ticket_result = await db.execute(
+                    select(Ticket).where(Ticket.id == ticket_uuid)
+                )
+
+                ticket = ticket_result.scalar_one_or_none()
+
+                if not ticket:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Ticket no encontrado"
+                    )
+
+            # Crear notificación
+            new_notification = Notification(
+                user_id=user_uuid,
+                title=title.strip(),
+                message=message.strip(),
+                type=notification_type,
+                ticket_id=ticket_uuid,
+                is_read=False,
+            )
+
+            db.add(new_notification)
+
+            await db.commit()
+            await db.refresh(new_notification)
+
             return {
-                # 'id': str(new_notification.id),
-                # 'user_id': str(new_notification.user_id),
-                # 'title': new_notification.title,
-                # 'message': new_notification.message,
-                # 'type': new_notification.type,
-                # 'ticket_id': str(new_notification.ticket_id) if new_notification.ticket_id else None,
-                # 'is_read': new_notification.is_read,
-                # 'created_at': new_notification.created_at.isoformat(),
-                # 'read_at': None
+                "id": str(new_notification.id),
+                "user_id": str(new_notification.user_id),
+                "title": new_notification.title,
+                "message": new_notification.message,
+                "type": new_notification.type.value
+                    if hasattr(new_notification.type, "value")
+                    else str(new_notification.type),
+                "ticket_id": (
+                    str(new_notification.ticket_id)
+                    if new_notification.ticket_id
+                    else None
+                ),
+                "is_read": new_notification.is_read,
+                "created_at": new_notification.created_at.isoformat(),
             }
+
         except HTTPException:
             raise
-        except Exception as e:
+
+        except Exception:
             await db.rollback()
+
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al crear notificación"
             )
-
     @staticmethod
     async def get_user_notifications(
         db: AsyncSession,

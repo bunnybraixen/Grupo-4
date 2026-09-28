@@ -50,14 +50,11 @@ class NotificationResponse(BaseModel):
             ValueError: Si el tipo no es válido
         """
         valid_types = {
-            "TICKET_ASSIGNED",
-            "TICKET_COMPLETED",
-            "TICKET_BLOCKED",
-            "QUESTION_ASKED",
-            "REDIRECTED",
-            "COMMENT_ADDED",
-            "DEADLINE_APPROACHING",
-            "APPLICATION_UPDATED",
+            "ASSIGNMENT",
+            "QUESTION",
+            "REDIRECT",
+            "COMPLETION",
+            "SYSTEM",
         }
         if v.upper() not in valid_types:
             raise ValueError(f"El tipo de notificación debe ser uno de: {', '.join(valid_types)}")
