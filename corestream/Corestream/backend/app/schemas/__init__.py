@@ -66,6 +66,7 @@ from app.schemas.analytics import (
 
 from app.schemas.ticket_comment import (
     TicketCommentCreate,
+    TicketCommentUpdate,
     TicketCommentResponse,
 )
 

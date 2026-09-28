@@ -23,6 +23,24 @@ class TicketCommentCreate(BaseModel):
         return v.strip()
 
 
+class TicketCommentUpdate(BaseModel):
+
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="Nuevo contenido del comentario",
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_comment_content(cls, v: str) -> str:
+
+        if not v or v.isspace():
+            raise ValueError("El comentario no puede estar vacío")
+
+        return v.strip()
+
 class TicketCommentResponse(BaseModel):
 
 

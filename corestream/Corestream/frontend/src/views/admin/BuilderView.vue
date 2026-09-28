@@ -745,30 +745,72 @@
     v-if="(ticketComments[ticket.id] ?? []).length"
     class="mt-4 space-y-2"
   >
-    <div
-      v-for="comment in ticketComments[ticket.id]"
-      :key="comment.id"
-      class="rounded-lg border border-[var(--border-subtle)] p-3"
-    >
-      <div class="flex items-center justify-between gap-2 mb-1">
-        <span class="text-xs font-semibold text-[var(--text-primary)]">
-          {{ comment.user?.role || 'Usuario' }}
-        </span>
 
-        <span class="text-[10px] text-[var(--text-muted)]">
-          {{ comment.createdAt
-            ? comment.createdAt.slice(0, 16).replace('T', ' ')
-            : ''
-          }}
-        </span>
-      </div>
+<div
+  v-for="comment in ticketComments[ticket.id]"
+  :key="comment.id"
+  class="rounded-lg border border-[var(--border-subtle)] p-3"
+>
+  <div class="flex items-center justify-between gap-2 mb-1">
+    <span class="text-xs font-semibold text-[var(--text-primary)]">
+      {{ comment.user?.fullName || comment.user?.email || comment.user?.role || 'Usuario' }}
+    </span>
 
-      <p
-        class="text-sm text-[var(--text-secondary)] whitespace-pre-wrap break-words"
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] text-[var(--text-muted)]">
+        {{ comment.createdAt
+          ? comment.createdAt.slice(0, 16).replace('T', ' ')
+          : ''
+        }}
+      </span>
+
+      <button
+        v-if="comment.user?.id === authStore.user?.id"
+        type="button"
+        class="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        @click="startEditingComment(comment)"
       >
-        {{ comment.content }}
-      </p>
+        Editar
+      </button>
     </div>
+  </div>
+
+  <div v-if="editingCommentId === comment.id" class="mt-2">
+    <textarea
+      v-model="editingCommentText"
+      rows="3"
+      maxlength="5000"
+      class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2 text-sm text-[var(--text-primary)] outline-none"
+    />
+
+    <div class="flex justify-end gap-2 mt-2">
+      <button
+        type="button"
+        class="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        @click="cancelEditingComment"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        class="text-xs font-semibold text-[var(--text-primary)]"
+        :disabled="commentSaving"
+        @click="saveCommentEdit(ticket.id, comment.id)"
+      >
+        {{ commentSaving ? 'Guardando...' : 'Guardar' }}
+      </button>
+    </div>
+  </div>
+
+  <p
+    v-else
+    class="text-sm text-[var(--text-secondary)] whitespace-pre-wrap break-words"
+  >
+    {{ comment.content }}
+  </p>
+</div>
+
   </div>
 </div>
             </div>
@@ -867,6 +909,15 @@ const editingTicketId = ref<string | null>(null)
 const detailTicketId = ref<string | null>(null)
 /** Comentarios del ticket seleccionado */
 const ticketComments = ref<Record<string, TicketComment[]>>({})
+
+/** Comentario que se está editando */
+const editingCommentId = ref<string | null>(null)
+
+/** Texto temporal del comentario en edición */
+const editingCommentText = ref('')
+
+/** Estado de guardado de la edición del comentario */
+const commentSaving = ref(false)
 
 /** Texto del nuevo comentario */
 const newCommentText = ref('')
@@ -1411,6 +1462,9 @@ const toggleTicketDetail = async (ticket: Ticket): Promise<void> => {
   ticketError.value = ''
   commentError.value = ''
   newCommentText.value = ''
+  editingCommentId.value = null
+  editingCommentText.value = ''
+  commentSaving.value = false
 
   const isOpening = detailTicketId.value !== ticket.id
 
@@ -1492,6 +1546,74 @@ const createTicketComment = async (ticketId: string): Promise<void> => {
     }
   } finally {
     creatingComment.value = false
+  }
+}
+
+/** Comienza la edición de un comentario */
+const startEditingComment = (comment: TicketComment): void => {
+  editingCommentId.value = comment.id
+  editingCommentText.value = comment.content
+  commentError.value = ''
+}
+
+/** Cancela la edición del comentario */
+const cancelEditingComment = (): void => {
+  editingCommentId.value = null
+  editingCommentText.value = ''
+  commentError.value = ''
+}
+
+/** Guarda la edición de un comentario */
+const saveCommentEdit = async (
+  ticketId: string,
+  commentId: string
+): Promise<void> => {
+  const content = editingCommentText.value.trim()
+
+  commentError.value = ''
+
+  if (!content) {
+    commentError.value = 'El comentario no puede estar vacío.'
+    return
+  }
+
+  if (content.length > COMMENT_MAX_LENGTH) {
+    commentError.value =
+      `El comentario no puede superar los ${COMMENT_MAX_LENGTH} caracteres.`
+    return
+  }
+
+  commentSaving.value = true
+
+  try {
+    const updated = await api.tickets.updateComment(
+      ticketId,
+      commentId,
+      content
+    )
+
+    const comments = ticketComments.value[ticketId] ?? []
+
+    ticketComments.value[ticketId] = comments.map((comment) =>
+      comment.id === commentId ? updated : comment
+    )
+
+    editingCommentId.value = null
+    editingCommentText.value = ''
+  } catch (err: any) {
+    console.error('Error editando comentario:', err)
+
+    const detail = err?.response?.data?.detail
+
+    if (Array.isArray(detail)) {
+      commentError.value =
+        detail[0]?.msg || 'No se pudo editar el comentario.'
+    } else {
+      commentError.value =
+        detail || 'No se pudo editar el comentario.'
+    }
+  } finally {
+    commentSaving.value = false
   }
 }
 

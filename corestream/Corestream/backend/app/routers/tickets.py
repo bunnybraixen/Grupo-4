@@ -40,6 +40,7 @@ from app.schemas import (
     TicketEventResponse,
     TicketQuestion,
     TicketCommentCreate,
+    TicketCommentUpdate,
     TicketCommentResponse,
 )
 from app.services import ticket_state_machine, timer_service, notification_service
@@ -357,7 +358,6 @@ async def create_ticket_comment(
         )
 
     try:
-        # Crear comentario
         new_comment = TicketComment(
             ticket_id=ticket_id,
             user_id=actor_uuid,
@@ -365,12 +365,8 @@ async def create_ticket_comment(
         )
 
         db.add(new_comment)
-
-        # Persistir en PostgreSQL
         await db.commit()
 
-        # Recargar el comentario incluyendo el usuario.
-        # Esto evita problemas de lazy-loading con AsyncSession.
         comment_result = await db.execute(
             select(TicketComment)
             .options(selectinload(TicketComment.user))
@@ -388,6 +384,7 @@ async def create_ticket_comment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al crear comentario: {str(e)}",
         )
+
 
 @router.get(
     "/{ticket_id}/comments",
@@ -413,8 +410,7 @@ async def get_ticket_comments(
             detail=f"Ticket con ID {ticket_id} no encontrado",
         )
 
-    # Obtener los comentarios junto con el usuario que los creó.
-    # Se cargan explícitamente para evitar lazy-loading con AsyncSession.
+    # Obtener comentarios junto con el usuario que los creó
     comments_result = await db.execute(
         select(TicketComment)
         .options(selectinload(TicketComment.user))
@@ -428,6 +424,65 @@ async def get_ticket_comments(
         TicketCommentResponse.from_orm(comment)
         for comment in comments
     ]
+
+
+@router.put(
+    "/{ticket_id}/comments/{comment_id}",
+    response_model=TicketCommentResponse,
+    summary="Editar comentario de un ticket",
+    description="Permite al autor editar su propio comentario.",
+)
+async def update_ticket_comment(
+    ticket_id: UUID,
+    comment_id: UUID,
+    comment_data: TicketCommentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketCommentResponse:
+
+    result = await db.execute(
+        select(TicketComment)
+        .options(selectinload(TicketComment.user))
+        .where(
+            and_(
+                TicketComment.id == comment_id,
+                TicketComment.ticket_id == ticket_id,
+            )
+        )
+    )
+
+    comment = result.scalar_one_or_none()
+
+    if not comment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comentario no encontrado",
+        )
+
+    # get_user_id() entrega el UUID como string en el TokenPayload.
+    # Lo convertimos a UUID para compararlo con comment.user_id.
+    current_user_id = UUID(get_user_id(current_user))
+
+    if comment.user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar este comentario",
+        )
+
+    comment.content = comment_data.content
+
+    await db.commit()
+
+    # Recargar incluyendo el usuario para la respuesta
+    result = await db.execute(
+        select(TicketComment)
+        .options(selectinload(TicketComment.user))
+        .where(TicketComment.id == comment_id)
+    )
+
+    updated_comment = result.scalar_one()
+
+    return TicketCommentResponse.from_orm(updated_comment)
     
 async def get_ticket(
     ticket_id: UUID,
@@ -461,6 +516,48 @@ async def get_ticket(
     # al construir la respuesta.
     return TicketResponse.from_orm(ticket)
 
+
+@router.delete(
+    "/{ticket_id}/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar comentario de un ticket",
+    description="Permite al autor eliminar su propio comentario.",
+)
+async def delete_ticket_comment(
+    ticket_id: UUID,
+    comment_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    result = await db.execute(
+        select(TicketComment).where(
+            and_(
+                TicketComment.id == comment_id,
+                TicketComment.ticket_id == ticket_id,
+            )
+        )
+    )
+
+    comment = result.scalar_one_or_none()
+
+    if not comment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comentario no encontrado",
+        )
+
+    current_user_id = UUID(get_user_id(current_user))
+
+    if comment.user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para eliminar este comentario",
+        )
+
+    await db.delete(comment)
+    await db.commit()
+
+    return None
 
 @router.put(
     "/{ticket_id}",

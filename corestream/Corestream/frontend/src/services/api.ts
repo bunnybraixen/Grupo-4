@@ -1088,6 +1088,18 @@ export const api = {
       return response.data
     },
 
+    updateComment: async (
+      ticketId: string,
+      commentId: string,
+      content: string
+    ): Promise<TicketComment> => {
+      const response = await apiClient.put<TicketComment>(
+        `/tickets/${ticketId}/comments/${commentId}`,
+        { content }
+      )
+      return response.data
+    },
+
     /**
      * Actualiza un ticket existente
      * 
