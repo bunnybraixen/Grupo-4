@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.meeting import Meeting, MeetingAttendance
-from app.models.role import UserRole
+from app.models.user import UserRole
 from app.models.user import User
 from app.schemas.meeting import (
     MeetingAttendanceCreate,
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/meetings", tags=["meetings"])
 @router.post("/", response_model=MeetingResponse, status_code=status.HTTP_201_CREATED)
 async def create_meeting(
     meeting_in: MeetingCreate,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.TEAM_LEADER])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -75,7 +75,7 @@ async def get_meeting(
 async def update_meeting(
     meeting_id: UUID,
     meeting_in: MeetingUpdate,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.TEAM_LEADER])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -101,7 +101,7 @@ async def update_meeting(
 async def record_attendance(
     meeting_id: UUID,
     attendance_in: MeetingAttendanceCreate,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.TEAM_LEADER])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db),
 ):
     """
