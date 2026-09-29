@@ -358,6 +358,18 @@
                 Guardar etiquetas
               </button>
             </div>
+
+            <!-- WEB-11: historial cronológico de eventos del ticket -->
+            <div class="pt-2 border-t border-[var(--border-subtle)]">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+                Historial de eventos
+              </p>
+              <TicketHistory
+                :events="ticketEvents[ticket.id] ?? []"
+                :loading="ticketEventsLoading === ticket.id"
+                :error="ticketEventsError"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -372,7 +384,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import TagChips from '@/components/shared/TagChips.vue'
-import type { Subtask, Tag, Ticket, User } from '@/types'
+import TicketHistory from '@/components/shared/TicketHistory.vue'
+import type { Subtask, Tag, Ticket, TicketHistoryEvent, User } from '@/types'
 
 // =====================================================================
 // COMPOSABLE: tickets del workbench + filtros
@@ -436,6 +449,18 @@ const availableTags = ref<Tag[]>([])
  * `saveTicketTags()`, que envía la lista completa al backend.
  */
 const tagDraft = ref<Record<string, string[]>>({})
+
+/**
+ * WEB-11: historial de eventos por ticket (se carga al abrir el detalle).
+ * GET /api/tickets/{id}/events devuelve los eventos cronológicos con autor.
+ */
+const ticketEvents = ref<Record<string, TicketHistoryEvent[]>>({})
+
+/** Ticket cuyo historial se está cargando (null = ninguno) */
+const ticketEventsLoading = ref<string | null>(null)
+
+/** Error al cargar el historial */
+const ticketEventsError = ref('')
 
 /**
  * Solo los miembros del equipo del líder pueden recibir el ticket; un ADMIN
@@ -530,12 +555,35 @@ const toggleSubtaskPanel = (ticketId: string) => {
 }
 
 const toggleDetail = (ticketId: string) => {
-  openDetailFor.value = openDetailFor.value === ticketId ? null : ticketId
+  const isOpening = openDetailFor.value !== ticketId
+  openDetailFor.value = isOpening ? ticketId : null
   openSubtasksFor.value = null
   // Al abrir/cerrar el detalle se descarta el borrador de etiquetas pendiente
   const next = { ...tagDraft.value }
   delete next[ticketId]
   tagDraft.value = next
+
+  // WEB-11: el historial se recarga cada vez que se abre el detalle
+  if (isOpening) loadTicketEvents(ticketId)
+}
+
+// =====================================================================
+// WEB-11: HISTORIAL DE EVENTOS DEL TICKET
+// =====================================================================
+
+/** Carga el historial cronológico de eventos de un ticket */
+const loadTicketEvents = async (ticketId: string): Promise<void> => {
+  ticketEventsLoading.value = ticketId
+  ticketEventsError.value = ''
+  try {
+    ticketEvents.value[ticketId] = await api.tickets.getEvents(ticketId)
+  } catch (err: any) {
+    console.error('Error cargando historial del ticket:', err)
+    ticketEventsError.value = err?.response?.data?.detail || 'No se pudo cargar el historial.'
+    ticketEvents.value[ticketId] = []
+  } finally {
+    ticketEventsLoading.value = null
+  }
 }
 
 // =====================================================================

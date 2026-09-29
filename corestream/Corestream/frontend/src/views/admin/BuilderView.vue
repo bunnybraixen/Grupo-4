@@ -507,8 +507,26 @@
           <div
             v-for="ticket in visibleTickets(epic.id)"
             :key="ticket.id"
-            class="p-3 flex flex-wrap items-center justify-between gap-2"
+            :class="[
+              'p-3 flex flex-wrap items-center justify-between gap-2',
+              draggedTicketId === ticket.id ? 'opacity-50' : '',
+              ticketDropTargetId === ticket.id ? 'ring-2 ring-[var(--teal)]/60' : ''
+            ]"
+            @dragenter.prevent.stop="handleTicketDragOver(ticket)"
+            @dragover.prevent.stop="handleTicketDragOver(ticket)"
+            @dragleave.stop="handleTicketDragLeave(ticket)"
+            @drop.prevent.stop="handleTicketDrop(ticket)"
           >
+            <!-- Manija de arrastre: el orden solo cambia al soltar sobre otro
+                 ticket (nunca al editar campos) -->
+            <span
+              title="Arrastra para cambiar el orden"
+              draggable="true"
+              class="cursor-grab select-none text-[var(--text-muted)] hover:text-[var(--teal)]"
+              @dragstart.stop="handleTicketDragStart(ticket)"
+              @dragend.stop="handleTicketDragEnd()"
+            >⠿</span>
+
             <div class="min-w-0 flex-1">
               <p class="font-medium truncate">{{ ticket.title }}</p>
               <div class="flex flex-wrap items-center gap-2 mt-1 text-xs">
@@ -773,6 +791,17 @@
                 <span class="text-[var(--text-muted)]">Subtareas:</span>
                 {{ (ticket.subtasks ?? []).filter((s) => s.isCompleted).length }}/{{ (ticket.subtasks ?? []).length }} completadas
               </p>
+
+              <!-- WEB-11: historial cronológico de eventos del ticket -->
+              <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                <p class="mb-2 font-medium text-[var(--text-primary)]">Historial de eventos</p>
+                <TicketHistory
+                  :events="ticketEvents[ticket.id] ?? []"
+                  :loading="ticketEventsLoading === ticket.id"
+                  :error="ticketEventsError"
+                />
+              </div>
+
               <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
   <div class="flex items-center justify-between mb-2">
     <span class="font-medium text-[var(--text-primary)]">
@@ -916,7 +945,8 @@ import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
-import type { Epic, Subtask, Ticket, TicketComment, User, Tag } from '@/types'
+import TicketHistory from '@/components/shared/TicketHistory.vue'
+import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Tag } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -1012,6 +1042,29 @@ const creatingComment = ref(false)
 
 /** Error al crear comentario */
 const commentError = ref('')
+
+/** WEB-11: historial de eventos por ticket (se carga al abrir el detalle) */
+const ticketEvents = ref<Record<string, TicketHistoryEvent[]>>({})
+
+/** Ticket cuyo historial se está cargando (null = ninguno) */
+const ticketEventsLoading = ref<string | null>(null)
+
+/** Error al cargar el historial */
+const ticketEventsError = ref('')
+
+/**
+ * Drag & drop de tickets (orden dentro de la épica).
+ *
+ * El orden SOLO cambia soltando un ticket sobre otro: el resto de guardados
+ * (editar campos, etiquetas, estado...) no tocan `order_index`.
+ */
+const draggedTicketId = ref<string | null>(null)
+
+/** Épica de origen del ticket arrastrado (permite cambiar de épica al soltar) */
+const draggedTicketEpicId = ref<string | null>(null)
+
+/** Ticket sobre el que se está soltando (resaltado visual) */
+const ticketDropTargetId = ref<string | null>(null)
 
 const COMMENT_MAX_LENGTH = 5000
 /** Subtarea que se está renombrando */
@@ -1288,6 +1341,74 @@ const handleEpicDrop = async (targetEpicId: string): Promise<void> => {
     console.error('Error al reordenar épicas:', err)
     appError.value = 'No se pudo guardar el nuevo orden de la épica.'
     handleEpicDragEnd()
+  }
+}
+
+// =====================================================================
+// TICKETS: orden por drag & drop (el único cambio de orden posible)
+// =====================================================================
+
+/** Empieza el arrastre de un ticket */
+const handleTicketDragStart = (ticket: Ticket): void => {
+  draggedTicketId.value = ticket.id
+  draggedTicketEpicId.value = ticket.epicId
+  ticketDropTargetId.value = null
+  ticketError.value = ''
+}
+
+/** Resalta el ticket destino mientras se arrastra encima */
+const handleTicketDragOver = (ticket: Ticket): void => {
+  if (!draggedTicketId.value || draggedTicketId.value === ticket.id) return
+  ticketDropTargetId.value = ticket.id
+}
+
+/** Quita el resaltado al salir del ticket */
+const handleTicketDragLeave = (ticket: Ticket): void => {
+  if (ticketDropTargetId.value === ticket.id) ticketDropTargetId.value = null
+}
+
+/** Limpia el estado del arrastre */
+const handleTicketDragEnd = (): void => {
+  draggedTicketId.value = null
+  draggedTicketEpicId.value = null
+  ticketDropTargetId.value = null
+}
+
+/**
+ * Suelta el ticket arrastrado sobre otro ticket.
+ *
+ * - Misma épica: reordena (PATCH /tickets/{id}/reorder con el índice real del destino).
+ * - Épica distinta: primero se mueve (PATCH /tickets/{id}/move) y luego se reordena.
+ *
+ * El índice destino se calcula sobre la lista COMPLETA de la épica (no sobre la
+ * lista filtrada por búsqueda/etiquetas), que es el orden que maneja el backend.
+ */
+const handleTicketDrop = async (target: Ticket): Promise<void> => {
+  const draggedId = draggedTicketId.value
+  const sourceEpicId = draggedTicketEpicId.value
+  handleTicketDragEnd()
+
+  if (!draggedId || draggedId === target.id) return
+
+  working.value = true
+  ticketError.value = ''
+  try {
+    if (sourceEpicId && sourceEpicId !== target.epicId) {
+      await api.tickets.move(draggedId, target.epicId)
+    }
+
+    const targetIndex = (epicTickets.value[target.epicId] ?? []).findIndex((t) => t.id === target.id)
+    await ticketsStore.reorderTicket(draggedId, targetIndex < 0 ? 0 : targetIndex)
+
+    if (sourceEpicId && sourceEpicId !== target.epicId) {
+      await loadTicketsFor(sourceEpicId)
+    }
+    await loadTicketsFor(target.epicId)
+  } catch (err: any) {
+    console.error('Error al reordenar el ticket:', err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo cambiar el orden del ticket.'
+  } finally {
+    working.value = false
   }
 }
 
@@ -1633,6 +1754,9 @@ const toggleTicketDetail = async (ticket: Ticket): Promise<void> => {
     return
   }
 
+  // WEB-11: historial de eventos del ticket (se recarga al abrir el detalle)
+  loadTicketEvents(ticket.id)
+
   console.log('ANTES DE GET COMMENTS')
 
   try {
@@ -1656,6 +1780,24 @@ const toggleTicketDetail = async (ticket: Ticket): Promise<void> => {
       'No se pudo cargar el historial de comentarios.'
 
     ticketComments.value[ticket.id] = []
+  }
+}
+
+/**
+ * WEB-11: carga el historial de eventos de un ticket
+ * (GET /api/tickets/{id}/events, ordenado cronológicamente).
+ */
+const loadTicketEvents = async (ticketId: string): Promise<void> => {
+  ticketEventsLoading.value = ticketId
+  ticketEventsError.value = ''
+  try {
+    ticketEvents.value[ticketId] = await api.tickets.getEvents(ticketId)
+  } catch (err: any) {
+    console.error('Error cargando historial del ticket:', err)
+    ticketEventsError.value = err?.response?.data?.detail || 'No se pudo cargar el historial.'
+    ticketEvents.value[ticketId] = []
+  } finally {
+    ticketEventsLoading.value = null
   }
 }
 

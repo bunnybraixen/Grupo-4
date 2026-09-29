@@ -438,6 +438,34 @@ export const useTicketsStore = defineStore('tickets', () => {
   }
 
   /**
+   * Reordena un ticket dentro de su épica (drag & drop).
+   *
+   * `PATCH /api/tickets/{id}/reorder` es la única vía que cambia el orden: el
+   * backend mueve el ticket a `newIndex` y renumera el resto de la épica, por
+   * eso después conviene recargar los tickets del épico (`fetchByEpic`) para
+   * reflejar el orden real.
+   *
+   * @param ticketId - ID del ticket a mover
+   * @param newIndex - Posición destino (0-based) dentro de la épica
+   * @returns Promise<void>
+   */
+  const reorderTicket = async (ticketId: string, newIndex: number): Promise<void> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      await api.tickets.reorder(ticketId, newIndex)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al reordenar el ticket'
+      error.value = message
+      console.error('Error en reorderTicket:', err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * Elimina un ticket
    * 
    * @param id - ID del ticket
@@ -891,6 +919,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     create,
     update,
     updateTags,
+    reorderTicket,
     remove,
     moveToEpic,
     completeTicket,

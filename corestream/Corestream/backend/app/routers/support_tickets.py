@@ -280,9 +280,12 @@ async def get_support_ticket_events(
     # cuyo campo `role` es un str derivado de user.role.name — sin cargar
     # también esa relación, el lazy-load fuera de contexto async revienta con
     # 500 (MissingGreenlet) en cuanto el ticket tiene algún evento con usuario.
+    # TicketEventResponse.user es un UserResponse: sin precargar la relación,
+    # el lazy-load fuera del contexto async revienta con MissingGreenlet (500).
+    # `User.role` es una columna (enum), no una relación, así que no se carga.
     result = await db.execute(
         select(TicketEvent)
-        .options(selectinload(TicketEvent.user).selectinload(User.role))
+        .options(selectinload(TicketEvent.user))
         .where(TicketEvent.ticket_id == ticket_id)
         .order_by(TicketEvent.created_at.desc())
         .offset(skip)

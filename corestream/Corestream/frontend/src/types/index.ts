@@ -718,6 +718,63 @@ export interface TicketEvent {
 }
 
 /**
+ * WEB-11: tipos de evento del historial de tickets tal como los devuelve la
+ * API (coinciden con `TicketEventType` de app/models/ticket_event.py).
+ */
+export type TicketHistoryEventType =
+  | 'CREATED'
+  | 'ASSIGNED'
+  | 'TICKET_ASSIGNED'
+  | 'STATUS_CHANGED'
+  | 'MOVED'
+  | 'UPDATED'
+  | 'QUESTION_RAISED'
+  | 'QUESTION_RESOLVED'
+  | 'REDIRECTED'
+  | 'COMPLETED'
+  | 'COMMENT'
+  | 'SUBTASK_CREATED'
+  | 'SUBTASK_COMPLETED'
+  | 'SUBTASK_DELETED'
+  | 'TIMER_START'
+  | 'TIMER_PAUSE'
+
+/**
+ * WEB-11: evento del historial de un ticket (`GET /api/tickets/{id}/events`).
+ *
+ * Incluye el autor (`user`) y los datos relevantes de la acción (`detail`),
+ * para poder mostrar la trazabilidad completa en el detalle del ticket.
+ */
+export interface TicketHistoryEvent {
+  /** Identificador único del evento */
+  id: string
+
+  /** ID del ticket al que pertenece el evento */
+  ticketId: string
+
+  /** ID del usuario autor del evento */
+  userId?: string | null
+
+  /** Usuario autor (el backend lo incluye para mostrar nombre/email) */
+  user?: User | null
+
+  /** Tipo de evento */
+  eventType: TicketHistoryEventType | string
+
+  /** Datos relevantes: message, changes, from_status/to_status, tags… */
+  detail?: Record<string, any> | null
+
+  /** Usuario origen (redirecciones) */
+  fromUserId?: string | null
+
+  /** Usuario destino (redirecciones) */
+  toUserId?: string | null
+
+  /** Fecha y hora del evento (ISO 8601) */
+  createdAt: string
+}
+
+/**
  * ENTIDADES DE NOTIFICACIONES
  * ===========================
  */

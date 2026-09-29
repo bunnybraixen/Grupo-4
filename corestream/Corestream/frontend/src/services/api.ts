@@ -35,7 +35,8 @@ import type {
   UserPerformance,
   HeatmapData,
   BurndownData,
-  Tag
+  Tag,
+  TicketHistoryEvent
 } from '@/types'
 // Import de tipo (se borra al compilar, así que no crea un ciclo real con el
 // store, que a su vez importa este servicio).
@@ -1326,6 +1327,42 @@ export const api = {
       const response = await apiClient.put<ApiResponse<Ticket>>(
         `/tickets/${ticketId}/tags`,
         { tag_ids: tagIds }
+      )
+      return response.data
+    },
+
+    /**
+     * Reordena un ticket dentro de su épica (drag & drop del Builder)
+     *
+     * `newIndex` es la posición destino (0-based) dentro de la épica y el
+     * backend renumera el resto de tickets. Es el ÚNICO endpoint que cambia el
+     * orden: cualquier otro guardado deja el orden intacto.
+     *
+     * @param ticketId - ID del ticket a mover
+     * @param newIndex - Posición destino dentro de la épica
+     * @returns Ticket con su nueva posición
+     */
+    reorder: async (ticketId: string, newIndex: number): Promise<ApiResponse<Ticket>> => {
+      const response = await apiClient.patch<ApiResponse<Ticket>>(
+        `/tickets/${ticketId}/reorder`,
+        { new_index: newIndex }
+      )
+      return response.data
+    },
+
+    /**
+     * Historial de eventos de un ticket (WEB-11)
+     *
+     * Devuelve los eventos en orden cronológico (el más antiguo primero) con su
+     * autor, fecha y datos relevantes de la acción.
+     *
+     * @param ticketId - ID del ticket
+     * @returns Eventos del ticket ordenados cronológicamente
+     */
+    getEvents: async (ticketId: string): Promise<TicketHistoryEvent[]> => {
+      const response = await apiClient.get<TicketHistoryEvent[]>(
+        `/tickets/${ticketId}/events`,
+        { params: { limit: 200 } }
       )
       return response.data
     }

@@ -17,10 +17,11 @@ para garantizar transiciones válidas y consistencia de datos.
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
+from enum import Enum
 import re
 from app.database import get_db
 from app.models import (
@@ -139,6 +140,18 @@ async def _load_ticket(db: AsyncSession, ticket_id) -> Optional[Ticket]:
     return result.scalar_one_or_none()
 
 
+def _json_safe(value):
+    """
+    Normaliza valores ORM (UUID, Enum, datetime) para guardarlos en el JSON
+    `detail` de un TicketEvent (WEB-11).
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    return str(value)
+
+
 @router.get(
     "/",
     response_model=List[TicketResponse],
@@ -173,8 +186,12 @@ async def list_tickets(
     if tag_ids:
         query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
 
+    # Orden estable (antes no había ORDER BY y PostgreSQL podía devolver las
+    # filas en otro orden tras un UPDATE: los tickets "saltaban" al editarlos).
     result = await db.execute(
-        query.offset(skip).limit(limit)
+        query.order_by(Ticket.order_index.asc(), Ticket.created_at.asc())
+        .offset(skip)
+        .limit(limit)
     )
     tickets = result.scalars().all()
 
@@ -236,9 +253,11 @@ async def get_epic_tickets(
     if tag_ids:
         query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
 
-    # Ejecutar con paginación
+    # Ejecutar con paginación y orden estable dentro de la épica
     result = await db.execute(
-        query.offset(skip).limit(limit)
+        query.order_by(Ticket.order_index.asc(), Ticket.created_at.asc())
+        .offset(skip)
+        .limit(limit)
     )
     tickets = result.scalars().all()
 
@@ -262,6 +281,20 @@ async def update_ticket_tags(
         raise HTTPException(status_code=404, detail="Una o más etiquetas no existen")
     ticket.tags = tags
     await db.commit()
+
+    # WEB-11: el cambio de etiquetas también queda en el historial, con los
+    # nombres para que el detalle del ticket sea legible.
+    tag_names = [tag.name for tag in tags]
+    await ticket_state_machine.log_ticket_event(
+        db, ticket_id, TicketEventType.UPDATED,
+        get_user_id(current_user),
+        {
+            "message": "Etiquetas actualizadas: "
+            + (", ".join(tag_names) if tag_names else "sin etiquetas"),
+            "tags": tag_names,
+        },
+    )
+
     return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
 
@@ -364,12 +397,24 @@ async def create_ticket(
     actor_name = actor.full_name if actor else "Sistema"
 
     try:
+        # Orden estable dentro de la épica: el ticket nuevo va al final.
+        # Antes NO se asignaba `order_index`, así que todos los tickets quedaban
+        # en 0 y el orden dependía del plan de PostgreSQL (cambiaba solo).
+        max_order = await db.execute(
+            select(func.max(Ticket.order_index)).where(
+                Ticket.epic_id == ticket_data.epic_id
+            )
+        )
+        current_max = max_order.scalar()
+        next_order = 0 if current_max is None else int(current_max) + 1
+
         # Crear nuevo ticket. `status` viene del payload (por defecto TODO) y la
         # autoría se guarda en la FK `created_by_id`: `created_by` es la relación
         # ORM, no una columna, y asignarle un UUID la rompía.
         new_ticket = Ticket(
             **ticket_data.model_dump(),
             created_by_id=actor_uuid,
+            order_index=next_order,
         )
         db.add(new_ticket)
         await db.commit()
@@ -614,6 +659,12 @@ async def update_ticket_comment(
 
     return TicketCommentResponse.from_orm(updated_comment)
     
+@router.get(
+    "/{ticket_id}",
+    response_model=TicketResponse,
+    summary="Obtener detalle de un ticket",
+    description="Devuelve el ticket con épica, asignado, subtareas y etiquetas"
+)
 async def get_ticket(
     ticket_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -736,25 +787,56 @@ async def update_ticket(
     try:
         # Aplicar solo los campos enviados (actualización parcial)
         update_data = ticket_update.model_dump(exclude_unset=True)
+
+        # El orden SOLO cambia con el drag & drop (PATCH /{id}/reorder): si se
+        # aplicara aquí, cualquier edición de campos podría reordenar el tablero.
+        update_data.pop("order_index", None)
+
+        # WEB-11: datos relevantes de la acción -> diff de los campos cambiados
+        changes: dict = {}
         for field, value in update_data.items():
+            current_value = getattr(ticket, field, None)
+            if current_value != value:
+                changes[field] = {
+                    "from": _json_safe(current_value),
+                    "to": _json_safe(value),
+                }
             setattr(ticket, field, value)
 
         await db.commit()
         await db.refresh(ticket)
 
         # Auditar el cambio: un cambio de estado se registra como STATUS_CHANGED,
-        # cualquier otra edición de campos como UPDATED (WEB-08: historial).
+        # un cambio de asignado como TICKET_ASSIGNED y cualquier otra edición de
+        # campos como UPDATED (WEB-08/WEB-11: historial de eventos).
         if previous_status != ticket.status:
             previous_value = getattr(previous_status, "value", previous_status)
             current_value = getattr(ticket.status, "value", ticket.status)
             await ticket_state_machine.log_ticket_event(
                 db, ticket_id, TicketEventType.STATUS_CHANGED,
-                get_user_id(current_user), f"Estado cambiado: {previous_value} -> {current_value}"
+                get_user_id(current_user),
+                {
+                    "message": f"Estado cambiado: {previous_value} -> {current_value}",
+                    "from_status": str(previous_value),
+                    "to_status": str(current_value),
+                    "changes": changes,
+                },
+            )
+        elif "assignee_id" in changes:
+            await ticket_state_machine.log_ticket_event(
+                db, ticket_id, TicketEventType.TICKET_ASSIGNED,
+                get_user_id(current_user),
+                {"message": "Asignación del ticket actualizada", "changes": changes},
             )
         else:
             await ticket_state_machine.log_ticket_event(
                 db, ticket_id, TicketEventType.UPDATED,
-                get_user_id(current_user), "Ticket actualizado"
+                get_user_id(current_user),
+                {
+                    "message": "Ticket actualizado: "
+                    + (", ".join(changes) if changes else "sin cambios"),
+                    "changes": changes,
+                },
             )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
@@ -881,6 +963,15 @@ async def move_ticket_to_epic(
         old_epic_id = ticket.epic_id
         ticket.epic_id = new_epic_id
 
+        # Al cambiar de épica el ticket va al FINAL de la destino: con el índice
+        # viejo podría caer en medio de una lista ajena. Desde ahí solo lo mueve
+        # el drag & drop (PATCH /{id}/reorder).
+        max_order = await db.execute(
+            select(func.max(Ticket.order_index)).where(Ticket.epic_id == new_epic_id)
+        )
+        current_max = max_order.scalar()
+        ticket.order_index = 0 if current_max is None else int(current_max) + 1
+
         await db.commit()
         await db.refresh(ticket)
 
@@ -898,6 +989,106 @@ async def move_ticket_to_epic(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al mover ticket: {str(e)}"
+        )
+
+
+@router.patch(
+    "/{ticket_id}/reorder",
+    response_model=TicketResponse,
+    summary="Reordenar ticket dentro de su épica",
+    description="Mueve el ticket a la posición indicada (drag & drop) y renumera el resto de la épica"
+)
+async def reorder_ticket(
+    ticket_id: UUID,
+    new_order: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> TicketResponse:
+    """
+    Cambia el orden de un ticket dentro de su épica.
+
+    Es la ÚNICA vía que modifica `order_index`: cualquier otro endpoint deja el
+    orden intacto, de modo que los tickets solo se mueven con drag & drop.
+
+    Args:
+        ticket_id (UUID): ID del ticket a mover
+        new_order (dict): Contiene 'new_index' con la posición destino (0-based)
+        current_user (User): Usuario autenticado
+        db (AsyncSession): Sesión asíncrona de base de datos
+
+    Returns:
+        TicketResponse: Ticket con su nueva posición
+
+    Raises:
+        HTTPException: Si el ticket no existe (404), el índice no es válido (422)
+                       o hay error al guardar (400)
+    """
+    ticket = await _load_ticket(db, ticket_id)
+
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket con ID {ticket_id} no encontrado"
+        )
+
+    # WEB-08: reordenar es una acción de gestión -> ADMIN/TEAM_LEADER o el asignado
+    assert_can_manage_ticket(ticket, current_user)
+
+    try:
+        new_index = int(new_order.get("new_index", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="'new_index' debe ser un número entero"
+        )
+
+    try:
+        # Todos los hermanos de la épica, en el mismo orden que se muestra en la UI
+        siblings_result = await db.execute(
+            select(Ticket)
+            .where(Ticket.epic_id == ticket.epic_id)
+            .order_by(Ticket.order_index.asc(), Ticket.created_at.asc())
+        )
+        siblings = list(siblings_result.scalars().all())
+
+        current_index = next(
+            (index for index, item in enumerate(siblings) if item.id == ticket.id),
+            0,
+        )
+        # Se acota el destino para no dejar huecos
+        new_index = max(0, min(new_index, len(siblings) - 1))
+
+        if new_index != current_index:
+            siblings.pop(current_index)
+            siblings.insert(new_index, ticket)
+
+            # Renumerar 0..n-1: normaliza los tickets antiguos que quedaron
+            # todos con order_index=0 (por eso el orden parecía aleatorio).
+            for index, item in enumerate(siblings):
+                item.order_index = index
+
+            await db.commit()
+
+            # WEB-11: el reordenado queda registrado en el historial
+            await ticket_state_machine.log_ticket_event(
+                db, ticket_id, TicketEventType.UPDATED,
+                get_user_id(current_user),
+                {
+                    "message": f"Orden cambiado: {current_index} -> {new_index}",
+                    "action": "REORDERED",
+                    "from_index": current_index,
+                    "to_index": new_index,
+                },
+            )
+
+        # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error al reordenar ticket: {str(e)}"
         )
 
 
@@ -1383,14 +1574,21 @@ async def get_ticket_events(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
-    # Obtener eventos ordenados por fecha descendente
+    # WEB-11: historial en orden cronológico (el más antiguo primero; el `id`
+    # como desempate mantiene el orden determinista cuando varios eventos
+    # comparten `created_at`). El autor se precarga porque
+    # `TicketEventResponse.user` es un UserResponse: sin el eager-load, el
+    # lazy-load fuera del contexto async revienta con MissingGreenlet (500).
+    # Ojo: `User.role` es una COLUMNA (enum), no una relación, así que no hay
+    # que (ni se puede) cargarla aparte.
     result = await db.execute(
         select(TicketEvent)
+        .options(selectinload(TicketEvent.user))
         .where(TicketEvent.ticket_id == ticket_id)
-        .order_by(TicketEvent.created_at.desc())
+        .order_by(TicketEvent.created_at.asc(), TicketEvent.id.asc())
         .offset(skip)
         .limit(limit)
     )
     events = result.scalars().all()
 
-    return [TicketEventResponse.from_orm(event) for event in events]
+    return [TicketEventResponse.model_validate(event) for event in events]
