@@ -74,14 +74,11 @@ class TicketRedirectionService:
 
             # ── 2. Cargar usuario solicitante y obtener su rol ───────────
             from_user_result = await self.db.execute(
-                select(User).options(selectinload(User.role)).where(User.id == from_user_id)
+                select(User).where(User.id == from_user_id)
             )
             from_user = from_user_result.scalar_one_or_none()
-            
-            user_role = ""
-            if from_user and from_user.role:
-                # Soporta tanto si role es un objeto (relación) o un string directo
-                user_role = from_user.role.name if hasattr(from_user.role, 'name') else str(from_user.role)
+
+            user_role = from_user.role.value if from_user and from_user.role else ""
 
             # ── 3. Validar permisos de redirección ───────────
             is_assignee = (ticket.assignee_id == from_user_id)
@@ -220,16 +217,11 @@ class TicketRedirectionService:
         Returns:
             list[User]: Lista de usuarios disponibles para redirección
         """
-        from app.models import Role
-
-        # Only DEVELOPER and TEAM_LEADER can receive redirected tickets.
-        # ADMIN accounts are excluded here and defensively in the frontend.
-        allowed_roles = ["DEVELOPER", "TEAM_LEADER", "GROUP_LEADER"]
+        from app.models.user import UserRole
+        allowed_roles = [UserRole.DEVELOPER, UserRole.GROUP_LEADER]
         result = await self.db.execute(
             select(User)
-            .join(User.role)
-            .options(selectinload(User.role))
-            .where(User.is_active, Role.name.in_(allowed_roles))
+            .where(User.is_active, User.role.in_(allowed_roles))
             .order_by(User.full_name)
         )
         return result.scalars().all()

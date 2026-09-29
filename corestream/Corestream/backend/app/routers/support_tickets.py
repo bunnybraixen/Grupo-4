@@ -6,7 +6,7 @@ Workflow propio: REPORTED → INVESTIGATING → RESOLVED.
 
 Permisos:
 - Crear / listar / ver / actualizar: cualquier usuario autenticado (Developer, Team Leader, Admin)
-- Asignar a un developer: solo TEAM_LEADER
+- Asignar a un developer: solo GROUP_LEADER
 - Cambiar estado (investigate/resolve): cualquier usuario autenticado
 """
 
@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models import Ticket, TicketEvent, TicketEventType, TicketStatus, TicketType, User
-from app.models.role import UserRole
+from app.models.user import UserRole
 from app.schemas.ticket import (
     SupportTicketAssign,
     SupportTicketCreate,
@@ -181,12 +181,12 @@ async def update_support_ticket(
 async def assign_support_ticket(
     ticket_id: UUID,
     assignment: SupportTicketAssign,
-    current_user: User = Depends(require_role([UserRole.TEAM_LEADER])),
+    current_user: User = Depends(require_role([UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db),
 ) -> TicketResponse:
     """
     Asigna un ticket de soporte a un developer.
-    Solo puede hacerlo el TEAM_LEADER.
+    Solo puede hacerlo el GROUP_LEADER.
     """
     ticket = await _get_support_ticket_or_404(ticket_id, db)
 
