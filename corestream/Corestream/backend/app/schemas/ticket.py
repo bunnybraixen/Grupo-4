@@ -312,5 +312,29 @@ class TicketResponse(BaseModel):
     # en GET /tickets/ y /tickets/by-epic/{id} en cuanto un ticket tenía
     # subtareas. Con list[SubtaskResponse] se validan/codifican como corresponde.
     subtasks: list[SubtaskResponse] = []
+    tags: list["TagResponse"] = []
 
     model_config = {"from_attributes": True}
+
+
+class TagCreate(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value or len(value) > 80:
+            raise ValueError("El nombre debe tener entre 1 y 80 caracteres")
+        return value
+
+
+class TagResponse(BaseModel):
+    id: UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class TicketTagsUpdate(BaseModel):
+    tag_ids: list[UUID]

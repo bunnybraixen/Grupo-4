@@ -214,6 +214,9 @@
                   <span v-if="ticket.dueDate">📅 Fecha: {{ ticket.dueDate.slice(0, 10) }}</span>
                 </div>
 
+                <!-- NEW-03: etiquetas asociadas al ticket -->
+                <TagChips v-if="ticket.tags?.length" :tags="ticket.tags" size="xs" />
+
                 <!-- Barra de progreso de subtareas -->
                 <div v-if="getSubtaskStats(ticket).total > 0" class="mt-2 max-w-sm">
                   <div class="flex items-center justify-between text-[11px] text-[var(--text-muted)] mb-1">
@@ -349,6 +352,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import WorkbenchDashboard from '@/components/workbench/WorkbenchDashboard.vue'
+import TagChips from '@/components/shared/TagChips.vue'
 import type { Epic, Subtask, Ticket, User } from '@/types'
 
 const applicationsStore = useApplicationsStore()

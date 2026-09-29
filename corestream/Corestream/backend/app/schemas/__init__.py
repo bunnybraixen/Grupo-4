@@ -32,6 +32,9 @@ from app.schemas.ticket import (
     TicketQuestion,
     TicketRedirect,
     TicketResponse,
+    TagCreate,
+    TagResponse,
+    TicketTagsUpdate,
 )
 from app.schemas.subtask import (
     SubtaskCreate,
@@ -98,6 +101,9 @@ __all__ = [
     "TicketQuestion",
     "TicketRedirect",
     "TicketResponse",
+    "TagCreate",
+    "TagResponse",
+    "TicketTagsUpdate",
     # Esquemas de Subtarea
     "SubtaskCreate",
     "SubtaskUpdate",

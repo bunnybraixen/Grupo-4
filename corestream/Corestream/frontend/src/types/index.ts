@@ -585,6 +585,12 @@ export interface Ticket {
    * Nombre de la aplicación (cargado opcionalmente)
    */
   appName?: string
+  tags?: Tag[]
+}
+
+export interface Tag {
+  id: string
+  name: string
 }
 
 /**
@@ -1124,6 +1130,12 @@ export interface TicketFilters {
    * Filtrar tareas retrasadas
    */
   delayed?: boolean
+
+  /**
+   * Filtrar por una o más etiquetas reutilizables (NEW-03).
+   * El backend las recibe como `tag_ids` repetidos en el query string.
+   */
+  tagIds?: string[]
 
   /**
    * Número de página (para paginación)

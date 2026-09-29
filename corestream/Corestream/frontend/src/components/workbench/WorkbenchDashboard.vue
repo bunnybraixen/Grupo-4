@@ -71,6 +71,35 @@
           {{ f.label }}
         </button>
       </div>
+
+      <!-- ============================================================ -->
+      <!-- NEW-03: Filtro por etiquetas (una o varias)                  -->
+      <!-- La fila se oculta si el cliente todavía no tiene etiquetas.  -->
+      <!-- ============================================================ -->
+      <div v-if="availableTags.length" class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Etiquetas:</span>
+        <button
+          v-for="tag in availableTags"
+          :key="tag.id"
+          :data-tag="tag.name"
+          @click="toggleTagFilter(tag.id)"
+          :class="[
+            'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+            tagFilterIds.includes(tag.id)
+              ? 'bg-[var(--teal)] text-white font-semibold'
+              : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
+          ]"
+        >
+          🏷 {{ tag.name }}
+        </button>
+        <button
+          v-if="tagFilterIds.length"
+          @click="setTagFilterIds([])"
+          class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]"
+        >
+          Quitar filtro
+        </button>
+      </div>
     </div>
 
     <!-- ============================================================== -->
@@ -173,6 +202,9 @@
             <span v-else>👤 Sin asignar</span>
             <span v-if="ticket.dueDate">📅 {{ ticket.dueDate.slice(0, 10) }}</span>
           </div>
+
+          <!-- NEW-03: etiquetas asociadas al ticket -->
+          <TagChips v-if="ticket.tags?.length" :tags="ticket.tags" size="xs" />
 
           <!-- Barra de progreso subtareas -->
           <div v-if="getSubtaskStats(ticket).total > 0" class="space-y-1">
@@ -291,6 +323,41 @@
               <a :href="ticket.prLink" target="_blank" rel="noopener" class="text-[var(--teal)] underline break-all ml-1">{{ ticket.prLink }}</a>
             </p>
             <p><span class="text-[var(--text-muted)]">Fecha límite:</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
+
+            <!-- ======================================================== -->
+            <!-- NEW-03: selector para asociar / desasociar etiquetas     -->
+            <!-- Se guarda la lista completa (PUT /tickets/{id}/tags)     -->
+            <!-- ======================================================== -->
+            <div class="pt-2 border-t border-[var(--border-subtle)] space-y-2">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="text-[var(--text-muted)]">Etiquetas:</span>
+                <TagChips :tags="ticket.tags ?? []" size="xs" show-empty empty-label="Sin etiquetas" />
+              </div>
+              <p v-if="!availableTags.length" class="italic text-[var(--text-muted)]">
+                Todavía no hay etiquetas reutilizables creadas.
+              </p>
+              <div v-else class="flex flex-wrap gap-x-3 gap-y-1">
+                <label v-for="tag in availableTags" :key="tag.id" class="inline-flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    :value="tag.id"
+                    :checked="draftTagIds(ticket).includes(tag.id)"
+                    :disabled="working"
+                    class="accent-[var(--teal)]"
+                    @change="toggleDraftTag(ticket, tag.id, $event)"
+                  />
+                  {{ tag.name }}
+                </label>
+              </div>
+              <button
+                v-if="availableTags.length"
+                :disabled="working"
+                @click="saveTicketTags(ticket)"
+                class="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30 disabled:opacity-50"
+              >
+                Guardar etiquetas
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -304,14 +371,26 @@ import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
-import type { Subtask, Ticket, User } from '@/types'
+import TagChips from '@/components/shared/TagChips.vue'
+import type { Subtask, Tag, Ticket, User } from '@/types'
 
 // =====================================================================
 // COMPOSABLE: tickets del workbench + filtros
 // =====================================================================
 
-const { tickets, statusFilter, dateFilter, isLoading, error, setStatusFilter, setDateFilter, refresh } =
-  useWorkbenchTickets()
+const {
+  tickets,
+  statusFilter,
+  dateFilter,
+  tagFilterIds,
+  isLoading,
+  error,
+  setStatusFilter,
+  setDateFilter,
+  setTagFilterIds,
+  updateTicketTags,
+  refresh,
+} = useWorkbenchTickets()
 
 // =====================================================================
 // AUTH / PERMISOS
@@ -345,6 +424,20 @@ const actionError = ref('')
 const availableUsers = ref<User[]>([])
 
 /**
+ * NEW-03: etiquetas reutilizables del cliente. Las crea un ADMIN/TEAM_LEADER
+ * en el Builder y aquí se usan para filtrar y para asociarlas a los tickets.
+ */
+const availableTags = ref<Tag[]>([])
+
+/**
+ * NEW-03: borrador de etiquetas por ticket (id del ticket -> ids elegidos).
+ *
+ * Los checkboxes no guardan al instante: se editan aquí y se persisten con
+ * `saveTicketTags()`, que envía la lista completa al backend.
+ */
+const tagDraft = ref<Record<string, string[]>>({})
+
+/**
  * Solo los miembros del equipo del líder pueden recibir el ticket; un ADMIN
  * asigna a cualquiera. `availableUsers` trae la lista completa de la API y el
  * filtro se hace aquí porque los equipos viven en el cliente (localStorage).
@@ -370,12 +463,13 @@ const getSubtaskStats = (ticket: Ticket) => {
 }
 
 const hasActiveFilters = computed(
-  () => statusFilter.value !== 'all' || dateFilter.value !== 'all',
+  () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || tagFilterIds.value.length > 0,
 )
 
 const clearFilters = () => {
   setStatusFilter('all')
   setDateFilter('all')
+  setTagFilterIds([])
 }
 
 // =====================================================================
@@ -438,6 +532,64 @@ const toggleSubtaskPanel = (ticketId: string) => {
 const toggleDetail = (ticketId: string) => {
   openDetailFor.value = openDetailFor.value === ticketId ? null : ticketId
   openSubtasksFor.value = null
+  // Al abrir/cerrar el detalle se descarta el borrador de etiquetas pendiente
+  const next = { ...tagDraft.value }
+  delete next[ticketId]
+  tagDraft.value = next
+}
+
+// =====================================================================
+// NEW-03: ETIQUETAS (filtro + asociación a tickets)
+// =====================================================================
+
+/** Carga las etiquetas reutilizables (GET /api/tags/) */
+const loadAvailableTags = async () => {
+  try {
+    availableTags.value = await api.tags.list()
+  } catch (err) {
+    console.error('Error cargando etiquetas:', err)
+  }
+}
+
+/** Alterna una etiqueta del filtro (coincidencia: tiene ALGUNA de ellas) */
+const toggleTagFilter = (tagId: string) => {
+  setTagFilterIds(
+    tagFilterIds.value.includes(tagId)
+      ? tagFilterIds.value.filter((id) => id !== tagId)
+      : [...tagFilterIds.value, tagId]
+  )
+}
+
+/** IDs de etiquetas del ticket en edición (borrador o las ya guardadas) */
+const draftTagIds = (ticket: Ticket): string[] =>
+  tagDraft.value[ticket.id] ?? (ticket.tags ?? []).map((tag) => tag.id)
+
+/** Marca/desmarca una etiqueta en el borrador del ticket */
+const toggleDraftTag = (ticket: Ticket, tagId: string, event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  const current = draftTagIds(ticket)
+  tagDraft.value = {
+    ...tagDraft.value,
+    [ticket.id]: checked ? [...current, tagId] : current.filter((id) => id !== tagId),
+  }
+}
+
+/** Guarda las etiquetas del ticket (asocia y desasocia en una sola llamada) */
+const saveTicketTags = async (ticket: Ticket) => {
+  working.value = true
+  actionError.value = ''
+  try {
+    await updateTicketTags(ticket.id, draftTagIds(ticket))
+    const next = { ...tagDraft.value }
+    delete next[ticket.id]
+    tagDraft.value = next
+    await refresh()
+  } catch (err: any) {
+    actionError.value =
+      err?.response?.data?.detail || 'No se pudieron actualizar las etiquetas del ticket.'
+  } finally {
+    working.value = false
+  }
 }
 
 const addSubtask = async (ticket: Ticket) => {
@@ -517,6 +669,9 @@ const priorityClass = (priority: string): string =>
 // =====================================================================
 
 onMounted(async () => {
+  // NEW-03: cualquier usuario autenticado puede listar las etiquetas
+  loadAvailableTags()
+
   if (canAssignTickets.value) {
     try {
       const res: any = await api.users.list({ limit: 100 })

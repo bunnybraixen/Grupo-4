@@ -49,6 +49,13 @@
     </div>
 
     <!-- ============================================================== -->
+    <!-- NEW-03: Etiquetas del ticket                                   -->
+    <!-- ============================================================== -->
+    <div v-if="ticket.tags?.length" class="mb-3">
+      <TagChips :tags="ticket.tags" size="xs" />
+    </div>
+
+    <!-- ============================================================== -->
     <!-- FILA INFERIOR: Prioridad + Fecha + Días atrasado              -->
     <!-- ============================================================== -->
     <div class="flex items-center gap-3">
@@ -96,6 +103,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import TagChips from '@/components/shared/TagChips.vue'
 import type { Ticket } from '@/types'
 
 // =====================================================================

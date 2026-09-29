@@ -34,7 +34,8 @@ import type {
   PaginatedResponse,
   UserPerformance,
   HeatmapData,
-  BurndownData
+  BurndownData,
+  Tag
 } from '@/types'
 // Import de tipo (se borra al compilar, así que no crea un ciclo real con el
 // store, que a su vez importa este servicio).
@@ -225,6 +226,17 @@ const deepMapKeys = (value: any, mapper: (key: string) => string): any => {
 
 const snakeToCamelDeep = (value: any): any => deepMapKeys(value, toCamelKey)
 const camelToSnakeDeep = (value: any): any => deepMapKeys(value, toSnakeKey)
+
+/**
+ * Serializador de parámetros de query que son ARRAYS (NEW-03).
+ *
+ * FastAPI declara los filtros de etiquetas como `Query(None)` con
+ * `List[UUID]`, es decir espera la clave REPETIDA (`tag_ids=a&tag_ids=b`).
+ * El serializador por defecto de Axios usa corchetes (`tag_ids[]=a`), clave
+ * que FastAPI no reconoce: el filtro se ignoraba y la lista volvía completa.
+ * `indexes: null` produce la forma sin corchetes que sí entiende el backend.
+ */
+const REPEATED_ARRAY_PARAMS: { indexes: null } = { indexes: null }
 
 const createApiClient = (): AxiosInstance => {
   const instance = axios.create({
@@ -1012,7 +1024,7 @@ export const api = {
        */
       const response = await apiClient.get<ApiResponse<PaginatedResponse<Ticket>>>(
         '/tickets/',
-        { params: filters }
+        { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
       return response.data
     },
@@ -1254,12 +1266,19 @@ export const api = {
     },
 
     /**
-     * Lista los tickets de una épica (usado por el store de tickets)
+     * Lista los tickets de una épica (usado por el store de tickets).
+     *
+     * `filters.tagIds` se envía al backend como `tag_ids` repetidos, que es
+     * la consulta documentada en `routers/tickets.py` para filtrar por
+     * etiquetas (NEW-03).
      */
-    listByEpic: async (epicId: string, filters?: { status?: string }): Promise<ApiResponse<Ticket[]>> => {
+    listByEpic: async (
+      epicId: string,
+      filters?: { status?: string; tagIds?: string[] }
+    ): Promise<ApiResponse<Ticket[]>> => {
       const response = await apiClient.get<ApiResponse<Ticket[]>>(
         `/tickets/by-epic/${epicId}`,
-        { params: filters }
+        { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
       return response.data
     },
@@ -1293,6 +1312,68 @@ export const api = {
         { question_text: questionText }
       )
       return response.data
+    },
+
+    /**
+     * Reemplaza por completo las etiquetas de un ticket
+     * (PUT /api/tickets/{id}/tags)
+     *
+     * @param ticketId - ID del ticket
+     * @param tagIds - IDs de las etiquetas que quedarán asignadas
+     * @returns Ticket actualizado con sus etiquetas
+     */
+    updateTags: async (ticketId: string, tagIds: string[]): Promise<ApiResponse<Ticket>> => {
+      const response = await apiClient.put<ApiResponse<Ticket>>(
+        `/tickets/${ticketId}/tags`,
+        { tag_ids: tagIds }
+      )
+      return response.data
+    }
+  },
+
+  /**
+   * ========================================
+   * MÓDULO DE ETIQUETAS (TAGS)
+   * ========================================
+   *
+   * Etiquetas reutilizables que se asignan a los tickets.
+   * Listar: cualquier usuario autenticado.
+   * Crear/eliminar: solo ADMIN o TEAM_LEADER (lo valida el backend).
+   *
+   * El backend (`routers/tags.py`) devuelve los objetos planos (`Tag[]` en la
+   * lista y `Tag` al crear), NO un envelope `{ data: ... }`; por eso estos
+   * métodos retornan el valor directo. La barra final es obligatoria por el
+   * mismo motivo que en tickets (FastAPI redirige 307 y el proxy falla).
+   */
+  tags: {
+    /**
+     * Lista todas las etiquetas (GET /api/tags/)
+     *
+     * @returns Array de etiquetas ordenado por nombre
+     */
+    list: async (): Promise<Tag[]> => {
+      const response = await apiClient.get<Tag[]>('/tags/')
+      return response.data
+    },
+
+    /**
+     * Crea una etiqueta reutilizable (POST /api/tags/)
+     *
+     * @param name - Nombre de la etiqueta (1 a 80 caracteres)
+     * @returns Etiqueta creada
+     */
+    create: async (name: string): Promise<Tag> => {
+      const response = await apiClient.post<Tag>('/tags/', { name })
+      return response.data
+    },
+
+    /**
+     * Elimina una etiqueta (DELETE /api/tags/{id})
+     *
+     * @param tagId - ID de la etiqueta
+     */
+    delete: async (tagId: string): Promise<void> => {
+      await apiClient.delete(`/tags/${tagId}`)
     }
   },
 

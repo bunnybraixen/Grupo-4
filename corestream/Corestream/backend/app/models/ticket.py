@@ -224,6 +224,8 @@ class Ticket(Base, BaseEntity):
         order_by="TicketComment.created_at",
         doc="Lista de comentarios realizados sobre este ticket",
     )
+
+    tags = relationship("Tag", secondary="ticket_tags", back_populates="tickets")
     
     __table_args__ = (
     )

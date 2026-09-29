@@ -287,12 +287,61 @@
       </div>
 
       <!-- Consulta de tickets: filtra por título o estado dentro de la aplicación -->
+      <section v-if="canManageApplications" class="mb-4 border border-[var(--border-subtle)] rounded-lg p-3">
+        <h3 class="text-sm font-semibold mb-2">Etiquetas reutilizables</h3>
+        <form class="flex gap-2 mb-2" @submit.prevent="createTag">
+          <input v-model="newTagName" maxlength="80" placeholder="Nueva etiqueta"
+            class="flex-1 min-w-0 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm" />
+          <button :disabled="working || !newTagName.trim()" class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] disabled:opacity-50">Crear</button>
+        </form>
+        <div class="flex flex-wrap gap-2">
+          <span v-for="tag in availableTags" :key="tag.id" class="inline-flex items-center gap-2 rounded-full bg-[var(--bg-app)] px-3 py-1 text-xs">
+            {{ tag.name }}
+            <button type="button" :disabled="working" :aria-label="`Eliminar etiqueta ${tag.name}`" @click="deleteTag(tag)" class="text-red-400">×</button>
+          </span>
+        </div>
+        <p v-if="tagError" class="mt-2 text-xs text-red-400">{{ tagError }}</p>
+      </section>
+
       <div class="mb-4">
         <input
           v-model="searchQuery"
           placeholder="Buscar tickets por título o estado…"
           class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none focus:border-[var(--teal)]"
         />
+        <!-- ============================================================ -->
+        <!-- NEW-03: filtro por etiquetas con chips                        -->
+        <!-- Es un botón que alterna: un click filtra y otro quita el      -->
+        <!-- filtro (un <select multiple> nativo exigía Ctrl+click para    -->
+        <!-- deseleccionar, así que no había forma evidente de volver a    -->
+        <!-- ver todos los tickets).                                       -->
+        <!-- ============================================================ -->
+        <div v-if="availableTags.length" class="mt-2 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-[var(--text-muted)]">Etiquetas:</span>
+          <button
+            v-for="tag in availableTags"
+            :key="tag.id"
+            type="button"
+            :data-tag="tag.name"
+            @click="toggleTagFilter(tag.id)"
+            :class="[
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+              tagFilterIds.includes(tag.id)
+                ? 'bg-[var(--teal)] text-white'
+                : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
+            ]"
+          >
+            🏷 {{ tag.name }}
+          </button>
+          <button
+            v-if="hasTicketFilters"
+            type="button"
+            @click="clearTicketFilters"
+            class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]"
+          >
+            Quitar filtros
+          </button>
+        </div>
       </div>
 
       <div v-if="epicsStore.isLoading" class="text-center py-12 text-[var(--text-muted)]">Cargando épicas…</div>
@@ -300,9 +349,14 @@
       <div v-else-if="epics.length === 0" class="text-center py-12 text-[var(--text-muted)]">
         Todavía no hay épicas en esta aplicación.
       </div>
+      <!-- NEW-03: con filtros activos las épicas sin tickets que coincidan se
+           ocultan, para no dejar bloques vacíos en el tablero -->
+      <div v-else-if="filteredEpics.length === 0" class="text-center py-12 text-[var(--text-muted)]">
+        Ningún ticket coincide con los filtros seleccionados.
+      </div>
 
       <div
-        v-for="(epic, index) in epics"
+        v-for="epic in filteredEpics"
         :key="epic.id"
         draggable="true"
         @dragstart="handleEpicDragStart(epic.id)"
@@ -325,7 +379,7 @@
 
         <div class="p-4 flex items-center justify-between gap-3">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-[var(--text-muted)] text-xs">#{{ index + 1 }}</span>
+            <span class="text-[var(--text-muted)] text-xs">#{{ epicPosition(epic.id) }}</span>
             <div class="min-w-0">
               <h3 class="font-bold text-lg">{{ epic.title }}</h3>
               <div class="mt-2">
@@ -461,6 +515,9 @@
                 <span :class="statusClass(ticket.status)" class="px-2 py-0.5 rounded-full font-medium">{{ statusLabel(ticket.status) }}</span>
                 <span :class="priorityClass(ticket.priority)" class="px-2 py-0.5 rounded-full font-medium">{{ priorityLabel(ticket.priority) }}</span>
                 <span v-if="ticket.dueDate" class="text-[var(--text-muted)]">📅 {{ ticket.dueDate.slice(0, 10) }}</span>
+              </div>
+              <div v-if="ticket.tags?.length" class="flex flex-wrap gap-1 mt-2">
+                <span v-for="tag in ticket.tags" :key="tag.id" class="rounded-full bg-[var(--teal)]/15 text-[var(--teal)] px-2 py-0.5 text-xs">{{ tag.name }}</span>
               </div>
               <!-- Barra de progreso de subtareas si existen -->
               <div v-if="getSubtaskStats(ticket).total > 0" class="mt-2 text-xs">
@@ -649,6 +706,20 @@
                   </option>
                 </select>
               </div>
+              <!-- NEW-03: las etiquetas se guardan junto con el resto de campos
+                   desde el botón "Guardar cambios" (ya no hay botón aparte) -->
+              <fieldset class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                <legend class="w-full text-xs text-[var(--text-muted)]">
+                  Etiquetas (se guardan con «Guardar cambios»)
+                </legend>
+                <label v-for="tag in availableTags" :key="tag.id" class="inline-flex items-center gap-2">
+                  <input v-model="selectedTicketTagIds" type="checkbox" :value="tag.id" :disabled="working" class="accent-[var(--teal)]" />
+                  {{ tag.name }}
+                </label>
+                <p v-if="!availableTags.length" class="text-xs italic text-[var(--text-muted)]">
+                  Todavía no hay etiquetas creadas.
+                </p>
+              </fieldset>
               <p v-if="ticketError" class="text-xs text-red-400">{{ ticketError }}</p>
               <div class="flex gap-2">
                 <button
@@ -845,7 +916,7 @@ import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
-import type { Epic, Subtask, Ticket, TicketComment, User } from '@/types'
+import type { Epic, Subtask, Ticket, TicketComment, User, Tag } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -854,6 +925,11 @@ const epicsStore = useEpicsStore()
 const ticketsStore = useTicketsStore()
 const authStore = useAuthStore()
 const teamsStore = useTeamsStore()
+const availableTags = ref<Tag[]>([])
+const newTagName = ref('')
+const tagError = ref('')
+const tagFilterIds = ref<string[]>([])
+const selectedTicketTagIds = ref<string[]>([])
 
 const selectedAppId = ref('')
 const showNewApp = ref(false)
@@ -1421,12 +1497,82 @@ const removeSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
 const visibleTickets = (epicId: string): Ticket[] => {
   const list = epicTickets.value[epicId] ?? []
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return list
   return list.filter(
-    (t) =>
-      (t.title ?? '').toLowerCase().includes(q) ||
-      statusLabel(t.status).toLowerCase().includes(q)
+    (t) => {
+      const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
+      const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
+      return matchesQuery && matchesTags
+    }
   )
+}
+
+/** ¿Hay algún filtro de tickets activo? (búsqueda por texto o etiquetas) */
+const hasTicketFilters = computed(
+  (): boolean => !!searchQuery.value.trim() || tagFilterIds.value.length > 0
+)
+
+/**
+ * Épicas que se pintan en el tablero.
+ *
+ * Sin filtros se muestran todas. Con filtros activos se ocultan las que se
+ * quedarían vacías (sin ningún ticket que coincida), que es lo que dejaba
+ * bloques de épica en blanco al filtrar por etiqueta.
+ */
+const filteredEpics = computed((): Epic[] => {
+  if (!hasTicketFilters.value) return epics.value
+  return epics.value.filter((epic) => visibleTickets(epic.id).length > 0)
+})
+
+/** Posición real (1-based) de la épica, para que no cambie al filtrar */
+const epicPosition = (epicId: string): number =>
+  epics.value.findIndex((epic) => epic.id === epicId) + 1
+
+/** Alterna una etiqueta del filtro de tickets (un click filtra, otro la quita) */
+const toggleTagFilter = (tagId: string): void => {
+  tagFilterIds.value = tagFilterIds.value.includes(tagId)
+    ? tagFilterIds.value.filter((id) => id !== tagId)
+    : [...tagFilterIds.value, tagId]
+}
+
+/** Limpia la búsqueda y el filtro de etiquetas */
+const clearTicketFilters = (): void => {
+  searchQuery.value = ''
+  tagFilterIds.value = []
+}
+
+const loadTags = async (): Promise<void> => {
+  try {
+    availableTags.value = await api.tags.list()
+  } catch (err: any) {
+    tagError.value = err?.response?.data?.detail || 'No se pudieron cargar las etiquetas.'
+  }
+}
+
+const createTag = async (): Promise<void> => {
+  const name = newTagName.value.trim()
+  if (!name) return
+  try {
+    const created = await api.tags.create(name)
+    availableTags.value = [...availableTags.value, created].sort((a, b) => a.name.localeCompare(b.name))
+    newTagName.value = ''
+    tagError.value = ''
+  } catch (err: any) {
+    console.error('Error al crear etiqueta:', err)
+    const detail = err?.response?.data?.detail || err?.response?.data?.message || err?.message
+    const httpStatus = err?.response?.status ? ` (HTTP ${err.response.status})` : ''
+    tagError.value = `${detail || 'No se pudo crear la etiqueta.'}${httpStatus}`
+  }
+}
+
+const deleteTag = async (tag: Tag): Promise<void> => {
+  try {
+    await api.tags.delete(tag.id)
+    availableTags.value = availableTags.value.filter((item) => item.id !== tag.id)
+    tagFilterIds.value = tagFilterIds.value.filter((id) => id !== tag.id)
+    await Promise.all(Object.keys(epicTickets.value).map(loadTicketsFor))
+  } catch (err: any) {
+    tagError.value = err?.response?.data?.detail || 'No se pudo eliminar la etiqueta.'
+  }
 }
 
 /** Título de una épica por id (para el panel de detalle) */
@@ -1459,6 +1605,7 @@ const openTicketEditor = async (ticket: Ticket): Promise<void> => {
     assigneeId: ticket.assigneeId ?? '',
     epicId: ticket.epicId
   }
+  selectedTicketTagIds.value = (ticket.tags ?? []).map((tag) => tag.id)
   await loadUsers()
 }
 
@@ -1673,9 +1820,14 @@ const deleteComment = async (
 }
 
 /**
- * Guarda la edición (PUT /tickets/{id}) y, si cambió la épica, mueve el ticket
+ * Guarda la edición completa del ticket: campos (PUT /tickets/{id}),
+ * etiquetas (PUT /tickets/{id}/tags, NEW-03) y, si cambió, la épica
  * (PATCH /tickets/{id}/move). `null` en dueDate/prLink/assigneeId limpia el
  * campo en el backend (actualización parcial con exclude_unset).
+ *
+ * Las etiquetas se persisten aquí porque el panel ya no tiene un botón
+ * "Guardar etiquetas" aparte; solo se llama al endpoint de etiquetas si la
+ * selección cambió, para no hacer una petición de más al guardar el resto.
  */
 const saveTicketEdits = async (ticket: Ticket): Promise<void> => {
   const f = editTicketForm.value
@@ -1691,6 +1843,13 @@ const saveTicketEdits = async (ticket: Ticket): Promise<void> => {
       prLink: f.prLink.trim() || null,
       assigneeId: f.assigneeId || null
     } as unknown as Partial<Ticket>)
+
+    // NEW-03: etiquetas del ticket en la misma acción de guardado
+    const tagsBefore = (ticket.tags ?? []).map((tag) => tag.id).sort().join('|')
+    const tagsAfter = [...selectedTicketTagIds.value].sort().join('|')
+    if (tagsBefore !== tagsAfter) {
+      await api.tickets.updateTags(ticket.id, selectedTicketTagIds.value)
+    }
 
     const epicChanged = !!f.epicId && f.epicId !== ticket.epicId
     if (epicChanged) {
@@ -1778,6 +1937,7 @@ const priorityClass = (priority: string): string =>
 
 onMounted(async () => {
   try {
+    await loadTags()
     await applicationsStore.fetchAll()
     await loadAllApplicationsProgress()
     const firstActiveApp = activeApplications.value[0]

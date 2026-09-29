@@ -5,7 +5,7 @@
  * el acceso reactivo al estado de filtros del store, sin duplicar lógica.
  *
  * Uso:
- *   const { tickets, statusFilter, dateFilter, isLoading, setStatusFilter, setDateFilter } = useWorkbenchTickets()
+ *   const { tickets, statusFilter, dateFilter, tagFilterIds, isLoading, setStatusFilter, setDateFilter, setTagFilterIds } = useWorkbenchTickets()
  */
 
 import { onMounted } from 'vue'
@@ -16,7 +16,7 @@ export function useWorkbenchTickets() {
   const store = useTicketsStore()
 
   // Refs reactivos del store (mantienen sincronía bidireccional)
-  const { filteredTickets, statusFilter, dateFilter, isLoading, myWorkbench, error } = storeToRefs(store)
+  const { filteredTickets, statusFilter, dateFilter, tagFilterIds, isLoading, myWorkbench, error } = storeToRefs(store)
 
   const refresh = async () => {
     try {
@@ -29,20 +29,27 @@ export function useWorkbenchTickets() {
   onMounted(() => {
     store.setStatusFilter('all')
     store.setDateFilter('all')
+    store.setTagFilterIds([])
     refresh()
   })
 
   return {
-    /** Tickets filtrados por estado y fecha (computed del store) */
+    /** Tickets filtrados por estado, fecha y etiquetas (computed del store) */
     tickets: filteredTickets,
     /** Todos los tickets del workbench sin filtrar */
     rawTickets: myWorkbench,
     statusFilter,
     dateFilter,
+    /** NEW-03: IDs de las etiquetas seleccionadas como filtro */
+    tagFilterIds,
     isLoading,
     error,
     setStatusFilter: store.setStatusFilter,
     setDateFilter: store.setDateFilter,
+    /** NEW-03: cambia el filtro de etiquetas */
+    setTagFilterIds: store.setTagFilterIds,
+    /** NEW-03: asocia/desasocia etiquetas de un ticket */
+    updateTicketTags: store.updateTags,
     refresh,
   }
 }

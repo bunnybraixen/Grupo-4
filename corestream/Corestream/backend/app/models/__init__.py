@@ -42,6 +42,7 @@ from .application import Application
 from .epic import Epic
 from .ticket import Ticket, TicketStatus, TicketPriority
 from .ticket_comment import TicketComment
+from .tag import Tag, ticket_tags
 from .subtask import Subtask
 from .ticket_event import TicketEvent, TicketEventType
 from .notification import Notification, NotificationType
@@ -72,6 +73,7 @@ __all__ = [
     "TicketStatus",
     "TicketPriority",
     "TicketComment",
+    "Tag",
     
     # Subtask
     "Subtask",

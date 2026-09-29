@@ -67,6 +67,15 @@ export const useTicketsStore = defineStore('tickets', () => {
   const dateFilter = ref<DateFilter>('all')
 
   /**
+   * NEW-03: etiquetas por las que se filtra el workbench.
+   *
+   * Un ticket pasa el filtro si tiene AL MENOS UNA de estas etiquetas (mismo
+   * criterio "cualquiera de" que usa el tablero del Builder). Se guardan los
+   * IDs porque el backend filtra por `tag_ids`.
+   */
+  const tagFilterIds = ref<string[]>([])
+
+  /**
    * Flag de carga durante operaciones async
    */
   const isLoading = ref(false)
@@ -85,13 +94,15 @@ export const useTicketsStore = defineStore('tickets', () => {
   // ========== GETTERS COMPUTADOS ==========
 
   /**
-   * Retorna los tickets del workbench personal filtrados por estado y fecha
+   * Retorna los tickets del workbench personal filtrados por estado, fecha
+   * y etiquetas.
    * Este es el getter más usado en el UI principal del usuario
    * 
    * Flujo de filtrado:
    * 1. Comienza con myWorkbench
    * 2. Aplica filtro de estado (si no es 'all')
    * 3. Aplica filtro de fecha (si no es 'all')
+   * 4. Aplica filtro de etiquetas (NEW-03, si hay alguna seleccionada)
    */
   const filteredTickets = computed((): Ticket[] => {
     let result = [...myWorkbench.value]
@@ -140,6 +151,13 @@ export const useTicketsStore = defineStore('tickets', () => {
             return true
         }
       })
+    }
+
+    // NEW-03: aplicar filtro de etiquetas (coincide si tiene alguna de ellas)
+    if (tagFilterIds.value.length) {
+      result = result.filter(ticket =>
+        (ticket.tags ?? []).some(tag => tagFilterIds.value.includes(tag.id))
+      )
     }
 
     return result
@@ -369,6 +387,50 @@ export const useTicketsStore = defineStore('tickets', () => {
       const message = err instanceof Error ? err.message : 'Error al actualizar ticket'
       error.value = message
       console.error('Error en update:', err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * NEW-03: reemplaza las etiquetas asignadas a un ticket.
+   *
+   * La relación ticket-etiqueta vive en la tabla `ticket_tags`; el backend
+   * (`PUT /api/tickets/{id}/tags`) recibe la lista COMPLETA de IDs y devuelve
+   * el ticket ya actualizado. Solo ADMIN/TEAM_LEADER o el asignado del ticket
+   * pueden hacerlo (`assert_can_manage_ticket`); en otro caso responde 403.
+   *
+   * @param ticketId - ID del ticket
+   * @param tagIds - IDs de las etiquetas que quedarán asignadas
+   * @returns Promise<Ticket>
+   */
+  const updateTags = async (ticketId: string, tagIds: string[]): Promise<Ticket> => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const updated = await api.tickets.updateTags(ticketId, tagIds)
+
+      // Se conserva el objeto local (appName/epicTitle vienen del listado) y
+      // solo se sustituyen las etiquetas que devuelve el servidor.
+      const applyTags = (ticket: Ticket): Ticket => ({ ...ticket, tags: updated.tags ?? [] })
+
+      const index = tickets.value.findIndex(t => t.id === ticketId)
+      if (index !== -1) tickets.value[index] = applyTags(tickets.value[index])
+
+      const wbIndex = myWorkbench.value.findIndex(t => t.id === ticketId)
+      if (wbIndex !== -1) myWorkbench.value[wbIndex] = applyTags(myWorkbench.value[wbIndex])
+
+      if (selectedTicket.value?.id === ticketId) {
+        selectedTicket.value = applyTags(selectedTicket.value)
+      }
+
+      return updated
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al actualizar las etiquetas del ticket'
+      error.value = message
+      console.error('Error en updateTags:', err)
       throw err
     } finally {
       isLoading.value = false
@@ -776,6 +838,16 @@ export const useTicketsStore = defineStore('tickets', () => {
   }
 
   /**
+   * NEW-03: establece las etiquetas por las que se filtra el workbench
+   * (lista vacía = sin filtro por etiquetas)
+   *
+   * @param ids - IDs de las etiquetas seleccionadas
+   */
+  const setTagFilterIds = (ids: string[]): void => {
+    tagFilterIds.value = [...ids]
+  }
+
+  /**
    * Limpia el estado del store (para cuando se cambia de épico/app)
    */
   const clear = (): void => {
@@ -784,6 +856,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     myWorkbench.value = []
     statusFilter.value = 'all'
     dateFilter.value = 'all'
+    tagFilterIds.value = []
     epicIdContext.value = null
     error.value = null
   }
@@ -795,6 +868,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     myWorkbench,
     statusFilter,
     dateFilter,
+    tagFilterIds,
     isLoading,
     error,
     epicIdContext,
@@ -816,6 +890,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     fetchMyWorkbench,
     create,
     update,
+    updateTags,
     remove,
     moveToEpic,
     completeTicket,
@@ -830,6 +905,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     getTicketById,
     setStatusFilter,
     setDateFilter,
+    setTagFilterIds,
     clear,
   }
 })

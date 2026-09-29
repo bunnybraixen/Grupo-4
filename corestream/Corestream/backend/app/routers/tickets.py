@@ -32,6 +32,7 @@ from app.models import (
     TicketEventType,
     Subtask,
     TicketComment,
+    Tag,
 )
 from app.schemas import (
     TicketResponse,
@@ -42,6 +43,7 @@ from app.schemas import (
     TicketCommentCreate,
     TicketCommentUpdate,
     TicketCommentResponse,
+    TicketTagsUpdate,
 )
 from app.services import ticket_state_machine, timer_service, notification_service
 
@@ -127,6 +129,7 @@ def _ticket_query():
     return select(Ticket).options(
         selectinload(Ticket.assignee),
         selectinload(Ticket.subtasks),
+        selectinload(Ticket.tags),
     )
 
 
@@ -143,12 +146,13 @@ async def _load_ticket(db: AsyncSession, ticket_id) -> Optional[Ticket]:
     description="Obtiene tickets, opcionalmente filtrados por épica y estado"
     )
 async def list_tickets(
-    epic_id: Optional[int] = Query(None, description="Filtrar por épica"),
+    epic_id: Optional[UUID] = Query(None, description="Filtrar por épica"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status_filter: Optional[TicketStatus] = Query(
         None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
     ),
+    tag_ids: Optional[List[UUID]] = Query(None, description="Filtrar por una o más etiquetas"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -165,6 +169,9 @@ async def list_tickets(
 
     if status_filter:
         query = query.where(Ticket.status == status_filter)
+
+    if tag_ids:
+        query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
 
     result = await db.execute(
         query.offset(skip).limit(limit)
@@ -187,6 +194,7 @@ async def get_epic_tickets(
     status_filter: Optional[TicketStatus] = Query(
         None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
     ),
+    tag_ids: Optional[List[UUID]] = Query(None, description="Filtrar por una o más etiquetas"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -225,6 +233,9 @@ async def get_epic_tickets(
     if status_filter:
         query = query.where(Ticket.status == status_filter)
 
+    if tag_ids:
+        query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
+
     # Ejecutar con paginación
     result = await db.execute(
         query.offset(skip).limit(limit)
@@ -232,6 +243,26 @@ async def get_epic_tickets(
     tickets = result.scalars().all()
 
     return [TicketResponse.from_orm(ticket) for ticket in tickets]
+
+
+@router.put("/{ticket_id}/tags", response_model=TicketResponse)
+async def update_ticket_tags(
+    ticket_id: UUID,
+    data: TicketTagsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketResponse:
+    ticket = await _load_ticket(db, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    assert_can_manage_ticket(ticket, current_user)
+    result = await db.execute(select(Tag).where(Tag.id.in_(data.tag_ids)))
+    tags = result.scalars().all()
+    if len(tags) != len(set(data.tag_ids)):
+        raise HTTPException(status_code=404, detail="Una o más etiquetas no existen")
+    ticket.tags = tags
+    await db.commit()
+    return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
 
 @router.get(
