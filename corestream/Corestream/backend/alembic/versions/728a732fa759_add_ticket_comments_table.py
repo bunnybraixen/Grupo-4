@@ -20,8 +20,40 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    pass
+    op.create_table(
+        'ticket_comments',
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
+        sa.Column('updated_at', sa.DateTime(), nullable=False),
+        sa.Column('ticket_id', sa.UUID(), nullable=False),
+        sa.Column('user_id', sa.UUID(), nullable=False),
+        sa.Column('content', sa.Text(), nullable=False),
+        sa.ForeignKeyConstraint(['ticket_id'], ['tickets.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='RESTRICT'),
+        sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_index(
+        'ix_ticket_comments_ticket_created',
+        'ticket_comments',
+        ['ticket_id', 'created_at'],
+        unique=False,
+    )
+    op.create_index(
+        op.f('ix_ticket_comments_ticket_id'),
+        'ticket_comments',
+        ['ticket_id'],
+        unique=False,
+    )
+    op.create_index(
+        op.f('ix_ticket_comments_user_id'),
+        'ticket_comments',
+        ['user_id'],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
-    pass
+    op.drop_index(op.f('ix_ticket_comments_user_id'), table_name='ticket_comments')
+    op.drop_index(op.f('ix_ticket_comments_ticket_id'), table_name='ticket_comments')
+    op.drop_index('ix_ticket_comments_ticket_created', table_name='ticket_comments')
+    op.drop_table('ticket_comments')
