@@ -22,8 +22,8 @@ from fastapi import HTTPException, status
 from app.models import Ticket, User
 
 # El proyecto arrastra dos nombres para el mismo rol: `GROUP_LEADER` (valor del
-# enum `users.role` y, por tanto, el que llega en el JWT) y `TEAM_LEADER`
-# (nombre usado en docs/RBAC.md y en la tabla `roles`). Con solo "TEAM_LEADER",
+# enum `users.role` y, por tanto, el que llega en el JWT) y `GROUP_LEADER`
+# (nombre usado en docs/RBAC.md y en la tabla `roles`). Con solo "GROUP_LEADER",
 # un líder real no contaba como manager y recibía 403 al asignar/crear/editar
 # tickets en el workbench.
 _MANAGER_ROLES = {"ADMIN", "TEAM_LEADER", "GROUP_LEADER"}
@@ -83,14 +83,14 @@ def require_admin_or_leader(current_user: User) -> None:
     if not is_admin_or_leader(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere rol ADMIN o TEAM_LEADER",
+            detail="Se requiere rol ADMIN o GROUP_LEADER",
         )
 
 
 def assert_can_manage_ticket(ticket: Ticket, current_user: User) -> None:
     """
     Para acciones de gestión sobre UN ticket concreto (editar campos, mover
-    de épica, reordenar en el tablero): ADMIN/TEAM_LEADER siempre puede;
+    de épica, reordenar en el tablero): ADMIN/GROUP_LEADER siempre puede;
     un DEVELOPER solo si el ticket está asignado a él.
     """
     if is_admin_or_leader(current_user):
@@ -107,7 +107,7 @@ def assert_can_manage_ticket(ticket: Ticket, current_user: User) -> None:
 def assert_is_current_assignee(ticket: Ticket, current_user: User) -> None:
     """
     Para completar o levantar una pregunta: solo quien tiene el ticket
-    asignado EN ESTE MOMENTO — sin excepción de rol. Un TEAM_LEADER que no
+    asignado EN ESTE MOMENTO — sin excepción de rol. Un GROUP_LEADER que no
     es el asignado no puede completar el trabajo de otro; para eso existe
     /redirect, no esto. (El ADMIN ya queda fuera antes, vía require_non_admin.)
     """
