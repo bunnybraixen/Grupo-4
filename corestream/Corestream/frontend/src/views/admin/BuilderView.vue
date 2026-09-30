@@ -11,6 +11,48 @@
       Crea y gestiona aplicaciones, épicas y tickets
     </p>
 
+    <!-- ======== Pestañas: tablero de épicas | planificación de Sprints ======== -->
+    <div class="mt-6 flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] pb-3">
+      <button
+        type="button"
+        :class="[
+          'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+          viewMode === 'board'
+            ? 'bg-[var(--teal)] text-white'
+            : 'bg-[var(--bg-app)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
+        ]"
+        @click="viewMode = 'board'"
+      >
+        Épicas y tickets
+      </button>
+      <button
+        type="button"
+        :class="[
+          'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+          viewMode === 'sprints'
+            ? 'bg-[var(--teal)] text-white'
+            : 'bg-[var(--bg-app)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
+        ]"
+        @click="viewMode = 'sprints'"
+      >
+        📅 Sprints y SLA
+      </button>
+    </div>
+
+    <!-- ======== Pestaña: Sprints + SLA ======== -->
+    <template v-if="viewMode === 'sprints'">
+      <SprintPlannerPanel
+        :applications="activeApplications"
+        :epics="epics"
+        :tickets-by-epic="epicTickets"
+        :can-manage="canManageApplications"
+        :initial-application-id="selectedAppId"
+        @refresh="onSprintRefresh"
+      />
+    </template>
+
+    <!-- ======== Pestaña: tablero de épicas y tickets ======== -->
+    <template v-else>
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
       <div>
         <p class="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Aplicaciones activas</p>
@@ -931,6 +973,7 @@
     <div v-else-if="!showNewApp && applicationsStore.applications.length === 0" class="mt-10 text-center py-12 text-[var(--text-muted)]">
       No hay aplicaciones todavía. Crea la primera con «+ Nueva aplicación».
     </div>
+    </template>
   </div>
 </template>
 <script setup lang="ts">
@@ -946,6 +989,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
+import SprintPlannerPanel from '@/components/builder/SprintPlannerPanel.vue'
 import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Tag } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
@@ -962,6 +1006,8 @@ const tagFilterIds = ref<string[]>([])
 const selectedTicketTagIds = ref<string[]>([])
 
 const selectedAppId = ref('')
+/** Pestaña activa del Builder: tablero de épicas o planificación de Sprints */
+const viewMode = ref<'board' | 'sprints'>('board')
 const showNewApp = ref(false)
 const newAppName = ref('')
 const newAppDescription = ref('')
@@ -1184,6 +1230,15 @@ const getEpicProgressBadgeClass = (percentage: number): string => {
 
 const loadTicketsFor = async (epicId: string): Promise<void> => {
   epicTickets.value[epicId] = await ticketsStore.fetchByEpic(epicId)
+}
+
+/**
+ * Recarga los tickets de las épicas indicadas después de asociar/quitar tickets
+ * de un Sprint (los tickets conservan su Épica, pero cambian campos como
+ * sprintId/storyPoints y el Builder debe reflejarlo).
+ */
+const onSprintRefresh = async (epicIds: string[]): Promise<void> => {
+  await Promise.all(epicIds.map(loadTicketsFor))
 }
 
 const selectApplication = async (appId: string): Promise<void> => {

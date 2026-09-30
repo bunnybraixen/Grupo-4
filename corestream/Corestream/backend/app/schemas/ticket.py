@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.ticket import TicketPriority, TicketStatus
 from app.schemas.user import UserResponse
@@ -68,6 +68,9 @@ class TicketCreate(BaseModel):
     status: TicketStatus = TicketStatus.TODO
     due_date: Optional[datetime] = None
     pr_link: Optional[str] = None
+    # Sprint al que se asocia el ticket (opcional) y esfuerzo en puntos.
+    sprint_id: Optional[UUID] = None
+    story_points: int = Field(0, ge=0, le=1000, description="Puntos de historia del ticket")
 
     @field_validator("title")
     @classmethod
@@ -128,6 +131,10 @@ class TicketUpdate(BaseModel):
     due_date: Optional[datetime] = None
     pr_link: Optional[str] = None
     order_index: Optional[int] = None
+    # PLANIFICACIÓN: Sprint del ticket (dimensión temporal, independiente de la
+    # épica) y esfuerzo en puntos de historia (alimenta la Velocity del Sprint).
+    sprint_id: Optional[UUID] = None
+    story_points: Optional[int] = None
 
     @field_validator("title")
     @classmethod
@@ -313,6 +320,12 @@ class TicketResponse(BaseModel):
     # subtareas. Con list[SubtaskResponse] se validan/codifican como corresponde.
     subtasks: list[SubtaskResponse] = []
     tags: list["TagResponse"] = []
+
+    # PLANIFICACIÓN / SLA: sprint del ticket, esfuerzo y base del SLA de respuesta
+    sprint_id: Optional[UUID] = None
+    sprint_name: Optional[str] = None
+    story_points: int = 0
+    first_response_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

@@ -38,6 +38,16 @@ import type {
   Tag,
   TicketHistoryEvent
 } from '@/types'
+// Tipos del módulo de Sprints + SLA (planificación temporal y objetivos por ticket)
+import type {
+  SlaConfig,
+  SlaConfigListResponse,
+  SlaStatusListResponse,
+  Sprint,
+  SprintPayload,
+  SprintVelocityResult,
+  TicketSlaStatus
+} from '@/types/sprint'
 // Import de tipo (se borra al compilar, así que no crea un ciclo real con el
 // store, que a su vez importa este servicio).
 import type { Team } from '@/stores/teams'
@@ -194,10 +204,10 @@ hydrateAuthState()
  * El frontend trabaja con claves camelCase (epicId, dueDate, prLink...)
  * y el backend FastAPI con snake_case (epic_id, due_date, pr_link...).
  * Los interceptores de abajo aplican estas conversiones SOLO a los
- * módulos de épicas/tickets/aplicaciones/subtareas, dejando intacto
- * el resto (por ejemplo /auth) para no romper flujos existentes.
+ * módulos de épicas/tickets/aplicaciones/subtareas/sprints/sla, dejando
+ * intacto el resto (por ejemplo /auth) para no romper flujos existentes.
  */
-const CONVERTIBLE_URL_RE = /\/(tickets|epics|applications|subtasks|teams)(\/|\?|$)/
+const CONVERTIBLE_URL_RE = /\/(tickets|epics|applications|subtasks|teams|sprints|sla)(\/|\?|$)/
 
 const shouldConvertCase = (url?: string): boolean =>
   !!url && CONVERTIBLE_URL_RE.test(url)
@@ -1767,6 +1777,152 @@ export const api = {
         '/notifications/mark-all-read'
       )
 
+      return response.data
+    }
+  },
+
+  /**
+   * ========================================
+   * PLANIFICACIÓN DE SPRINTS
+   * ========================================
+   *
+   * Un Sprint es un período de trabajo INDEPENDIENTE de la Épica. Los tickets
+   * se asocian al Sprint con `sprintId` manteniendo su `epicId`.
+   */
+  sprints: {
+    /**
+     * Lista los Sprints (opcionalmente de un proyecto) con sus métricas
+     * de avance, Velocity y SLA agregado.
+     */
+    list: async (filters?: { applicationId?: string; status?: string }): Promise<Sprint[]> => {
+      const response = await apiClient.get<Sprint[]>('/sprints/', { params: filters })
+      return response.data
+    },
+
+    /** Detalle de un Sprint: tickets asociados, tablero por estado y métricas */
+    getById: async (sprintId: string): Promise<Sprint> => {
+      const response = await apiClient.get<Sprint>(`/sprints/${sprintId}`)
+      return response.data
+    },
+
+    /** Crea un Sprint (ADMIN / GROUP_LEADER) */
+    create: async (payload: SprintPayload): Promise<Sprint> => {
+      const response = await apiClient.post<Sprint>('/sprints/', payload)
+      return response.data
+    },
+
+    /** Edita un Sprint (nombre, objetivo, fechas, estado) */
+    update: async (sprintId: string, payload: SprintPayload): Promise<Sprint> => {
+      const response = await apiClient.put<Sprint>(`/sprints/${sprintId}`, payload)
+      return response.data
+    },
+
+    /** Elimina un Sprint (los tickets no se borran: pierden el sprint_id) */
+    remove: async (sprintId: string): Promise<void> => {
+      await apiClient.delete(`/sprints/${sprintId}`)
+    },
+
+    /** Asocia tickets EXISTENTES al Sprint (sin tocar su Épica) */
+    assignTickets: async (sprintId: string, ticketIds: string[]): Promise<Sprint> => {
+      const response = await apiClient.post<Sprint>(`/sprints/${sprintId}/tickets`, {
+        ticketIds
+      })
+      return response.data
+    },
+
+    /** Quita un ticket del Sprint (no se elimina el ticket ni su Épica) */
+    removeTicket: async (sprintId: string, ticketId: string): Promise<Sprint> => {
+      const response = await apiClient.delete<Sprint>(
+        `/sprints/${sprintId}/tickets/${ticketId}`
+      )
+      return response.data
+    },
+
+    /** Define los puntos de esfuerzo del ticket dentro del Sprint (Velocity) */
+    setStoryPoints: async (
+      sprintId: string,
+      ticketId: string,
+      storyPoints: number
+    ): Promise<Sprint> => {
+      const response = await apiClient.patch<Sprint>(
+        `/sprints/${sprintId}/tickets/${ticketId}`,
+        { storyPoints }
+      )
+      return response.data
+    },
+
+    /** Resumen del Sprint: pendientes/completados/bloqueados, progreso y SLA */
+    summary: async (sprintId: string): Promise<Sprint> => {
+      const response = await apiClient.get<Sprint>(`/sprints/${sprintId}/summary`)
+      return response.data
+    },
+
+    /** Cierra el Sprint y calcula automáticamente su Velocity */
+    complete: async (sprintId: string): Promise<SprintVelocityResult> => {
+      const response = await apiClient.post<SprintVelocityResult>(
+        `/sprints/${sprintId}/complete`
+      )
+      return response.data
+    }
+  },
+
+  /**
+   * ========================================
+   * SLA (a nivel de TICKET)
+   * ========================================
+   *
+   * El SLA depende de la prioridad/severidad del ticket y de los objetivos
+   * configurados por el ADMIN: tiempos de respuesta y resolución, tiempo
+   * transcurrido/restante y detección de incumplimientos.
+   */
+  sla: {
+    /** Configuración de SLA por prioridad (la edita el ADMIN) */
+    configs: async (): Promise<SlaConfigListResponse> => {
+      const response = await apiClient.get<SlaConfigListResponse>('/sla/configs')
+      return response.data
+    },
+
+    /** Actualiza los tiempos objetivo de una prioridad (solo ADMIN) */
+    updateConfig: async (
+      priority: string,
+      payload: Partial<
+        Pick<SlaConfig, 'responseMinutes' | 'resolutionMinutes' | 'warnThresholdPercent' | 'isActive'>
+      >
+    ): Promise<SlaConfig> => {
+      const response = await apiClient.put<SlaConfig>(`/sla/configs/${priority}`, payload)
+      return response.data
+    },
+
+    /** Estado de SLA de los tickets (con resumen agregado) */
+    statuses: async (filters?: {
+      applicationId?: string
+      sprintId?: string
+      epicId?: string
+      onlyAlerts?: boolean
+      includeResolved?: boolean
+      limit?: number
+    }): Promise<SlaStatusListResponse> => {
+      const response = await apiClient.get<SlaStatusListResponse>('/sla/statuses', {
+        params: filters
+      })
+      return response.data
+    },
+
+    /** Tickets próximos a vencer (AT_RISK) o incumplidos (BREACHED) */
+    alerts: async (filters?: {
+      applicationId?: string
+      sprintId?: string
+      limit?: number
+    }): Promise<TicketSlaStatus[]> => {
+      const response = await apiClient.get<TicketSlaStatus[]>('/sla/alerts', {
+        params: filters
+      })
+      return response.data
+    },
+
+    /** Estado de SLA de un ticket concreto */
+    ticket: async (ticketId: string): Promise<TicketSlaStatus> => {
+      const response = await apiClient.get<TicketSlaStatus>(`/sla/tickets/${ticketId}`)
       return response.data
     }
   }

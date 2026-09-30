@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import re
 from app.database import get_db
@@ -28,6 +28,7 @@ from app.models import (
     Ticket,
     User,
     Epic,
+    Sprint,
     TicketStatus,
     TicketEvent,
     TicketEventType,
@@ -126,11 +127,16 @@ def _ticket_query():
     aquí, Pydantic intenta resolverlas al construir la respuesta y el lazy-load
     ocurre fuera del contexto async -> MissingGreenlet (HTTP 500). Cargarlas de
     forma explícita es además la convención documentada en app/models/base.py.
+
+    `epic` y `sprint` se precargan para que la respuesta incluya la Épica
+    (dimensión funcional) y el Sprint (dimensión temporal) del ticket.
     """
     return select(Ticket).options(
         selectinload(Ticket.assignee),
         selectinload(Ticket.subtasks),
         selectinload(Ticket.tags),
+        selectinload(Ticket.epic),
+        selectinload(Ticket.sprint),
     )
 
 
@@ -160,6 +166,7 @@ def _json_safe(value):
     )
 async def list_tickets(
     epic_id: Optional[UUID] = Query(None, description="Filtrar por épica"),
+    sprint_id: Optional[UUID] = Query(None, description="Filtrar por Sprint (planificación)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status_filter: Optional[TicketStatus] = Query(
@@ -170,7 +177,7 @@ async def list_tickets(
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
     """
-    Lista tickets con filtros opcionales de épica y estado.
+    Lista tickets con filtros opcionales de épica, Sprint y estado.
 
     Returns:
         List[TicketResponse]: Tickets con sus relaciones precargadas
@@ -179,6 +186,11 @@ async def list_tickets(
 
     if epic_id is not None:
         query = query.where(Ticket.epic_id == epic_id)
+
+    # El filtro por Sprint es INDEPENDIENTE del filtro por épica: un ticket
+    # puede pertenecer a la vez a una épica y a un Sprint.
+    if sprint_id is not None:
+        query = query.where(Ticket.sprint_id == sprint_id)
 
     if status_filter:
         query = query.where(Ticket.status == status_filter)
@@ -377,6 +389,18 @@ async def create_ticket(
             detail=f"Épica con ID {ticket_data.epic_id} no encontrada"
         )
 
+    # El Sprint es opcional (dimensión temporal de planificación): si se indica,
+    # debe existir. No se altera la relación del ticket con la Épica.
+    if ticket_data.sprint_id is not None:
+        sprint_check = await db.execute(
+            select(Sprint).where(Sprint.id == ticket_data.sprint_id)
+        )
+        if not sprint_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sprint con ID {ticket_data.sprint_id} no encontrado"
+            )
+
     # WEB-08: crear tickets es una acción de gestión -> ADMIN o TEAM_LEADER.
     require_admin_or_leader(current_user)
 
@@ -519,6 +543,11 @@ async def create_ticket_comment(
             user_id=actor_uuid,
             content=comment_data.content,
         )
+
+        # SLA: un comentario cuenta como primera respuesta del ticket si todavía
+        # no había ninguna (permite cerrar el objetivo de respuesta).
+        if getattr(ticket, "first_response_at", None) is None:
+            ticket.first_response_at = datetime.now(timezone.utc)
 
         db.add(new_comment)
         await db.commit()
@@ -780,6 +809,17 @@ async def update_ticket(
 
     # WEB-08: ADMIN/TEAM_LEADER siempre; un DEVELOPER solo sobre sus propios tickets
     assert_can_manage_ticket(ticket, current_user)
+
+    # Validación del Sprint (planificación): si se envía uno, debe existir.
+    if ticket_update.sprint_id is not None:
+        sprint_check = await db.execute(
+            select(Sprint).where(Sprint.id == ticket_update.sprint_id)
+        )
+        if not sprint_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sprint con ID {ticket_update.sprint_id} no encontrado"
+            )
 
     # Estado previo: permite distinguir un cambio de estado de una edición normal
     previous_status = ticket.status
@@ -1148,6 +1188,11 @@ async def start_ticket_work(
     try:
         # Utilizar máquina de estados para cambiar estado
         await ticket_state_machine.transition_to_in_progress(ticket, current_user, db)
+
+        # SLA: iniciar el trabajo es la primera respuesta al ticket -> se cierra
+        # el objetivo de respuesta (si no lo había cerrado antes un comentario).
+        if getattr(ticket, "first_response_at", None) is None:
+            ticket.first_response_at = datetime.now(timezone.utc)
 
         # Iniciar temporizador. `timer_service` solo expone métodos de clase
         # (no existe `timer_service.start_timer`) y el modelo Ticket tampoco

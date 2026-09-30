@@ -109,7 +109,7 @@ app.add_middleware(
 # Cada router maneja un dominio específico de la aplicación.
 # WEB-08: se montan los routers de la cadena auth -> applications -> epics -> tickets
 # (más subtasks) para poder probar el ciclo de vida completo de tickets.
-from app.routers import applications, auth, epics, subtasks, teams, tickets, users, notifications, tags  # noqa: E402
+from app.routers import applications, auth, epics, subtasks, teams, tickets, users, notifications, tags, sprints, sla  # noqa: E402
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
@@ -117,6 +117,12 @@ app.include_router(epics.router, prefix="/api")
 app.include_router(tickets.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(subtasks.router, prefix="/api")
+# Sprints: planificación temporal (independiente de las épicas). Los tickets se
+# asocian a un Sprint con `sprint_id` además de su `epic_id`.
+app.include_router(sprints.router, prefix="/api")
+# SLA: se calcula a nivel de TICKET (prioridad/severidad + objetivos del ADMIN)
+# y alimenta las alertas y las métricas agregadas de Sprint.
+app.include_router(sla.router, prefix="/api")
 # Lista de usuarios (requiere ADMIN): alimenta el combo "Asignado" del editor
 # de tickets en /admin/builder. Sin este include, GET /api/users/ no existía.
 app.include_router(users.router, prefix="/api")

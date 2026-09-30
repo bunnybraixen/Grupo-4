@@ -1,4 +1,8 @@
-Poner siguiente comando en la consola:
+EJECUTAR EN POWERSHELL DESDE donde esta el Docker compose:
+
+docker compose exec backend python -m app.scripts.create_admin --email admin@corestream.com --password "AdminPassword123!" --full-name "Administrador"
+
+Poner siguiente comando en la consola del navegador:
 
 (async () => {
   const email = 'admin@corestream.com';

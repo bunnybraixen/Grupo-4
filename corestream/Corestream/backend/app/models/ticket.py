@@ -7,7 +7,7 @@ Los tickets incluyen seguimiento de estado, asignaciones, prioridades y tiempo.
 from datetime import datetime
 from enum import Enum
 from uuid import UUID as PyUUID
-from sqlalchemy import String, Integer, ForeignKey, Index
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Index, inspect as sa_inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 
@@ -179,7 +179,35 @@ class Ticket(Base, BaseEntity):
         index=True,
         doc="Referencia al usuario que creó originalmente este ticket"
     )
-    
+
+    # PLANIFICACIÓN: Sprint al que está asociado el ticket (dimensión temporal).
+    # Es INDEPENDIENTE de `epic_id` (dimensión funcional): un ticket puede
+    # pertenecer a la vez a una Épica y a un Sprint, o solo a la Épica.
+    sprint_id: Mapped[PyUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sprints.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc="Referencia al Sprint en el que se planificó el ticket (opcional)"
+    )
+
+    # Esfuerzo del ticket en puntos de historia (alimenta la Velocity del Sprint)
+    story_points: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        doc="Puntos de historia/esfuerzo del ticket, usados para calcular Velocity"
+    )
+
+    # SLA: momento en que se dio la primera respuesta (salida de TODO, comentario
+    # o redirección). Con esto el SLA de respuesta se puede medir y cerrar; si es
+    # NULL, el ticket sigue esperando su primera respuesta.
+    first_response_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Momento de la primera respuesta al ticket (base del SLA de respuesta)"
+    )
+
     # Relaciones hacia otras entidades
     
     epic = relationship(
@@ -187,6 +215,13 @@ class Ticket(Base, BaseEntity):
         back_populates="tickets",
         foreign_keys=[epic_id],
         doc="Épico contenedor de este ticket"
+    )
+
+    sprint = relationship(
+        "Sprint",
+        back_populates="tickets",
+        foreign_keys=[sprint_id],
+        doc="Sprint (período de trabajo) en el que se planificó este ticket"
     )
     
     assignee = relationship(
@@ -226,6 +261,34 @@ class Ticket(Base, BaseEntity):
     )
 
     tags = relationship("Tag", secondary="ticket_tags", back_populates="tickets")
-    
+
+    def _loaded_relation(self, name: str):
+        """
+        Devuelve una relación SOLO si ya fue precargada (selectinload).
+
+        Acceder a una relación lazy en un contexto async dispara un lazy-load
+        fuera de greenlet (MissingGreenlet -> HTTP 500). Estos helpers prefieren
+        devolver None antes que provocar esa carga implícita.
+        """
+        try:
+            state = sa_inspect(self)
+        except Exception:  # pragma: no cover - objeto transitorio
+            return None
+        if name in state.unloaded:
+            return None
+        return self.__dict__.get(name)
+
+    @property
+    def epic_title(self) -> str | None:
+        """Título de la Épica (dimensión funcional del ticket), si está cargada."""
+        epic = self._loaded_relation("epic")
+        return getattr(epic, "title", None)
+
+    @property
+    def sprint_name(self) -> str | None:
+        """Nombre del Sprint (dimensión temporal del ticket), si está cargado."""
+        sprint = self._loaded_relation("sprint")
+        return getattr(sprint, "name", None)
+
     __table_args__ = (
     )

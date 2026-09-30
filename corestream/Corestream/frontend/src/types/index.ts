@@ -586,6 +586,33 @@ export interface Ticket {
    */
   appName?: string
   tags?: Tag[]
+
+  /**
+   * ID del Sprint (período de trabajo) al que está planificado el ticket.
+   * Es INDEPENDIENTE de `epicId`: un ticket puede pertenecer a la vez a una
+   * Épica y a un Sprint.
+   */
+  sprintId?: string
+
+  /**
+   * Nombre del Sprint al que está planificado el ticket
+   */
+  sprintName?: string
+
+  /**
+   * Puntos de historia/esfuerzo del ticket (alimentan la Velocity del Sprint)
+   */
+  storyPoints?: number
+
+  /**
+   * Momento en que se dio la primera respuesta al ticket (base del SLA)
+   */
+  firstResponseAt?: string
+
+  /**
+   * Estado del SLA del ticket (lo inyecta el frontend desde /sla/statuses)
+   */
+  sla?: import('./sprint').TicketSlaStatus
 }
 
 export interface Tag {

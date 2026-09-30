@@ -41,6 +41,8 @@ from .team import Team
 from .application import Application
 from .epic import Epic
 from .ticket import Ticket, TicketStatus, TicketPriority
+from .sprint import Sprint, SprintStatus
+from .sla import SLAConfig
 from .ticket_comment import TicketComment
 from .tag import Tag, ticket_tags
 from .subtask import Subtask
@@ -74,6 +76,13 @@ __all__ = [
     "TicketPriority",
     "TicketComment",
     "Tag",
+    
+    # Sprint (planificación temporal)
+    "Sprint",
+    "SprintStatus",
+    
+    # SLA (objetivos por prioridad, a nivel de ticket)
+    "SLAConfig",
     
     # Subtask
     "Subtask",

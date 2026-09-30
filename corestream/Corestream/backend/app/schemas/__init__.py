@@ -73,6 +73,26 @@ from app.schemas.ticket_comment import (
     TicketCommentResponse,
 )
 
+from app.schemas.sprint import (
+    SprintCreate,
+    SprintUpdate,
+    SprintTicketAssignment,
+    SprintTicketStoryPoints,
+    SprintBoardColumn,
+    SprintResponse,
+    SprintSummaryResponse,
+    SprintVelocityResponse,
+)
+
+from app.schemas.sla import (
+    SLAConfigUpdate,
+    SLAConfigResponse,
+    SLAConfigListResponse,
+    SLASummary,
+    TicketSLAStatus,
+    SLAStatusListResponse,
+)
+
 
 __all__ = [
     # Esquemas de Usuario
@@ -130,4 +150,20 @@ __all__ = [
     "AnalyticsSummary",
     "TicketCommentCreate",
     "TicketCommentResponse",
+    # Esquemas de Sprint (planificación temporal)
+    "SprintCreate",
+    "SprintUpdate",
+    "SprintTicketAssignment",
+    "SprintTicketStoryPoints",
+    "SprintBoardColumn",
+    "SprintResponse",
+    "SprintSummaryResponse",
+    "SprintVelocityResponse",
+    # Esquemas de SLA (a nivel de ticket)
+    "SLAConfigUpdate",
+    "SLAConfigResponse",
+    "SLAConfigListResponse",
+    "SLASummary",
+    "TicketSLAStatus",
+    "SLAStatusListResponse",
 ]
