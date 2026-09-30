@@ -58,6 +58,13 @@
         {{ editingId ? 'Editar Sprint' : 'Nuevo Sprint' }}
       </h3>
 
+      <p
+        v-if="formError"
+        class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400"
+      >
+        {{ formError }}
+      </p>
+
       <div class="grid gap-3 md:grid-cols-2">
         <label class="block text-sm">
           <span class="text-[var(--text-muted)]">Nombre</span>
@@ -480,6 +487,7 @@ const availableSearch = ref('')
 const assignSelection = ref<string[]>([])
 const showForm = ref(false)
 const editingId = ref<string | null>(null)
+const formError = ref('')
 
 const form = ref<{
   name: string
@@ -587,9 +595,13 @@ const selectSprint = async (sprint: Sprint): Promise<void> => {
 /** Abre el formulario vacío para crear un Sprint */
 const openCreateForm = (): void => {
   editingId.value = null
+  formError.value = ''
+  // El proyecto por defecto es el del selector del panel (o el del Builder)
+  const defaultAppId =
+    projectFilter.value || props.initialApplicationId || props.applications[0]?.id || ''
   form.value = {
     name: '',
-    applicationId: selected.value?.applicationId ?? projectFilter.value ?? '',
+    applicationId: defaultAppId,
     startDate: toLocalInput(new Date().toISOString()),
     endDate: toLocalInput(new Date(Date.now() + 14 * 86400000).toISOString()),
     goal: '',
@@ -601,6 +613,7 @@ const openCreateForm = (): void => {
 /** Abre el formulario con los datos de un Sprint existente */
 const openEditForm = (sprint: Sprint): void => {
   editingId.value = sprint.id
+  formError.value = ''
   form.value = {
     name: sprint.name,
     applicationId: sprint.applicationId,
@@ -616,10 +629,21 @@ const openEditForm = (sprint: Sprint): void => {
 const closeForm = (): void => {
   showForm.value = false
   editingId.value = null
+  formError.value = ''
 }
 
 /** Crea o actualiza el Sprint con los datos del formulario */
 const submitForm = async (): Promise<void> => {
+  formError.value = ''
+  if (!form.value.startDate || !form.value.endDate) {
+    formError.value = 'Indica la fecha de inicio y la de término.'
+    return
+  }
+  if (new Date(form.value.endDate) <= new Date(form.value.startDate)) {
+    formError.value = 'La fecha de término debe ser posterior a la fecha de inicio.'
+    return
+  }
+
   const payload = {
     name: form.value.name.trim(),
     applicationId: form.value.applicationId,

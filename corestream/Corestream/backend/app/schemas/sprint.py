@@ -73,6 +73,15 @@ class SprintUpdate(BaseModel):
             raise ValueError("El nombre del Sprint no puede estar vacío")
         return value.strip() if value else value
 
+    @field_validator("end_date")
+    @classmethod
+    def validate_dates(cls, value: Optional[datetime], info) -> Optional[datetime]:
+        """La fecha de término no puede ser anterior a la de inicio."""
+        start = info.data.get("start_date")
+        if start is not None and value is not None and value < start:
+            raise ValueError("La fecha de término no puede ser anterior a la de inicio")
+        return value
+
 
 class SprintTicketAssignment(BaseModel):
     """Tickets EXISTENTES que se asocian a un Sprint (sprint_id)."""
