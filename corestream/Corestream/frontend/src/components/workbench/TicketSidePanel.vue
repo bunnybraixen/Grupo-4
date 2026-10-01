@@ -49,14 +49,14 @@
           <div
             v-if="ticket.assignee"
             class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-blue-600 text-white"
-            :title="ticket.assignee.name"
+            :title="assigneeName || 'Sin nombre'"
           >
-            {{ getInitials(ticket.assignee.name) }}
+            {{ getInitials(assigneeName) }}
           </div>
 
           <!-- Nombre del asignado -->
           <span class="text-sm text-slate-300">
-            {{ ticket.assignee?.name || 'Sin asignar' }}
+            {{ assigneeName || 'Sin asignar' }}
           </span>
 
           <!-- Espaciador -->
@@ -162,7 +162,10 @@ import { useTimer } from '@/composables/useTimer'
 interface Assignee {
   id: string
   name: string
-  avatar: string
+  /** Nombre completo que devuelve el backend (`full_name` -> `fullName`) */
+  fullName?: string
+  avatar?: string
+  avatarUrl?: string
 }
 
 interface Subtask {
@@ -202,6 +205,17 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+/**
+ * Nombre visible del asignado. El backend devuelve `full_name` (el interceptor
+ * lo convierte a `fullName`), pero aquí se leía siempre `assignee.name`; cuando
+ * solo llegaba `fullName`, el avatar recibía `undefined` y el render reventaba.
+ * Se aceptan ambas formas.
+ */
+const assigneeName = computed((): string => {
+  const assignee = props.ticket.assignee
+  return assignee?.name ?? assignee?.fullName ?? ''
+})
 
 // =====================================================================
 // ESTADO LOCAL
@@ -266,10 +280,12 @@ watch(
 /**
  * Obtiene iniciales de un nombre
  */
-const getInitials = (name: string): string => {
+const getInitials = (name?: string): string => {
+  if (!name || !name.trim()) return '?'
   return name
-    .split(' ')
-    .map(n => n[0])
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
     .join('')
     .toUpperCase()
     .slice(0, 2)

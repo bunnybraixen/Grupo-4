@@ -1,6 +1,32 @@
 EJECUTAR EN POWERSHELL DESDE donde esta el Docker compose:
 
-docker compose exec backend python -m app.scripts.create_admin --email admin@corestream.com --password "AdminPassword123!" --full-name "Administrador"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T postgres \
+  psql -U corestream -d corestream <<'SQL'
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sprint_id UUID;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS story_points INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ix_tickets_sprint_id ON tickets(sprint_id);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema='public' AND table_name='sprints')
+     AND NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+        WHERE c.contype='f' AND c.conrelid='tickets'::regclass AND a.attname='sprint_id'
+     ) THEN
+    ALTER TABLE tickets ADD CONSTRAINT fk_tickets_sprint_id
+      FOREIGN KEY (sprint_id) REFERENCES sprints(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+SQL
+
+# 2) Dile a Alembic que ya está al día (crea/alem_bic_version, NO ejecuta migraciones)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec backend alembic stamp head
+
+# 3) Reinicia el backend
+docker compose -f docker-compose.yml -f docker-compose.dev.yml restart backend
 
 Poner siguiente comando en la consola del navegador:
 

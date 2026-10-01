@@ -1,0 +1,71 @@
+laro:
+
+## ¿Debería pasar en otro PC?
+
+__No, con un volumen nuevo y levantando con el overlay de dev NO debería pasar.__ Si el otro PC tiene el Postgres vacío y arrancas con:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+el backend corre `alembic upgrade head` __antes__ de uvicorn (`docker-compose.dev.yml:76`) sobre una BD vacía → Alembic crea todo y registra `alembic_version = i5j6k7l8m9n0 (head)`. El `create_all` de después no hace nada. Cero problemas.
+
+__A ti te pasó__ porque tu volumen de Postgres ya tenía tablas creadas __sin que Alembic lo supiera__ (no había `alembic_version`). La raíz de eso son dos cosas del repo:
+
+1. `main.py:53-56` hace `Base.metadata.create_all` en el arranque → crea un esquema "fantasma" que Alembic no registra.
+2. El `docker-compose.yml` __base__ (el de producción) corre __solo uvicorn, sin alembic__ (`docker-compose.yml:112-117`). Entonces cualquier BD levantada sin el overlay dev queda con tablas pero sin `alembic_version`… y la próxima vez que corras `alembic upgrade head` choca con `relation "users" already exists`.
+
+## En un PC nuevo: checklist para que no pase
+
+1. Levantar __siempre__ con los dos archivos (dev):
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+   ```
+
+2. Si el volumen puede tener datos/estado viejo, arrancar limpio (borra datos de dev):
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+   ```
+
+3. Verificar que quedó bien:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml exec backend alembic current
+   # debe decir: i5j6k7l8m9n0 (head)
+   ```
+
+## Fix definitivo (para no depender de la "disciplina")
+
+Que __Alembic sea el único dueño del esquema__, que es justo lo que ya promete `docs/ARCHITECTURE.md:53`. Dos cambios pequeños:
+
+__(a) Quitar el `create_all` del startup__ — `backend/app/main.py`, líneas 53-56:
+
+```python
+        # Crear tablas de base de datos si no existen
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            print("Tablas de base de datos inicializadas")
+```
+
+→ se elimina (el esquema lo gestiona Alembic).
+
+__(b) Que el compose base (prod) también migre__ — `docker-compose.yml`, comando del backend (~línea 112):
+
+```yaml
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app"
+```
+
+Con eso: __cualquier__ entorno, con volumen nuevo, migra siempre y __es imposible__ quedar con un esquema sin `alembic_version`. (Ojo: si corres el backend fuera de Docker con `uvicorn app.main:app` a mano, ahora tendrás que correr `alembic upgrade head` tú una vez. Los tests no se afectan: `tests/conftest.py` usa su propio `create_all` sobre la BD de pruebas.)
+
+---
+
+__Resumen:__ en otro PC con volumen nuevo + overlay dev → no pasa. Para que no dependa de recordarlo, aplica (a)+(b) y Alembic pasa a mandar en el esquema.
+
+¿Quieres que te aplique ya los cambios (a) y (b) en los archivos? Con un "sí" lo hago y te dejo los diffs listos.

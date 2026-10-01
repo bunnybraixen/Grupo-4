@@ -394,6 +394,33 @@ async def update_sprint(
             detail="La fecha de término no puede ser anterior a la de inicio",
         )
 
+    # NEW-05: validación de estado. El cierre de un Sprint (que calcula y
+    # persiste su Velocity) tiene su propio endpoint; por la edición genérica no
+    # se permite cerrar un Sprint ni reabrir uno ya cerrado.
+    new_status = update_data.get("status")
+    if new_status is not None:
+        current_status = _status_value(sprint.status)
+        target_status = _status_value(new_status)
+        if (
+            target_status == SprintStatus.COMPLETED.value
+            and current_status != SprintStatus.COMPLETED.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Para cerrar un Sprint usa «Cerrar y calcular Velocity».",
+            )
+        if (
+            current_status == SprintStatus.COMPLETED.value
+            and target_status != SprintStatus.COMPLETED.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Un Sprint cerrado no puede reabrirse; "
+                    "crea uno nuevo si necesitas otro período."
+                ),
+            )
+
     try:
         for field, value in update_data.items():
             setattr(sprint, field, value)

@@ -51,6 +51,7 @@
     <!-- ============================ FORMULARIO ============================ -->
     <form
       v-if="showForm"
+      ref="formSection"
       class="space-y-4 rounded-2xl border border-[var(--teal)]/40 bg-[var(--bg-card)] p-4"
       @submit.prevent="submitForm"
     >
@@ -130,7 +131,9 @@
           >
             <option value="PLANNED">Planificado</option>
             <option value="ACTIVE">En curso</option>
-            <option value="COMPLETED">Cerrado</option>
+            <option value="COMPLETED" :disabled="form.status !== 'COMPLETED'">
+              Cerrado (se cierra con «Cerrar y calcular Velocity»)
+            </option>
           </select>
         </label>
       </div>
@@ -453,7 +456,7 @@
  * `SlaBadge`). El tablero reutiliza `TicketCard`, el mismo componente del
  * Kanban del Builder.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useSprintsStore } from '@/stores/sprints'
 import SlaBadge from '@/components/shared/SlaBadge.vue'
 import TicketCard from './TicketCard.vue'
@@ -486,6 +489,7 @@ const focusedTicketId = ref<string | null>(null)
 const availableSearch = ref('')
 const assignSelection = ref<string[]>([])
 const showForm = ref(false)
+const formSection = ref<HTMLElement | null>(null)
 const editingId = ref<string | null>(null)
 const formError = ref('')
 
@@ -516,10 +520,13 @@ const filteredSprints = computed((): Sprint[] =>
 
 /** Sprint en detalle (el store mantiene la versión fresca con tablero) */
 const selected = computed((): Sprint | null => {
-  if (store.selectedSprint && store.selectedSprint.id === selectedId.value) {
-    return store.selectedSprint
-  }
-  return store.sprints.find((sprint) => sprint.id === selectedId.value) ?? store.selectedSprint ?? null
+  // Sin selección explícita no hay detalle: NO se cae al último Sprint del
+  // store. Antes, al cambiar de proyecto/filtro, `selectedId` se limpiaba pero
+  // seguía apareciendo abajo el Sprint anterior (de otro proyecto), lo que
+  // confundía. Con `selectedId` nulo el detalle desaparece.
+  if (!selectedId.value) return null
+  if (store.selectedSprint?.id === selectedId.value) return store.selectedSprint
+  return store.sprints.find((sprint) => sprint.id === selectedId.value) ?? null
 })
 
 /** Épicas del proyecto del Sprint seleccionado */
@@ -563,14 +570,22 @@ watch(projectFilter, () => {
   selectedId.value = null
   focusedTicketId.value = null
   assignSelection.value = []
+  // Limpia también el detalle cacheado en el store: así no reaparece abajo el
+  // Sprint que estaba seleccionado antes de cambiar de proyecto/filtro.
+  if (store.selectedSprint) store.selectedSprint = null
   void loadData()
 })
 
-// El proyecto elegido en el Builder se usa como filtro por defecto
+// El proyecto elegido en el Builder manda: al cambiarlo se sincroniza el filtro
+// del panel (el watch de `projectFilter` limpia la selección y recarga). Antes
+// solo se aplicaba si el filtro estaba vacío, así que al cambiar de proyecto en
+// el selector seguía mostrándose el Sprint del proyecto anterior.
 watch(
   () => props.initialApplicationId,
   (value) => {
-    if (value && !projectFilter.value) projectFilter.value = value
+    const next = value ?? ''
+    if (next === projectFilter.value) return
+    projectFilter.value = next
   }
 )
 
@@ -592,6 +607,12 @@ const selectSprint = async (sprint: Sprint): Promise<void> => {
   }
 }
 
+/** Desplaza la vista hasta el formulario (crear/editar) para que sea visible */
+const revealForm = async (): Promise<void> => {
+  await nextTick()
+  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 /** Abre el formulario vacío para crear un Sprint */
 const openCreateForm = (): void => {
   editingId.value = null
@@ -608,6 +629,7 @@ const openCreateForm = (): void => {
     status: 'PLANNED'
   }
   showForm.value = true
+  void revealForm()
 }
 
 /** Abre el formulario con los datos de un Sprint existente */
@@ -623,6 +645,7 @@ const openEditForm = (sprint: Sprint): void => {
     status: (sprint.status as SprintStatus) ?? 'PLANNED'
   }
   showForm.value = true
+  void revealForm()
 }
 
 /** Cierra el formulario sin guardar */

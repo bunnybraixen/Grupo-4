@@ -58,9 +58,9 @@
         <div
           v-if="ticket.assignee"
           class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white flex-shrink-0"
-          :title="ticket.assignee.name"
+          :title="assigneeName || 'Sin nombre'"
         >
-          {{ getInitials(ticket.assignee.name) }}
+          {{ getInitials(assigneeName) }}
         </div>
 
         <!-- Espaciador flexible -->
@@ -118,8 +118,12 @@ import { Icon } from '@iconify/vue'
 
 interface Assignee {
   id: string
-  name: string
-  avatar: string
+  /** Nombre "corto" (algunas vistas lo envían así) */
+  name?: string
+  /** Nombre completo que devuelve el backend (`full_name` -> `fullName`) */
+  fullName?: string
+  avatar?: string
+  avatarUrl?: string
 }
 
 interface Ticket {
@@ -139,6 +143,20 @@ interface Ticket {
 const props = defineProps<{
   ticket: Ticket
 }>()
+
+/**
+ * Nombre visible del asignado.
+ *
+ * El backend devuelve `full_name` (el interceptor lo convierte a `fullName`),
+ * mientras que algunas vistas armaban el objeto con `name`. Antes se leía
+ * siempre `assignee.name`, así que cuando solo llegaba `fullName` el valor era
+ * `undefined` y `getInitials` tumbaba el render (Vue dejaba la vista congelada).
+ * Se aceptan ambas formas.
+ */
+const assigneeName = computed((): string => {
+  const assignee = props.ticket.assignee
+  return assignee?.name ?? assignee?.fullName ?? ''
+})
 
 // =====================================================================
 // PROPIEDADES COMPUTADAS
@@ -238,10 +256,12 @@ const getPriorityColor = (priority: string): string => {
  * @param name - Nombre completo
  * @returns Iniciales (máximo 2 caracteres)
  */
-const getInitials = (name: string): string => {
+const getInitials = (name?: string): string => {
+  if (!name || !name.trim()) return '?'
   return name
-    .split(' ')
-    .map(n => n[0])
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
     .join('')
     .toUpperCase()
     .slice(0, 2)
