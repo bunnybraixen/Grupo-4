@@ -49,6 +49,9 @@
         :initial-application-id="selectedAppId"
         @refresh="onSprintRefresh"
       />
+
+      <!-- NEW-06: configuración de objetivos de SLA + alertas de tickets en riesgo -->
+      <SlaSettingsPanel :is-admin="isAdmin" :application-id="selectedAppId" />
     </template>
 
     <!-- ======== Pestaña: tablero de épicas y tickets ======== -->
@@ -833,6 +836,11 @@
                 <span class="text-[var(--text-muted)]">Subtareas:</span>
                 {{ (ticket.subtasks ?? []).filter((s) => s.isCompleted).length }}/{{ (ticket.subtasks ?? []).length }} completadas
               </p>
+              <!-- WEB-12: tiempos registrados automáticamente por el sistema -->
+              <p>
+                <span class="text-[var(--text-muted)]">Tiempo trabajado:</span> {{ formatDuration(ticket.timeSpentSeconds) }}
+                · <span class="text-[var(--text-muted)]">Bloqueado:</span> {{ formatDuration(ticket.blockedTimeSeconds) }}
+              </p>
 
               <!-- WEB-11: historial cronológico de eventos del ticket -->
               <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
@@ -990,6 +998,7 @@ import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import SprintPlannerPanel from '@/components/builder/SprintPlannerPanel.vue'
+import SlaSettingsPanel from '@/components/builder/SlaSettingsPanel.vue'
 import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Tag } from '@/types'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
@@ -2107,6 +2116,15 @@ const saveSubtaskTitle = async (ticket: Ticket): Promise<void> => {
   } finally {
     working.value = false
   }
+}
+
+/** Formatea segundos como HH:MM:SS para el detalle del ticket (WEB-12) */
+const formatDuration = (seconds?: number | null): string => {
+  const total = Math.max(0, Math.floor(seconds ?? 0))
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  return `${pad(hours)}:${pad(minutes)}:${pad(total % 60)}`
 }
 
 const statusLabel = (status: string): string =>
