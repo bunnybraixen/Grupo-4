@@ -214,6 +214,11 @@
                   <span v-if="ticket.dueDate">📅 Fecha: {{ ticket.dueDate.slice(0, 10) }}</span>
                 </div>
 
+                <div v-if="canManageTeamTickets" class="flex gap-4 text-xs text-[var(--text-muted)]">
+                  <span>Trabajado: {{ formatDuration(liveSeconds(ticket, 'work')) }}</span>
+                  <span>Bloqueado: {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</span>
+                </div>
+
                 <!-- NEW-03: etiquetas asociadas al ticket -->
                 <TagChips v-if="ticket.tags?.length" :tags="ticket.tags" size="xs" />
 
@@ -270,6 +275,38 @@
                   ✓ Finalizar
                 </button>
                 <button
+                  v-if="isGroupLeader && ticket.status === 'IN_PROGRESS' && ticket.assigneeId === currentUserId"
+                  :disabled="working"
+                  @click="openQuestionFor = openQuestionFor === ticket.id ? null : ticket.id"
+                  class="px-3 py-1 rounded-lg text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 font-medium"
+                >
+                  Levantar Pregunta
+                </button>
+                <button
+                  v-if="canManageTeamTickets && ticket.status === 'BLOCKED'"
+                  :disabled="working || (resolutionDrafts[ticket.id] || '').trim().length < 1"
+                  @click="resolveQuestion(ticket)"
+                  class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
+                >
+                  Resolver y reanudar
+                </button>
+                <button
+                  v-if="canManageTeamTickets && ticket.status === 'REDIRECTED' && ticket.assigneeId === currentUserId"
+                  :disabled="working"
+                  @click="acceptRedirect(ticket)"
+                  class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
+                >
+                  Aceptar ticket
+                </button>
+                <button
+                  v-if="canManageTeamTickets && ['TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED'].includes(ticket.status)"
+                  :disabled="working"
+                  @click="toggleRedirectForm(ticket.id)"
+                  class="px-3 py-1 rounded-lg text-xs bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30 disabled:opacity-50 font-medium"
+                >
+                  Redireccionar
+                </button>
+                <button
                   @click="toggleSubtaskPanel(ticket.id)"
                   class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
                 >
@@ -281,6 +318,31 @@
                 >
                   👁 Detalle
                 </button>
+              </div>
+            </div>
+
+            <div v-if="canManageTeamTickets && ticket.status === 'BLOCKED'" class="mt-2 rounded-lg border border-emerald-500/30 bg-[var(--bg-app)] p-3 space-y-2">
+              <p class="text-xs text-[var(--text-secondary)]">{{ blockedQuestion(ticket.id) || 'Ticket bloqueado. Agrega una respuesta para reanudar el trabajo.' }}</p>
+              <textarea v-model="resolutionDrafts[ticket.id]" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-emerald-400" placeholder="Respuesta o resolución"></textarea>
+            </div>
+
+            <div v-if="canManageTeamTickets && openRedirectFor === ticket.id" class="mt-2 rounded-lg border border-sky-500/30 bg-[var(--bg-app)] p-3 space-y-2">
+              <select v-model="redirectAssigneeId" class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400">
+                <option value="">Seleccionar nuevo responsable...</option>
+                <option v-for="user in redirectCandidates" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
+              </select>
+              <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" placeholder="Motivo obligatorio (mínimo 10 caracteres)"></textarea>
+              <div class="flex justify-end gap-2">
+                <button @click="closeRedirectForm" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
+                <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">Confirmar redirección</button>
+              </div>
+            </div>
+
+            <div v-if="isGroupLeader && openQuestionFor === ticket.id" class="mt-2 rounded-lg border border-amber-500/30 bg-[var(--bg-app)] p-3 space-y-2">
+              <textarea v-model="questionDraft" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" placeholder="Pregunta o impedimento (mínimo 10 caracteres)"></textarea>
+              <div class="flex justify-end gap-2">
+                <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
+                <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">Bloquear ticket</button>
               </div>
             </div>
 
@@ -327,6 +389,14 @@
               <p><span class="text-[var(--text-muted)]">Asignado:</span> {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : 'Sin asignar' }}</p>
               <p><span class="text-[var(--text-muted)]">PR Link:</span> {{ ticket.prLink || '—' }}</p>
               <p><span class="text-[var(--text-muted)]">Fecha límite:</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
+              <template v-if="canManageTeamTickets">
+                <p><span class="text-[var(--text-muted)]">Tiempo trabajado:</span> {{ formatDuration(liveSeconds(ticket, 'work')) }}</p>
+                <p><span class="text-[var(--text-muted)]">Tiempo bloqueado:</span> {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</p>
+                <div class="pt-2 border-t border-[var(--border-subtle)]">
+                  <p class="mb-2 font-semibold text-[var(--text-muted)]">Historial</p>
+                  <TicketHistory :events="ticketEvents[ticket.id] ?? []" :loading="ticketEventsLoading === ticket.id" :error="ticketEventsError" />
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -344,16 +414,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
+import apiClient from '@/services/api'
 import WorkbenchDashboard from '@/components/workbench/WorkbenchDashboard.vue'
 import TagChips from '@/components/shared/TagChips.vue'
-import type { Epic, Subtask, Ticket, User } from '@/types'
+import TicketHistory from '@/components/shared/TicketHistory.vue'
+import type { Epic, Subtask, Ticket, TicketHistoryEvent, User } from '@/types'
 
 const applicationsStore = useApplicationsStore()
 const epicsStore = useEpicsStore()
@@ -371,12 +443,26 @@ const newSubtaskTitle = ref('')
 const working = ref(false)
 const ticketError = ref('')
 const availableAssignees = ref<User[]>([])
+const redirectCandidates = ref<User[]>([])
+const currentUserId = computed(() => authStore.user?.id || localStorage.getItem('userId') || '')
+const canManageTeamTickets = computed(() => isGroupLeader.value || isAdmin.value || userRole.value === 'TEAM_LEADER')
+const resolutionDrafts = ref<Record<string, string>>({})
+const openQuestionFor = ref<string | null>(null)
+const questionDraft = ref('')
+const openRedirectFor = ref<string | null>(null)
+const redirectAssigneeId = ref('')
+const redirectReason = ref('')
+const ticketEvents = ref<Record<string, TicketHistoryEvent[]>>({})
+const ticketEventsLoading = ref<string | null>(null)
+const ticketEventsError = ref('')
+const clockNow = ref(Date.now())
+const clockInterval = window.setInterval(() => { clockNow.value = Date.now() }, 1000)
 
 const userName = computed(() => authStore.user?.fullName || localStorage.getItem('userName') || 'Desarrollador')
 const userRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
 const userEmail = computed(() => authStore.user?.email || localStorage.getItem('userEmail') || 'dev@corestream.com')
 
-const isGroupLeader = computed(() => userRole.value === 'GROUP_LEADER')
+const isGroupLeader = computed(() => userRole.value === 'GROUP_LEADER' || userRole.value === 'TEAM_LEADER')
 const isAdmin = computed(() => userRole.value === 'ADMIN')
 const isDeveloper = computed(() => userRole.value === 'DEVELOPER')
 const canAssignTickets = computed(() => isGroupLeader.value || isAdmin.value)
@@ -451,7 +537,15 @@ const loadAppMetrics = async (appId: string) => {
     appEpicsMap.value[appId] = epics
     await Promise.all(
       epics.map(async (epic) => {
-        epicTicketsMap.value[epic.id] = await ticketsStore.fetchByEpic(epic.id)
+        const tickets = await ticketsStore.fetchByEpic(epic.id)
+        epicTicketsMap.value[epic.id] = tickets
+        if (canManageTeamTickets.value) {
+          await Promise.all(
+            tickets
+              .filter((ticket) => ticket.status === 'BLOCKED')
+              .map((ticket) => loadTicketEvents(ticket.id))
+          )
+        }
       })
     )
   } catch (err) {
@@ -521,6 +615,27 @@ const getSubtaskStats = (ticket: Ticket) => {
   return { total, completed, percentage }
 }
 
+const liveSeconds = (ticket: Ticket, timer: 'work' | 'blocked'): number => {
+  const total = timer === 'work' ? ticket.timeSpentSeconds : ticket.blockedTimeSeconds
+  const startedAt = timer === 'work' ? ticket.timerStartedAt : ticket.blockedTimerStartedAt
+  const activeStatus = timer === 'work' ? 'IN_PROGRESS' : 'BLOCKED'
+  const elapsed = ticket.status === activeStatus && startedAt
+    ? Math.max(0, Math.floor((clockNow.value - new Date(startedAt).getTime()) / 1000))
+    : 0
+  return (total || 0) + elapsed
+}
+
+const formatDuration = (seconds: number): string => {
+  const total = Math.max(0, Math.floor(seconds))
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
+    .map((part) => String(part).padStart(2, '0')).join(':')
+}
+
+const blockedQuestion = (ticketId: string): string => {
+  const question = ticketEvents.value[ticketId]?.find((event) => event.eventType === 'QUESTION_RAISED')
+  return String(question?.detail?.question ?? question?.detail?.message ?? '')
+}
+
 const startTicket = async (ticket: Ticket) => {
   working.value = true
   ticketError.value = ''
@@ -555,7 +670,113 @@ const toggleSubtaskPanel = (ticketId: string) => {
 }
 
 const toggleTicketDetail = (ticketId: string) => {
-  openDetailFor.value = openDetailFor.value === ticketId ? null : ticketId
+  const opening = openDetailFor.value !== ticketId
+  openDetailFor.value = opening ? ticketId : null
+  if (opening && canManageTeamTickets.value) void loadTicketEvents(ticketId)
+}
+
+const loadTicketEvents = async (ticketId: string) => {
+  ticketEventsLoading.value = ticketId
+  ticketEventsError.value = ''
+  try {
+    const { data } = await apiClient.get<TicketHistoryEvent[]>(`/tickets/${ticketId}/events`)
+    ticketEvents.value[ticketId] = data
+  } catch (err: any) {
+    ticketEventsError.value = err?.response?.data?.detail || 'No se pudo cargar el historial.'
+  } finally {
+    ticketEventsLoading.value = null
+  }
+}
+
+const resolveQuestion = async (ticket: Ticket) => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticket.id}/resolve-question`, {
+      resolution: resolutionDrafts.value[ticket.id]?.trim() || 'Pregunta resuelta por el líder',
+    })
+    resolutionDrafts.value[ticket.id] = ''
+    await loadTicketsForEpic(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error resolviendo pregunta:', err?.response?.status, err?.response?.data || err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo resolver la pregunta.'
+  } finally {
+    working.value = false
+  }
+}
+
+const raiseQuestion = async (ticket: Ticket) => {
+  if (questionDraft.value.trim().length < 10) return
+  working.value = true
+  ticketError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticket.id}/question`, { question_text: questionDraft.value.trim() })
+    questionDraft.value = ''
+    openQuestionFor.value = null
+    await loadTicketsForEpic(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error levantando pregunta:', err?.response?.status, err?.response?.data || err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo levantar la pregunta.'
+  } finally {
+    working.value = false
+  }
+}
+
+const toggleRedirectForm = async (ticketId: string) => {
+  openRedirectFor.value = openRedirectFor.value === ticketId ? null : ticketId
+  redirectAssigneeId.value = ''
+  redirectReason.value = ''
+  if (openRedirectFor.value && !redirectCandidates.value.length) {
+    try {
+      const { data } = await apiClient.get<Array<User & { full_name?: string }>>('/tickets/redirect-candidates/list')
+      redirectCandidates.value = data.map((user) => ({ ...user, fullName: user.fullName ?? user.full_name ?? '' }))
+    } catch (err) {
+      console.error('Error cargando responsables para redirección:', err)
+    }
+  }
+}
+
+const closeRedirectForm = () => {
+  openRedirectFor.value = null
+  redirectAssigneeId.value = ''
+  redirectReason.value = ''
+}
+
+const redirectTicket = async (ticket: Ticket) => {
+  if (!redirectAssigneeId.value || redirectReason.value.trim().length < 10) return
+  working.value = true
+  ticketError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticket.id}/redirect`, {
+      target_user_id: redirectAssigneeId.value,
+      reason: redirectReason.value.trim(),
+    })
+    closeRedirectForm()
+    await loadTicketsForEpic(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error redireccionando ticket:', err?.response?.status, err?.response?.data || err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo redireccionar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const acceptRedirect = async (ticket: Ticket) => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticket.id}/accept-redirect`)
+    await loadTicketsForEpic(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error aceptando ticket:', err?.response?.status, err?.response?.data || err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo aceptar el ticket.'
+  } finally {
+    working.value = false
+  }
 }
 
 const addSubtask = async (ticket: Ticket) => {
@@ -643,8 +864,14 @@ onMounted(async () => {
     if (canAssignTickets.value) {
       await loadUsers()
     }
+    if (canManageTeamTickets.value) {
+      const { data } = await apiClient.get<Array<User & { full_name?: string }>>('/tickets/redirect-candidates/list')
+      redirectCandidates.value = data.map((user) => ({ ...user, fullName: user.fullName ?? user.full_name ?? '' }))
+    }
   } catch (err) {
     console.error('Error cargando workbench:', err)
   }
 })
+
+onUnmounted(() => window.clearInterval(clockInterval))
 </script>
