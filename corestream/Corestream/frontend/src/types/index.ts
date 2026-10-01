@@ -551,6 +551,12 @@ export interface Ticket {
    */
   blockedTimeSeconds: number
 
+  /** Inicio de la sesión de trabajo actualmente activa. */
+  timerStartedAt?: string | null
+
+  /** Inicio del período de bloqueo actualmente activo. */
+  blockedTimerStartedAt?: string | null
+
   /**
    * Timestamp de creación del ticket
    */

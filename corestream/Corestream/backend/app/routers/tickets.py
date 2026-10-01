@@ -36,6 +36,8 @@ from app.models import (
     TicketComment,
     Tag,
 )
+from app.models.notification import Notification, NotificationType
+from app.models.user import UserRole
 from app.schemas import (
     TicketResponse,
     TicketCreate,
@@ -62,6 +64,28 @@ from app.middleware.auth import get_current_user
 
 # Router para tickets con prefijo y etiqueta
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
+
+
+def _add_elapsed_seconds(total: int, started_at: datetime | None, now: datetime) -> int:
+    if started_at is None:
+        return total
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return total + max(0, int((now - started_at).total_seconds()))
+
+
+def _pause_work_timer(ticket: Ticket, now: datetime) -> None:
+    ticket.time_spent_seconds = _add_elapsed_seconds(
+        ticket.time_spent_seconds, ticket.timer_started_at, now
+    )
+    ticket.timer_started_at = None
+
+
+def _stop_blocked_timer(ticket: Ticket, now: datetime) -> None:
+    ticket.blocked_time_seconds = _add_elapsed_seconds(
+        ticket.blocked_time_seconds, ticket.blocked_timer_started_at, now
+    )
+    ticket.blocked_timer_started_at = None
 
 def extract_mentions(content: str) -> list[str]:
     """
@@ -1194,13 +1218,7 @@ async def start_ticket_work(
         if getattr(ticket, "first_response_at", None) is None:
             ticket.first_response_at = datetime.now(timezone.utc)
 
-        # Iniciar temporizador. `timer_service` solo expone métodos de clase
-        # (no existe `timer_service.start_timer`) y el modelo Ticket tampoco
-        # tiene columna de timer, así que se llama solo si está disponible: el
-        # cambio de estado no debe caerse por una pieza sin implementar.
-        start_timer = getattr(timer_service, "start_timer", None)
-        if callable(start_timer):
-            await start_timer(ticket_id, actor_id, db)
+        ticket.timer_started_at = datetime.now(timezone.utc)
 
         await db.commit()
         await db.refresh(ticket)
@@ -1287,10 +1305,7 @@ async def complete_ticket(
         )
 
     try:
-        # Detener temporizador (si el servicio expone la función; ver /start)
-        stop_timer = getattr(timer_service, "stop_timer", None)
-        if callable(stop_timer):
-            await stop_timer(ticket_id, db)
+        _pause_work_timer(ticket, datetime.now(timezone.utc))
 
         # Utilizar máquina de estados para cambiar estado
         await ticket_state_machine.transition_to_completed(
@@ -1367,23 +1382,24 @@ async def raise_ticket_question(
         )
 
     try:
-        # Pausar temporizador (si el servicio expone la función; ver /start)
-        pause_timer = getattr(timer_service, "pause_timer", None)
-        if callable(pause_timer):
-            await pause_timer(ticket_id, db)
-
-        # Marcar como bloqueado
-        ticket.is_blocked = True
-        ticket.blocked_reason = question_data.question_text
-
+        now = datetime.now(timezone.utc)
+        _pause_work_timer(ticket, now)
+        ticket.status = TicketStatus.BLOCKED
+        ticket.blocked_timer_started_at = now
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(actor_id),
+            event_type=TicketEventType.QUESTION_RAISED,
+            detail={"question": question_data.question_text, "recorded_at": now.isoformat()},
+        ))
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(actor_id),
+            event_type=TicketEventType.STATUS_CHANGED,
+            detail={"from_status": "IN_PROGRESS", "to_status": "BLOCKED", "recorded_at": now.isoformat()},
+        ))
         await db.commit()
         await db.refresh(ticket)
-
-        # Registrar evento
-        await ticket_state_machine.log_ticket_event(
-            db, ticket_id, TicketEventType.QUESTION_RAISED,
-            actor_id, question_data.question_text
-        )
 
         # Notificar al líder de equipo (si existe; ver /start)
         notify_question = getattr(notification_service, "notify_question_raised", None)
@@ -1439,34 +1455,34 @@ async def resolve_ticket_question(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
-    # WEB-08: resolver la pregunta es del asignado; si es ajena, requiere gestión
-    if str(ticket.assignee_id) != get_user_id(current_user):
-        require_admin_or_leader(current_user)
+    require_admin_or_leader(current_user)
 
-    if not ticket.is_blocked:
+    if ticket.status != TicketStatus.BLOCKED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El ticket no está bloqueado por una pregunta"
+            detail="El ticket no está bloqueado"
         )
 
     try:
-        # Desbloquear ticket
-        ticket.is_blocked = False
-        ticket.blocked_reason = None
-
-        # Reanudar temporizador (si el servicio expone la función; ver /start)
-        resume_timer = getattr(timer_service, "resume_timer", None)
-        if callable(resume_timer):
-            await resume_timer(ticket_id, db)
-
+        now = datetime.now(timezone.utc)
+        _stop_blocked_timer(ticket, now)
+        ticket.status = TicketStatus.IN_PROGRESS
+        ticket.timer_started_at = now
+        resolution = str(resolution_data.get("resolution") or "Pregunta resuelta").strip()
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.QUESTION_RESOLVED,
+            detail={"resolution": resolution, "recorded_at": now.isoformat()},
+        ))
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.STATUS_CHANGED,
+            detail={"from_status": "BLOCKED", "to_status": "IN_PROGRESS", "recorded_at": now.isoformat()},
+        ))
         await db.commit()
         await db.refresh(ticket)
-
-        # Registrar evento
-        await ticket_state_machine.log_ticket_event(
-            db, ticket_id, TicketEventType.QUESTION_RESOLVED,
-            get_user_id(current_user), resolution_data.get("resolution", "Pregunta resuelta")
-        )
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
@@ -1477,6 +1493,56 @@ async def resolve_ticket_question(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al resolver pregunta: {str(e)}"
         )
+
+
+@router.post(
+    "/{ticket_id}/block",
+    response_model=TicketResponse,
+    summary="Bloquear ticket como administrador",
+)
+async def block_ticket_as_admin(
+    ticket_id: UUID,
+    block_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketResponse:
+    if getattr(current_user.role, "value", current_user.role) != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere rol ADMIN")
+
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
+    if ticket.status != TicketStatus.IN_PROGRESS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Solo se puede bloquear un ticket en IN_PROGRESS")
+
+    reason = str(block_data.get("reason") or "").strip()
+    if len(reason) < 10:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="El motivo debe tener al menos 10 caracteres")
+
+    try:
+        now = datetime.now(timezone.utc)
+        _pause_work_timer(ticket, now)
+        ticket.status = TicketStatus.BLOCKED
+        ticket.blocked_timer_started_at = now
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.QUESTION_RAISED,
+            detail={"question": reason, "action": "ADMIN_BLOCK", "recorded_at": now.isoformat()},
+        ))
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.STATUS_CHANGED,
+            detail={"from_status": "IN_PROGRESS", "to_status": "BLOCKED", "action": "ADMIN_BLOCK", "recorded_at": now.isoformat()},
+        ))
+        await db.commit()
+        await db.refresh(ticket)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al bloquear ticket: {exc}") from exc
 
 
 @router.post(
@@ -1517,18 +1583,15 @@ async def redirect_ticket(
             detail=f"Ticket con ID {ticket_id} no encontrado"
         )
 
-    # WEB-08: solo el asignado actual (o ADMIN/TEAM_LEADER) puede redirigir
-    if ticket.assignee_id is not None and str(ticket.assignee_id) != get_user_id(current_user):
+    # El asignado actual puede derivar su ticket; ADMIN y GROUP_LEADER pueden
+    # intervenir desde la vista de gestión.
+    if ticket.assignee_id is None or str(ticket.assignee_id) != get_user_id(current_user):
         require_admin_or_leader(current_user)
 
     # La API acepta las dos formas de nombrar los campos: 'to_user_id' (contrato
     # de los tests de integración) y 'target_user_id'/'reason' (forma histórica).
     target_user_id = redirect_data.get("to_user_id") or redirect_data.get("target_user_id")
-    reason = (
-        redirect_data.get("justification")
-        or redirect_data.get("reason")
-        or "Sin motivo especificado"
-    )
+    reason = str(redirect_data.get("justification") or redirect_data.get("reason") or "").strip()
 
     if not target_user_id:
         raise HTTPException(
@@ -1536,9 +1599,23 @@ async def redirect_ticket(
             detail="Se requiere 'to_user_id' con el usuario destino"
         )
 
+    if len(reason) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El motivo de redirección debe tener al menos 10 caracteres",
+        )
+
+    try:
+        target_uuid = UUID(str(target_user_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ID de usuario destino inválido") from exc
+
+    if target_uuid == ticket.assignee_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selecciona un responsable distinto al actual")
+
     # Verificar que el usuario destino existe
     user_check = await db.execute(
-        select(User).where(User.id == target_user_id)
+        select(User).where(User.id == target_uuid, User.is_active.is_(True))
     )
     if not user_check.scalar_one_or_none():
         raise HTTPException(
@@ -1547,27 +1624,44 @@ async def redirect_ticket(
         )
 
     try:
+        now = datetime.now(timezone.utc)
+        previous_status = ticket.status.value
+        if previous_status == TicketStatus.IN_PROGRESS.value:
+            _pause_work_timer(ticket, now)
+        elif previous_status == TicketStatus.BLOCKED.value:
+            _stop_blocked_timer(ticket, now)
         old_assignee = ticket.assignee_id
-        ticket.assignee_id = target_user_id
-
-        # Pausar temporizador si estaba activo (si el servicio expone la función)
-        pause_timer = getattr(timer_service, "pause_timer", None)
-        if ticket.status == TicketStatus.IN_PROGRESS and callable(pause_timer):
-            await pause_timer(ticket_id, db)
-
+        ticket.assignee_id = target_uuid
+        ticket.status = TicketStatus.REDIRECTED
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.REDIRECTED,
+            from_user_id=old_assignee,
+            to_user_id=target_uuid,
+            detail={
+                "reason": reason,
+                "from_status": previous_status,
+                "to_status": "REDIRECTED",
+                "recorded_at": now.isoformat(),
+            },
+        ))
+        db.add(TicketEvent(
+            ticket_id=ticket_id,
+            user_id=UUID(get_user_id(current_user)),
+            event_type=TicketEventType.STATUS_CHANGED,
+            detail={"from_status": previous_status, "to_status": "REDIRECTED", "recorded_at": now.isoformat()},
+        ))
+        db.add(Notification(
+            user_id=target_uuid,
+            title="Ticket redirigido a ti",
+            message=f"{ticket.title}: {reason}",
+            type=NotificationType.REDIRECT,
+            ticket_id=ticket_id,
+            is_read=False,
+        ))
         await db.commit()
         await db.refresh(ticket)
-
-        # Registrar evento de redirección
-        await ticket_state_machine.log_ticket_event(
-            db, ticket_id, TicketEventType.REDIRECTED,
-            get_user_id(current_user), f"Ticket redirigido de {old_assignee} a {target_user_id}: {reason}"
-        )
-
-        # Notificar al nuevo asignado (si existe; ver /start)
-        notify_redirected = getattr(notification_service, "notify_ticket_redirected", None)
-        if callable(notify_redirected):
-            await notify_redirected(ticket, current_user, db)
 
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
@@ -1578,6 +1672,56 @@ async def redirect_ticket(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al redirigir ticket: {str(e)}"
         )
+
+
+@router.post("/{ticket_id}/accept-redirect", response_model=TicketResponse)
+async def accept_redirected_ticket(
+    ticket_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketResponse:
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
+    if ticket.status != TicketStatus.REDIRECTED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El ticket no está esperando aceptación")
+    if str(ticket.assignee_id) != get_user_id(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo el nuevo responsable puede aceptar el ticket")
+
+    now = datetime.now(timezone.utc)
+    ticket.status = TicketStatus.IN_PROGRESS
+    ticket.timer_started_at = now
+    db.add(TicketEvent(
+        ticket_id=ticket_id,
+        user_id=UUID(get_user_id(current_user)),
+        event_type=TicketEventType.STATUS_CHANGED,
+        detail={"from_status": "REDIRECTED", "to_status": "IN_PROGRESS", "action": "ACCEPT_REDIRECT", "recorded_at": now.isoformat()},
+    ))
+    try:
+        await db.commit()
+        await db.refresh(ticket)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aceptar ticket: {exc}") from exc
+
+
+@router.get("/redirect-candidates/list")
+async def get_redirect_candidates(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    result = await db.execute(
+        select(User)
+        .where(User.is_active.is_(True), User.role.in_([UserRole.DEVELOPER, UserRole.GROUP_LEADER]))
+        .order_by(User.full_name)
+    )
+    return [
+        {"id": str(user.id), "full_name": user.full_name, "email": user.email, "role": user.role.value}
+        for user in result.scalars().all()
+        if str(user.id) != get_user_id(current_user)
+    ]
 
 
 @router.get(

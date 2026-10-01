@@ -1,5 +1,7 @@
 EJECUTAR EN POWERSHELL DESDE donde esta el Docker compose:
 
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
 docker compose -f docker-compose.yml -f docker-compose.dev.yml exec -T postgres \
   psql -U corestream -d corestream <<'SQL'
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sprint_id UUID;

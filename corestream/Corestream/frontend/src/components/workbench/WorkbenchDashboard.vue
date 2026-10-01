@@ -255,6 +255,34 @@
             </button>
 
             <button
+              v-if="ticket.status === 'TODO' || ticket.status === 'IN_PROGRESS'"
+              :title="ticket.status === 'TODO' ? 'Inicia el ticket para levantar una pregunta' : 'Levantar una pregunta y bloquear el ticket'"
+              :disabled="working || ticket.status !== 'IN_PROGRESS'"
+              @click="openQuestionFor = openQuestionFor === ticket.id ? null : ticket.id"
+              class="px-3 py-1 rounded-lg text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              {{ ticket.status === 'TODO' ? 'Inicia para preguntar' : 'Levantar Pregunta' }}
+            </button>
+
+            <button
+              v-if="ticket.status === 'REDIRECTED'"
+              :disabled="working"
+              @click="acceptRedirect(ticket)"
+              class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
+            >
+              Aceptar ticket
+            </button>
+
+            <button
+              v-if="ticket.status === 'TODO' || ticket.status === 'IN_PROGRESS' || ticket.status === 'REDIRECTED'"
+              :disabled="working"
+              @click="openRedirectFor = openRedirectFor === ticket.id ? null : ticket.id"
+              class="px-3 py-1 rounded-lg text-xs bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30 disabled:opacity-50 font-medium"
+            >
+              Redireccionar
+            </button>
+
+            <button
               @click="toggleSubtaskPanel(ticket.id)"
               class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
             >
@@ -267,6 +295,33 @@
             >
               👁 Detalle
             </button>
+          </div>
+
+          <div v-if="ticket.status === 'IN_PROGRESS' || ticket.status === 'BLOCKED'" class="flex gap-4 text-xs text-[var(--text-muted)]">
+            <span>Trabajado: {{ formatDuration(liveSeconds(ticket, 'work')) }}</span>
+            <span>Bloqueado: {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</span>
+          </div>
+
+          <div v-if="openQuestionFor === ticket.id" class="rounded-lg border border-amber-500/30 bg-[var(--bg-app)] p-3 space-y-2">
+            <label class="block text-xs font-medium text-[var(--text-secondary)]">¿Qué impide avanzar?</label>
+            <textarea v-model="questionDraft" maxlength="500" rows="3" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" placeholder="Describe la pregunta o dependencia (mínimo 10 caracteres)"></textarea>
+            <div class="flex justify-end gap-2">
+              <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
+              <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">Bloquear ticket</button>
+            </div>
+          </div>
+
+          <div v-if="openRedirectFor === ticket.id" class="rounded-lg border border-sky-500/30 bg-[var(--bg-app)] p-3 space-y-2">
+            <label class="block text-xs font-medium text-[var(--text-secondary)]">Nuevo responsable</label>
+            <select v-model="redirectAssigneeId" class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400">
+              <option value="">Seleccionar usuario...</option>
+              <option v-for="user in redirectCandidates" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
+            </select>
+            <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" placeholder="Motivo obligatorio (mínimo 10 caracteres)"></textarea>
+            <div class="flex justify-end gap-2">
+              <button @click="openRedirectFor = null; redirectAssigneeId = ''; redirectReason = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
+              <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">Confirmar redirección</button>
+            </div>
           </div>
 
           <!-- Panel de Subtareas -->
@@ -378,11 +433,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
+import apiClient from '@/services/api'
 import TagChips from '@/components/shared/TagChips.vue'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import type { Subtask, Tag, Ticket, TicketHistoryEvent, User } from '@/types'
@@ -435,6 +491,14 @@ const newSubtaskTitle = ref('')
 const working = ref(false)
 const actionError = ref('')
 const availableUsers = ref<User[]>([])
+const redirectCandidates = ref<User[]>([])
+const openQuestionFor = ref<string | null>(null)
+const questionDraft = ref('')
+const openRedirectFor = ref<string | null>(null)
+const redirectAssigneeId = ref('')
+const redirectReason = ref('')
+const clockNow = ref(Date.now())
+const clockInterval = window.setInterval(() => { clockNow.value = Date.now() }, 1000)
 
 /**
  * NEW-03: etiquetas reutilizables del cliente. Las crea un ADMIN/TEAM_LEADER
@@ -487,6 +551,22 @@ const getSubtaskStats = (ticket: Ticket) => {
   return { total, completed, percentage }
 }
 
+const liveSeconds = (ticket: Ticket, timer: 'work' | 'blocked'): number => {
+  const total = timer === 'work' ? ticket.timeSpentSeconds : ticket.blockedTimeSeconds
+  const startedAt = timer === 'work' ? ticket.timerStartedAt : ticket.blockedTimerStartedAt
+  const activeStatus = timer === 'work' ? 'IN_PROGRESS' : 'BLOCKED'
+  const elapsed = ticket.status === activeStatus && startedAt
+    ? Math.max(0, Math.floor((clockNow.value - new Date(startedAt).getTime()) / 1000))
+    : 0
+  return (total || 0) + elapsed
+}
+
+const formatDuration = (seconds: number): string => {
+  const total = Math.max(0, Math.floor(seconds))
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
+    .map((part) => String(part).padStart(2, '0')).join(':')
+}
+
 const hasActiveFilters = computed(
   () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || tagFilterIds.value.length > 0,
 )
@@ -527,6 +607,7 @@ const startTicket = async (ticket: Ticket) => {
     await api.tickets.updateStatus(ticket.id, 'IN_PROGRESS')
     await refresh()
   } catch (err: any) {
+    console.error('Error iniciando ticket:', err?.response?.status, err?.response?.data || err)
     actionError.value = err?.response?.data?.detail || 'No se pudo iniciar el ticket.'
   } finally {
     working.value = false
@@ -543,6 +624,57 @@ const completeTicket = async (ticket: Ticket) => {
     await refresh()
   } catch (err: any) {
     actionError.value = err?.response?.data?.detail || 'No se pudo finalizar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const raiseQuestion = async (ticket: Ticket) => {
+  working.value = true
+  actionError.value = ''
+  try {
+    await api.tickets.question(ticket.id, questionDraft.value.trim())
+    questionDraft.value = ''
+    openQuestionFor.value = null
+    await refresh()
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error levantando pregunta:', err?.response?.status, err?.response?.data || err)
+    actionError.value = err?.response?.data?.detail || 'No se pudo bloquear el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const redirectTicket = async (ticket: Ticket) => {
+  if (!redirectAssigneeId.value || redirectReason.value.trim().length < 10) return
+  working.value = true
+  actionError.value = ''
+  try {
+    await api.tickets.redirect(ticket.id, { toUserId: redirectAssigneeId.value, reason: redirectReason.value.trim() })
+    redirectAssigneeId.value = ''
+    redirectReason.value = ''
+    openRedirectFor.value = null
+    await refresh()
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error redireccionando ticket:', err?.response?.status, err?.response?.data || err)
+    actionError.value = err?.response?.data?.detail || 'No se pudo redireccionar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const acceptRedirect = async (ticket: Ticket) => {
+  working.value = true
+  actionError.value = ''
+  try {
+    await api.tickets.acceptRedirect(ticket.id)
+    await refresh()
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error aceptando ticket redirigido:', err?.response?.status, err?.response?.data || err)
+    actionError.value = err?.response?.data?.detail || 'No se pudo aceptar el ticket.'
   } finally {
     working.value = false
   }
@@ -720,6 +852,17 @@ onMounted(async () => {
   // NEW-03: cualquier usuario autenticado puede listar las etiquetas
   loadAvailableTags()
 
+  try {
+    const { data } = await apiClient.get<Array<User & { full_name?: string }>>(
+      '/tickets/redirect-candidates/list'
+    )
+    redirectCandidates.value = data
+      .map((user) => ({ ...user, fullName: user.fullName ?? user.full_name ?? '' }))
+      .filter((user) => user.id !== authStore.user?.id)
+  } catch (e) {
+    console.error('Error cargando responsables para redirección:', (e as any)?.response?.status, (e as any)?.response?.data || e)
+  }
+
   if (canAssignTickets.value) {
     try {
       const res: any = await api.users.list({ limit: 100 })
@@ -729,4 +872,6 @@ onMounted(async () => {
     }
   }
 })
+
+onUnmounted(() => window.clearInterval(clockInterval))
 </script>

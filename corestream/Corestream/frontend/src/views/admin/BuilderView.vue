@@ -838,9 +838,22 @@
               </p>
               <!-- WEB-12: tiempos registrados automáticamente por el sistema -->
               <p>
-                <span class="text-[var(--text-muted)]">Tiempo trabajado:</span> {{ formatDuration(ticket.timeSpentSeconds) }}
-                · <span class="text-[var(--text-muted)]">Bloqueado:</span> {{ formatDuration(ticket.blockedTimeSeconds) }}
+                <span class="text-[var(--text-muted)]">Tiempo trabajado:</span> {{ displayWorkTime(ticket) }}
+                · <span class="text-[var(--text-muted)]">Bloqueado:</span> {{ displayBlockedTime(ticket) }}
               </p>
+
+              <div v-if="isAdmin && ticket.status === 'IN_PROGRESS'" class="flex flex-wrap gap-2 pt-2">
+                <input v-model="adminBlockReason" maxlength="500" placeholder="Motivo de bloqueo (mínimo 10 caracteres)" class="min-w-[240px] flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-xs" />
+                <button :disabled="working || adminBlockReason.trim().length < 10" @click="blockTicket(ticket)" class="px-3 py-2 rounded-lg text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 disabled:opacity-50">
+                  Bloquear para probar
+                </button>
+              </div>
+              <div v-if="(isAdmin || isGroupLeader) && ticket.status === 'BLOCKED'" class="flex flex-wrap gap-2 pt-2">
+                <input v-model="adminResolution" maxlength="500" placeholder="Respuesta o resolución (mínimo 10 caracteres)" class="min-w-[240px] flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-xs" />
+                <button :disabled="working || adminResolution.trim().length < 10" @click="resolveBlockedTicket(ticket)" class="px-3 py-2 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-50">
+                  Resolver y reanudar
+                </button>
+              </div>
 
               <!-- WEB-11: historial cronológico de eventos del ticket -->
               <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]">
@@ -989,13 +1002,14 @@
  * BuilderView (Admin) - WEB-08
  * Creación de aplicaciones -> épicas -> tickets y avance básico de estado.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
 import { api } from '@/services/api'
+import apiClient from '@/services/api'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import SprintPlannerPanel from '@/components/builder/SprintPlannerPanel.vue'
 import SlaSettingsPanel from '@/components/builder/SlaSettingsPanel.vue'
@@ -1077,6 +1091,10 @@ const usersList = ref<User[]>([])
 const editingTicketId = ref<string | null>(null)
 /** Ticket cuyo panel de detalle está abierto */
 const detailTicketId = ref<string | null>(null)
+const adminBlockReason = ref('')
+const adminResolution = ref('')
+const clockNow = ref(Date.now())
+const clockInterval = window.setInterval(() => { clockNow.value = Date.now() }, 1000)
 /** Comentarios del ticket seleccionado */
 const ticketComments = ref<Record<string, TicketComment[]>>({})
 
@@ -1578,6 +1596,37 @@ const startTicket = async (ticket: Ticket): Promise<void> => {
   } catch (err: any) {
     console.error('Error al iniciar ticket:', err)
     ticketError.value = err?.response?.data?.detail || 'No se pudo iniciar el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const blockTicket = async (ticket: Ticket): Promise<void> => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticket.id}/block`, { reason: adminBlockReason.value.trim() })
+    adminBlockReason.value = ''
+    await loadTicketsFor(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    console.error('Error bloqueando ticket:', err?.response?.status, err?.response?.data || err)
+    ticketError.value = err?.response?.data?.detail || 'No se pudo bloquear el ticket.'
+  } finally {
+    working.value = false
+  }
+}
+
+const resolveBlockedTicket = async (ticket: Ticket): Promise<void> => {
+  working.value = true
+  ticketError.value = ''
+  try {
+    await api.tickets.resolveQuestion(ticket.id, adminResolution.value.trim())
+    adminResolution.value = ''
+    await loadTicketsFor(ticket.epicId)
+    await loadTicketEvents(ticket.id)
+  } catch (err: any) {
+    ticketError.value = err?.response?.data?.detail || 'No se pudo resolver el bloqueo.'
   } finally {
     working.value = false
   }
@@ -2127,6 +2176,19 @@ const formatDuration = (seconds?: number | null): string => {
   return `${pad(hours)}:${pad(minutes)}:${pad(total % 60)}`
 }
 
+const displayLiveDuration = (ticket: Ticket, timer: 'work' | 'blocked'): string => {
+  const total = timer === 'work' ? ticket.timeSpentSeconds : ticket.blockedTimeSeconds
+  const startedAt = timer === 'work' ? ticket.timerStartedAt : ticket.blockedTimerStartedAt
+  const activeStatus = timer === 'work' ? 'IN_PROGRESS' : 'BLOCKED'
+  const running = ticket.status === activeStatus && startedAt
+    ? Math.max(0, Math.floor((clockNow.value - new Date(startedAt).getTime()) / 1000))
+    : 0
+  return formatDuration((total || 0) + running)
+}
+
+const displayWorkTime = (ticket: Ticket): string => displayLiveDuration(ticket, 'work')
+const displayBlockedTime = (ticket: Ticket): string => displayLiveDuration(ticket, 'blocked')
+
 const statusLabel = (status: string): string =>
   ({ TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Hecho' })[status] ?? status
 
@@ -2141,6 +2203,8 @@ const statusClass = (status: string): string =>
     REDIRECTED: 'bg-amber-500/20 text-amber-300',
     DONE: 'bg-emerald-500/20 text-emerald-300'
   })[status] ?? 'bg-slate-500/20 text-slate-300'
+
+onUnmounted(() => window.clearInterval(clockInterval))
 
 const priorityClass = (priority: string): string =>
   ({

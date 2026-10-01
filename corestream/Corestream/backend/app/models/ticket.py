@@ -170,6 +170,13 @@ class Ticket(Base, BaseEntity):
         nullable=False,
         doc="Tiempo acumulado que el ticket ha estado en estado BLOCKED, en segundos"
     )
+
+    timer_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    blocked_timer_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     
     # Clave foránea al usuario que creó el ticket
     created_by_id: Mapped[PyUUID] = mapped_column(

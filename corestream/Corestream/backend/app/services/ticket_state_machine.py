@@ -53,7 +53,7 @@ class TicketStateMachine:
         'TODO': ['IN_PROGRESS'],
         'IN_PROGRESS': ['BLOCKED', 'REDIRECTED', 'DONE'],
         'BLOCKED': ['IN_PROGRESS'],
-        'REDIRECTED': ['TODO'],
+        'REDIRECTED': ['IN_PROGRESS'],
         'DONE': []  # Estado terminal, no hay transiciones posibles
     }
 

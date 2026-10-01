@@ -305,6 +305,10 @@ class TicketResponse(BaseModel):
     priority: str
     due_date: Optional[datetime] = None
     pr_link: Optional[str] = None
+    time_spent_seconds: int = 0
+    blocked_time_seconds: int = 0
+    timer_started_at: Optional[datetime] = None
+    blocked_timer_started_at: Optional[datetime] = None
     order_index: int
     status: str
     created_at: datetime
