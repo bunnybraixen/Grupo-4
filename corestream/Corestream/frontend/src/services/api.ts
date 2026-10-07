@@ -1269,9 +1269,10 @@ export const api = {
      * 
      * @returns Array de tickets asignados al usuario actual
      */
-    getMyWorkbench: async (): Promise<ApiResponse<Ticket[]>> => {
+    getMyWorkbench: async (filters?: TicketFilters): Promise<ApiResponse<Ticket[]>> => {
       const response = await apiClient.get<ApiResponse<Ticket[]>>(
-        '/tickets/my-workbench'
+        '/tickets/my-workbench',
+        { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
       return response.data
     },
@@ -1285,7 +1286,7 @@ export const api = {
      */
     listByEpic: async (
       epicId: string,
-      filters?: { status?: string; tagIds?: string[] }
+      filters?: TicketFilters
     ): Promise<ApiResponse<Ticket[]>> => {
       const response = await apiClient.get<ApiResponse<Ticket[]>>(
         `/tickets/by-epic/${epicId}`,
@@ -1297,8 +1298,15 @@ export const api = {
     /**
      * Banco de trabajo del usuario actual (alias de getMyWorkbench)
      */
-    listMyWorkbench: async (): Promise<ApiResponse<Ticket[]>> => {
-      return api.tickets.getMyWorkbench()
+    listMyWorkbench: async (filters?: TicketFilters): Promise<ApiResponse<Ticket[]>> => {
+      return api.tickets.getMyWorkbench(filters)
+    },
+
+    globalSearch: async (query: string, limit = 10): Promise<Record<string, any[]>> => {
+      const response = await apiClient.get<Record<string, any[]>>('/search/', {
+        params: { q: query, limit }
+      })
+      return response.data
     },
 
     /**

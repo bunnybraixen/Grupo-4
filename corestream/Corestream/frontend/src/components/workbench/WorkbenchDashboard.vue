@@ -10,6 +10,53 @@
 
   <div class="flex flex-col h-full bg-[var(--bg-app)]">
 
+    <div class="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]/90 backdrop-blur-sm px-6 py-4 space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-[var(--teal)] text-lg">🔎</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">Búsqueda global</span>
+        </div>
+        <button
+          v-if="globalSearchQuery.trim()"
+          @click="clearGlobalSearch"
+          class="text-[11px] text-[var(--text-muted)] underline hover:text-[var(--teal)]"
+        >
+          Limpiar
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input
+          v-model="globalSearchQuery"
+          @input="runGlobalSearch"
+          type="text"
+          placeholder="Buscar épicas, tickets, subtareas, usuarios…"
+          class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
+        />
+      </div>
+
+      <div v-if="globalSearchLoading" class="text-[11px] text-[var(--text-muted)]">Buscando coincidencias…</div>
+      <div v-else-if="hasGlobalSearchResults" class="space-y-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)] p-2">
+        <div v-for="(items, groupName) in globalSearchResults" :key="groupName">
+          <div v-if="items.length" class="space-y-1.5">
+            <p class="px-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+              {{ globalSearchLabel(groupName) }}
+            </p>
+            <button
+              v-for="item in items.slice(0, 5)"
+              :key="`${groupName}-${item.id || item.title || item.name || item.email}`"
+              type="button"
+              @click="applyGlobalSearchResult(groupName, item)"
+              class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-left text-xs text-[var(--text-primary)] hover:border-[var(--teal)] hover:bg-[var(--teal)]/5"
+            >
+              <span class="font-medium">{{ globalSearchDisplayValue(groupName, item) }}</span>
+              <span v-if="globalSearchMeta(groupName, item)" class="ml-2 text-[var(--text-muted)]">{{ globalSearchMeta(groupName, item) }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ============================================================== -->
     <!-- BARRA DE FILTROS                                               -->
     <!-- ============================================================== -->
@@ -36,6 +83,60 @@
         </button>
       </div>
 
+      <!-- Búsqueda libre por título/descripción -->
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Buscar:</span>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Título o descripción..."
+          class="w-full max-w-md rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
+        />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+          <span>Asignado</span>
+          <select
+            :value="assigneeFilterIds[0] ?? ''"
+            @change="onAssigneeFilterChange($event)"
+            class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
+          >
+            <option value="">Todos</option>
+            <option v-for="user in availableUsers" :key="user.id" :value="user.id">
+              {{ user.fullName || user.email }}
+            </option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+          <span>Ordenar por</span>
+          <select
+            :value="sortBy"
+            @change="setSort(($event.target as HTMLSelectElement).value as any, sortOrder)"
+            class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
+          >
+            <option value="createdAt">Fecha de creación</option>
+            <option value="dueDate">Fecha límite</option>
+            <option value="priority">Prioridad</option>
+            <option value="status">Estado</option>
+            <option value="title">Título</option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+          <span>Dirección</span>
+          <select
+            :value="sortOrder"
+            @change="setSort(sortBy, ($event.target as HTMLSelectElement).value as any)"
+            class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
+          >
+            <option value="desc">Descendente</option>
+            <option value="asc">Ascendente</option>
+          </select>
+        </label>
+      </div>
+
       <!-- Filtros de Estado -->
       <div class="flex items-center gap-2 flex-wrap">
         <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Estado:</span>
@@ -46,6 +147,24 @@
           :class="[
             'px-3 py-1 rounded-full text-xs font-medium transition-colors',
             statusFilter === f.value
+              ? 'bg-[var(--teal)] text-white font-semibold'
+              : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
+          ]"
+        >
+          {{ f.label }}
+        </button>
+      </div>
+
+      <!-- Filtros de Prioridad -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Prioridad:</span>
+        <button
+          v-for="f in priorityFilters"
+          :key="f.value"
+          @click="setPriorityFilter(f.value)"
+          :class="[
+            'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+            priorityFilter === f.value
               ? 'bg-[var(--teal)] text-white font-semibold'
               : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
           ]"
@@ -451,11 +570,20 @@ const {
   tickets,
   statusFilter,
   dateFilter,
+  searchQuery,
+  priorityFilter,
+  assigneeFilterIds,
+  sortBy,
+  sortOrder,
   tagFilterIds,
   isLoading,
   error,
   setStatusFilter,
   setDateFilter,
+  setSearchQuery,
+  setPriorityFilter,
+  setAssigneeFilterIds,
+  setSort,
   setTagFilterIds,
   updateTicketTags,
   refresh,
@@ -505,6 +633,73 @@ const clockInterval = window.setInterval(() => { clockNow.value = Date.now() }, 
  * en el Builder y aquí se usan para filtrar y para asociarlas a los tickets.
  */
 const availableTags = ref<Tag[]>([])
+const globalSearchQuery = ref('')
+const globalSearchResults = ref<Record<string, any[]>>({})
+const globalSearchLoading = ref(false)
+
+const onAssigneeFilterChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value
+  setAssigneeFilterIds(value ? [value] : [])
+}
+
+const runGlobalSearch = async () => {
+  const query = globalSearchQuery.value.trim()
+  if (!query) {
+    globalSearchResults.value = {}
+    return
+  }
+
+  globalSearchLoading.value = true
+  try {
+    globalSearchResults.value = await api.tickets.globalSearch(query, 6)
+  } catch (err) {
+    console.error('Error en búsqueda global del workbench:', err)
+    globalSearchResults.value = {}
+  } finally {
+    globalSearchLoading.value = false
+  }
+}
+
+const clearGlobalSearch = () => {
+  globalSearchQuery.value = ''
+  globalSearchResults.value = {}
+}
+
+const hasGlobalSearchResults = computed(() => Object.values(globalSearchResults.value).some((items) => items.length > 0))
+
+const globalSearchLabel = (group: string): string => ({
+  tickets: 'Tickets',
+  epics: 'Épicas',
+  subtasks: 'Subtareas',
+  projects: 'Proyectos',
+  documents: 'Documentos',
+  users: 'Usuarios'
+} as Record<string, string>)[group] ?? group
+
+const globalSearchDisplayValue = (group: string, item: any): string => {
+  if (group === 'users') return item.fullName || item.email || item.name || 'Usuario'
+  if (group === 'documents') return item.title || item.name || 'Documento'
+  if (group === 'projects' || group === 'applications') return item.name || item.title || 'Proyecto'
+  return item.title || item.name || item.fullName || item.email || 'Resultado'
+}
+
+const globalSearchMeta = (group: string, item: any): string => {
+  if (group === 'tickets') return item.status ? String(item.status).replace('_', ' ') : ''
+  if (group === 'epics') return item.applicationName || item.projectName || ''
+  if (group === 'users') return item.email || ''
+  if (group === 'subtasks') return item.status || item.ticketTitle || ''
+  return item.appName || item.projectName || item.owner || ''
+}
+
+const applyGlobalSearchResult = (group: string, item: any) => {
+  const value = globalSearchDisplayValue(group, item)
+  if (value) {
+    setSearchQuery(value)
+    searchQuery.value = value
+  }
+  globalSearchQuery.value = value
+  globalSearchResults.value = {}
+}
 
 /**
  * NEW-03: borrador de etiquetas por ticket (id del ticket -> ids elegidos).
@@ -568,12 +763,14 @@ const formatDuration = (seconds: number): string => {
 }
 
 const hasActiveFilters = computed(
-  () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || tagFilterIds.value.length > 0,
+  () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || priorityFilter.value !== 'all' || !!searchQuery.value.trim() || tagFilterIds.value.length > 0,
 )
 
 const clearFilters = () => {
   setStatusFilter('all')
   setDateFilter('all')
+  setSearchQuery('')
+  setPriorityFilter('all')
   setTagFilterIds([])
 }
 
@@ -587,6 +784,14 @@ const statusFilters = computed(() => [
   { value: 'todo' as const, label: 'Por hacer' },
   { value: 'blocked' as const, label: 'Bloqueado' },
   { value: 'completed' as const, label: 'Completados' },
+])
+
+const priorityFilters = computed(() => [
+  { value: 'all' as const, label: 'Todas' },
+  { value: 'LOW' as const, label: 'Baja' },
+  { value: 'MEDIUM' as const, label: 'Media' },
+  { value: 'HIGH' as const, label: 'Alta' },
+  { value: 'URGENT' as const, label: 'Urgente' },
 ])
 
 const dateFilters = computed(() => [

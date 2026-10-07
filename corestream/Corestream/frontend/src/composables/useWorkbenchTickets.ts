@@ -16,7 +16,20 @@ export function useWorkbenchTickets() {
   const store = useTicketsStore()
 
   // Refs reactivos del store (mantienen sincronía bidireccional)
-  const { filteredTickets, statusFilter, dateFilter, tagFilterIds, isLoading, myWorkbench, error } = storeToRefs(store)
+  const {
+    filteredTickets,
+    statusFilter,
+    dateFilter,
+    searchQuery,
+    priorityFilter,
+    assigneeFilterIds,
+    sortBy,
+    sortOrder,
+    tagFilterIds,
+    isLoading,
+    myWorkbench,
+    error,
+  } = storeToRefs(store)
 
   const refresh = async () => {
     try {
@@ -29,23 +42,36 @@ export function useWorkbenchTickets() {
   onMounted(() => {
     store.setStatusFilter('all')
     store.setDateFilter('all')
+    store.setSearchQuery('')
+    store.setPriorityFilter('all')
+    store.setAssigneeFilterIds([])
+    store.setSort('createdAt', 'desc')
     store.setTagFilterIds([])
     refresh()
   })
 
   return {
-    /** Tickets filtrados por estado, fecha y etiquetas (computed del store) */
+    /** Tickets filtrados por estado, fecha, texto, prioridad y etiquetas */
     tickets: filteredTickets,
     /** Todos los tickets del workbench sin filtrar */
     rawTickets: myWorkbench,
     statusFilter,
     dateFilter,
+    searchQuery,
+    priorityFilter,
+    assigneeFilterIds,
+    sortBy,
+    sortOrder,
     /** NEW-03: IDs de las etiquetas seleccionadas como filtro */
     tagFilterIds,
     isLoading,
     error,
     setStatusFilter: store.setStatusFilter,
     setDateFilter: store.setDateFilter,
+    setSearchQuery: store.setSearchQuery,
+    setPriorityFilter: store.setPriorityFilter,
+    setAssigneeFilterIds: store.setAssigneeFilterIds,
+    setSort: store.setSort,
     /** NEW-03: cambia el filtro de etiquetas */
     setTagFilterIds: store.setTagFilterIds,
     /** NEW-03: asocia/desasocia etiquetas de un ticket */

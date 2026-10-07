@@ -30,6 +30,10 @@ import { api } from '@/services/api'
  */
 type StatusFilter = 'all' | 'todo' | 'in_progress' | 'blocked' | 'redirected' | 'done'
 type DateFilter = 'all' | 'overdue' | 'today' | 'week' | 'later'
+type PriorityFilter = 'all' | TicketPriority
+
+type TicketSortBy = 'createdAt' | 'dueDate' | 'priority' | 'status' | 'title'
+type TicketSortOrder = 'asc' | 'desc'
 
 interface TicketFilters {
   status: StatusFilter
@@ -65,6 +69,19 @@ export const useTicketsStore = defineStore('tickets', () => {
    * Filtro de fecha actual
    */
   const dateFilter = ref<DateFilter>('all')
+
+  /** Texto libre para buscar por título o descripción */
+  const searchQuery = ref('')
+
+  /** Filtro de prioridad */
+  const priorityFilter = ref<PriorityFilter>('all')
+
+  /** IDs de responsables seleccionados */
+  const assigneeFilterIds = ref<string[]>([])
+
+  /** Orden de resultados */
+  const sortBy = ref<TicketSortBy>('createdAt')
+  const sortOrder = ref<TicketSortOrder>('desc')
 
   /**
    * NEW-03: etiquetas por las que se filtra el workbench.
@@ -106,6 +123,24 @@ export const useTicketsStore = defineStore('tickets', () => {
    */
   const filteredTickets = computed((): Ticket[] => {
     let result = [...myWorkbench.value]
+
+    if (searchQuery.value.trim()) {
+      const query = searchQuery.value.trim().toLowerCase()
+      result = result.filter(ticket => {
+        const haystack = `${ticket.title ?? ''} ${ticket.description ?? ''}`.toLowerCase()
+        return haystack.includes(query)
+      })
+    }
+
+    if (priorityFilter.value !== 'all') {
+      result = result.filter(ticket => ticket.priority === priorityFilter.value)
+    }
+
+    if (assigneeFilterIds.value.length) {
+      result = result.filter(ticket =>
+        ticket.assigneeId ? assigneeFilterIds.value.includes(ticket.assigneeId) : false
+      )
+    }
 
     // Aplicar filtro de estado
     if (statusFilter.value !== 'all') {
@@ -159,6 +194,32 @@ export const useTicketsStore = defineStore('tickets', () => {
         (ticket.tags ?? []).some(tag => tagFilterIds.value.includes(tag.id))
       )
     }
+
+    const direction = sortOrder.value === 'asc' ? 1 : -1
+    result.sort((a, b) => {
+      const valueA = a[sortBy.value === 'createdAt' ? 'createdAt' : sortBy.value === 'dueDate' ? 'dueDate' :
+        sortBy.value === 'priority' ? 'priority' : sortBy.value === 'status' ? 'status' : 'title'] as any
+      const valueB = b[sortBy.value === 'createdAt' ? 'createdAt' : sortBy.value === 'dueDate' ? 'dueDate' :
+        sortBy.value === 'priority' ? 'priority' : sortBy.value === 'status' ? 'status' : 'title'] as any
+
+      if (sortBy.value === 'priority') {
+        const order = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+        return (order[valueA as keyof typeof order] ?? 0) * direction - (order[valueB as keyof typeof order] ?? 0) * direction
+      }
+
+      if (sortBy.value === 'status') {
+        const order = { TODO: 1, IN_PROGRESS: 2, BLOCKED: 3, REDIRECTED: 4, DONE: 5 }
+        return ((order[valueA as keyof typeof order] ?? 0) - (order[valueB as keyof typeof order] ?? 0)) * direction
+      }
+
+      if (sortBy.value === 'title') {
+        return String(valueA ?? '').localeCompare(String(valueB ?? '')) * direction
+      }
+
+      const dateA = valueA ? new Date(valueA).getTime() : 0
+      const dateB = valueB ? new Date(valueB).getTime() : 0
+      return (dateA - dateB) * direction
+    })
 
     return result
   })
@@ -300,12 +361,12 @@ export const useTicketsStore = defineStore('tickets', () => {
    * 
    * @returns Promise<Ticket[]>
    */
-  const fetchMyWorkbench = async (): Promise<Ticket[]> => {
+  const fetchMyWorkbench = async (filters?: { search?: string; status?: string[]; priority?: string[]; assigneeIds?: string[]; tagIds?: string[]; sortBy?: string; sortOrder?: 'asc' | 'desc' }): Promise<Ticket[]> => {
     isLoading.value = true
     error.value = null
 
     try {
-      const data = await api.tickets.listMyWorkbench()
+      const data = await api.tickets.listMyWorkbench(filters)
       myWorkbench.value = data
       return data
     } catch (err) {
@@ -865,6 +926,23 @@ export const useTicketsStore = defineStore('tickets', () => {
     dateFilter.value = filter
   }
 
+  const setSearchQuery = (query: string): void => {
+    searchQuery.value = query
+  }
+
+  const setPriorityFilter = (filter: PriorityFilter): void => {
+    priorityFilter.value = filter
+  }
+
+  const setAssigneeFilterIds = (ids: string[]): void => {
+    assigneeFilterIds.value = [...ids]
+  }
+
+  const setSort = (field: TicketSortBy, order: TicketSortOrder = 'desc'): void => {
+    sortBy.value = field
+    sortOrder.value = order
+  }
+
   /**
    * NEW-03: establece las etiquetas por las que se filtra el workbench
    * (lista vacía = sin filtro por etiquetas)
@@ -884,6 +962,11 @@ export const useTicketsStore = defineStore('tickets', () => {
     myWorkbench.value = []
     statusFilter.value = 'all'
     dateFilter.value = 'all'
+    searchQuery.value = ''
+    priorityFilter.value = 'all'
+    assigneeFilterIds.value = []
+    sortBy.value = 'createdAt'
+    sortOrder.value = 'desc'
     tagFilterIds.value = []
     epicIdContext.value = null
     error.value = null
@@ -896,6 +979,11 @@ export const useTicketsStore = defineStore('tickets', () => {
     myWorkbench,
     statusFilter,
     dateFilter,
+    searchQuery,
+    priorityFilter,
+    assigneeFilterIds,
+    sortBy,
+    sortOrder,
     tagFilterIds,
     isLoading,
     error,
@@ -934,6 +1022,10 @@ export const useTicketsStore = defineStore('tickets', () => {
     getTicketById,
     setStatusFilter,
     setDateFilter,
+    setSearchQuery,
+    setPriorityFilter,
+    setAssigneeFilterIds,
+    setSort,
     setTagFilterIds,
     clear,
   }

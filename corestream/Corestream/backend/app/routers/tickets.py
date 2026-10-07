@@ -17,7 +17,7 @@ para garantizar transiciones válidas y consistencia de datos.
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, case, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -29,6 +29,7 @@ from app.models import (
     User,
     Epic,
     Sprint,
+    TicketPriority,
     TicketStatus,
     TicketEvent,
     TicketEventType,
@@ -182,6 +183,106 @@ def _json_safe(value):
     return str(value)
 
 
+def _build_ticket_filters_query(
+    query,
+    *,
+    epic_id: Optional[UUID] = None,
+    search: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    status: Optional[List[TicketStatus]] = None,
+    status_filter: Optional[TicketStatus] = None,
+    priority: Optional[List[TicketPriority]] = None,
+    priority_filter: Optional[TicketPriority] = None,
+    assignee_ids: Optional[List[UUID]] = None,
+    assignee_id: Optional[UUID] = None,
+    tag_ids: Optional[List[UUID]] = None,
+    sprint_id: Optional[UUID] = None,
+    sprint_ids: Optional[List[UUID]] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+):
+    """Aplicar los filtros combinados de tickets sobre una query SQLAlchemy."""
+    if epic_id is not None:
+        query = query.where(Ticket.epic_id == epic_id)
+
+    search_terms: list = []
+    normalized_search = (search or "").strip()
+    if normalized_search:
+        search_terms.extend([
+            Ticket.title.ilike(f"%{normalized_search}%"),
+            Ticket.description.ilike(f"%{normalized_search}%"),
+        ])
+    if title and title.strip():
+        search_terms.append(Ticket.title.ilike(f"%{title.strip()}%"))
+    if description and description.strip():
+        search_terms.append(Ticket.description.ilike(f"%{description.strip()}%"))
+    if search_terms:
+        query = query.where(or_(*search_terms))
+
+    status_values: list[TicketStatus] = []
+    if status_filter is not None:
+        status_values.append(status_filter)
+    if status:
+        status_values.extend(status)
+    if status_values:
+        query = query.where(Ticket.status.in_([status_value for status_value in dict.fromkeys(status_values)]))
+
+    priority_values: list[TicketPriority] = []
+    if priority_filter is not None:
+        priority_values.append(priority_filter)
+    if priority:
+        priority_values.extend(priority)
+    if priority_values:
+        query = query.where(Ticket.priority.in_([priority_value for priority_value in dict.fromkeys(priority_values)]))
+
+    assignee_values: list[UUID] = []
+    if assignee_id is not None:
+        assignee_values.append(assignee_id)
+    if assignee_ids:
+        assignee_values.extend(assignee_ids)
+    if assignee_values:
+        query = query.where(Ticket.assignee_id.in_([assignee for assignee in dict.fromkeys(assignee_values)]))
+
+    if tag_ids:
+        query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
+
+    if sprint_id is not None:
+        query = query.where(Ticket.sprint_id == sprint_id)
+    if sprint_ids:
+        query = query.where(Ticket.sprint_id.in_(sprint_ids))
+
+    priority_order = case(
+        (Ticket.priority == TicketPriority.URGENT, 0),
+        (Ticket.priority == TicketPriority.HIGH, 1),
+        (Ticket.priority == TicketPriority.MEDIUM, 2),
+        (Ticket.priority == TicketPriority.LOW, 3),
+        else_=4,
+    )
+    status_order = case(
+        (Ticket.status == TicketStatus.TODO, 0),
+        (Ticket.status == TicketStatus.IN_PROGRESS, 1),
+        (Ticket.status == TicketStatus.BLOCKED, 2),
+        (Ticket.status == TicketStatus.REDIRECTED, 3),
+        (Ticket.status == TicketStatus.DONE, 4),
+        else_=5,
+    )
+    sort_map = {
+        "title": Ticket.title,
+        "status": status_order,
+        "priority": priority_order,
+        "created_at": Ticket.created_at,
+        "updated_at": Ticket.updated_at,
+        "due_date": Ticket.due_date,
+    }
+    sort_key = sort_map.get(sort_by or "created_at", Ticket.created_at)
+    if sort_order and str(sort_order).lower() == "asc":
+        query = query.order_by(sort_key.asc())
+    else:
+        query = query.order_by(sort_key.desc())
+    return query
+
+
 @router.get(
     "/",
     response_model=List[TicketResponse],
@@ -191,12 +292,23 @@ def _json_safe(value):
 async def list_tickets(
     epic_id: Optional[UUID] = Query(None, description="Filtrar por épica"),
     sprint_id: Optional[UUID] = Query(None, description="Filtrar por Sprint (planificación)"),
+    sprint_ids: Optional[List[UUID]] = Query(None, description="Filtrar por uno o varios Sprints"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Búsqueda libre por título o descripción"),
+    title: Optional[str] = Query(None, description="Buscar por título exacto o parcial"),
+    description: Optional[str] = Query(None, description="Buscar por descripción"),
+    status: Optional[List[TicketStatus]] = Query(None, description="Filtrar por uno o varios estados"),
     status_filter: Optional[TicketStatus] = Query(
         None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
     ),
+    priority: Optional[List[TicketPriority]] = Query(None, description="Filtrar por una o varias prioridades"),
+    priority_filter: Optional[TicketPriority] = Query(None, description="Filtrar por prioridad"),
+    assignee_id: Optional[UUID] = Query(None, description="Filtrar por responsable"),
+    assignee_ids: Optional[List[UUID]] = Query(None, description="Filtrar por uno o varios responsables"),
     tag_ids: Optional[List[UUID]] = Query(None, description="Filtrar por una o más etiquetas"),
+    sort_by: str = Query("created_at", description="Campo de ordenamiento: created_at, updated_at, due_date, priority, status, title"),
+    sort_order: str = Query("desc", description="Orden asc o desc"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -206,29 +318,26 @@ async def list_tickets(
     Returns:
         List[TicketResponse]: Tickets con sus relaciones precargadas
     """
-    query = _ticket_query()
-
-    if epic_id is not None:
-        query = query.where(Ticket.epic_id == epic_id)
-
-    # El filtro por Sprint es INDEPENDIENTE del filtro por épica: un ticket
-    # puede pertenecer a la vez a una épica y a un Sprint.
-    if sprint_id is not None:
-        query = query.where(Ticket.sprint_id == sprint_id)
-
-    if status_filter:
-        query = query.where(Ticket.status == status_filter)
-
-    if tag_ids:
-        query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
-
-    # Orden estable (antes no había ORDER BY y PostgreSQL podía devolver las
-    # filas en otro orden tras un UPDATE: los tickets "saltaban" al editarlos).
-    result = await db.execute(
-        query.order_by(Ticket.order_index.asc(), Ticket.created_at.asc())
-        .offset(skip)
-        .limit(limit)
+    query = _build_ticket_filters_query(
+        _ticket_query(),
+        epic_id=epic_id,
+        search=search,
+        title=title,
+        description=description,
+        status=status,
+        status_filter=status_filter,
+        priority=priority,
+        priority_filter=priority_filter,
+        assignee_ids=assignee_ids,
+        assignee_id=assignee_id,
+        tag_ids=tag_ids,
+        sprint_id=sprint_id,
+        sprint_ids=sprint_ids,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
+
+    result = await db.execute(query.offset(skip).limit(limit))
     tickets = result.scalars().all()
 
     return [TicketResponse.from_orm(ticket) for ticket in tickets]
@@ -244,10 +353,22 @@ async def get_epic_tickets(
     epic_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Búsqueda por título o descripción"),
+    title: Optional[str] = Query(None, description="Buscar por título"),
+    description: Optional[str] = Query(None, description="Buscar por descripción"),
+    status: Optional[List[TicketStatus]] = Query(None, description="Estados a incluir"),
     status_filter: Optional[TicketStatus] = Query(
         None, description="Filtrar por estado (TODO, IN_PROGRESS, BLOCKED, REDIRECTED, DONE)"
     ),
+    priority: Optional[List[TicketPriority]] = Query(None, description="Prioridades a incluir"),
+    priority_filter: Optional[TicketPriority] = Query(None, description="Filtrar por prioridad"),
+    assignee_id: Optional[UUID] = Query(None, description="Filtrar por responsable"),
+    assignee_ids: Optional[List[UUID]] = Query(None, description="Filtrar por responsables"),
     tag_ids: Optional[List[UUID]] = Query(None, description="Filtrar por una o más etiquetas"),
+    sprint_id: Optional[UUID] = Query(None, description="Filtrar por un sprint"),
+    sprint_ids: Optional[List[UUID]] = Query(None, description="Filtrar por varios sprints"),
+    sort_by: str = Query("created_at", description="Campo de ordenamiento"),
+    sort_order: str = Query("desc", description="Orden asc o desc"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -279,22 +400,26 @@ async def get_epic_tickets(
             detail=f"Épica con ID {epic_id} no encontrada"
         )
 
-    # Construir consulta base (con relaciones ya cargadas)
-    query = _ticket_query().where(Ticket.epic_id == epic_id)
-
-    # Aplicar filtro de estado si se proporciona
-    if status_filter:
-        query = query.where(Ticket.status == status_filter)
-
-    if tag_ids:
-        query = query.join(Ticket.tags).where(Tag.id.in_(tag_ids)).distinct()
-
-    # Ejecutar con paginación y orden estable dentro de la épica
-    result = await db.execute(
-        query.order_by(Ticket.order_index.asc(), Ticket.created_at.asc())
-        .offset(skip)
-        .limit(limit)
+    query = _build_ticket_filters_query(
+        _ticket_query(),
+        epic_id=epic_id,
+        search=search,
+        title=title,
+        description=description,
+        status=status,
+        status_filter=status_filter,
+        priority=priority,
+        priority_filter=priority_filter,
+        assignee_id=assignee_id,
+        assignee_ids=assignee_ids,
+        tag_ids=tag_ids,
+        sprint_id=sprint_id,
+        sprint_ids=sprint_ids,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
+
+    result = await db.execute(query.offset(skip).limit(limit))
     tickets = result.scalars().all()
 
     return [TicketResponse.from_orm(ticket) for ticket in tickets]
@@ -341,8 +466,20 @@ async def update_ticket_tags(
     description="Retorna todos los tickets asignados al usuario actual ordenados por prioridad"
 )
 async def get_my_workbench(
-    status_filter: Optional[str] = Query(None),
-    priority_filter: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="Búsqueda por título o descripción"),
+    title: Optional[str] = Query(None, description="Filtrar por título"),
+    description: Optional[str] = Query(None, description="Filtrar por descripción"),
+    status: Optional[List[TicketStatus]] = Query(None, description="Uno o varios estados"),
+    status_filter: Optional[TicketStatus] = Query(None, description="Estado único"),
+    priority: Optional[List[TicketPriority]] = Query(None, description="Una o varias prioridades"),
+    priority_filter: Optional[TicketPriority] = Query(None, description="Prioridad única"),
+    assignee_id: Optional[UUID] = Query(None, description="Responsable (forzado al usuario actual en el workbench)"),
+    assignee_ids: Optional[List[UUID]] = Query(None, description="Responsables (forzado al usuario actual en el workbench)"),
+    tag_ids: Optional[List[UUID]] = Query(None, description="Filtrar por etiquetas"),
+    sprint_id: Optional[UUID] = Query(None, description="Filtrar por sprint"),
+    sprint_ids: Optional[List[UUID]] = Query(None, description="Filtrar por varios sprints"),
+    sort_by: str = Query("created_at", description="Campo para ordenar resultados"),
+    sort_order: str = Query("desc", description="Orden asc o desc"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> List[TicketResponse]:
@@ -358,19 +495,27 @@ async def get_my_workbench(
     Returns:
         List[TicketResponse]: Tickets asignados al usuario ordenados por prioridad
     """
-    # Construir consulta para obtener tickets asignados (con relaciones cargadas)
-    query = _ticket_query().where(Ticket.assignee_id == UUID(get_user_id(current_user)))
-
-    # Aplicar filtros si se proporcionan
-    if status_filter:
-        query = query.where(Ticket.status == status_filter)
-    if priority_filter:
-        query = query.where(Ticket.priority == priority_filter)
-
-    # Ordenar por prioridad y fecha de creación
-    result = await db.execute(
-        query.order_by(Ticket.priority.desc(), Ticket.created_at.desc())
+    current_user_id = UUID(get_user_id(current_user))
+    query = _build_ticket_filters_query(
+        _ticket_query(),
+        search=search,
+        title=title,
+        description=description,
+        status=status,
+        status_filter=status_filter,
+        priority=priority,
+        priority_filter=priority_filter,
+        assignee_ids=[current_user_id],
+        assignee_id=current_user_id if assignee_id is None else assignee_id,
+        tag_ids=tag_ids,
+        sprint_id=sprint_id,
+        sprint_ids=sprint_ids,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
+    query = query.where(Ticket.assignee_id == current_user_id)
+
+    result = await db.execute(query)
     tickets = result.scalars().all()
 
     return [TicketResponse.from_orm(ticket) for ticket in tickets]

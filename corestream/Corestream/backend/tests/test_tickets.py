@@ -20,6 +20,7 @@ from app.models import (
     Ticket,
     TicketEvent,
     TicketEventType,
+    TicketPriority,
     TicketStatus,
     User,
 )
@@ -419,3 +420,42 @@ class TestTicketPriorities:
         todo_tickets = result.scalars().all()
         assert len(todo_tickets) == 1
         assert todo_tickets[0].status == TicketStatus.TODO
+
+
+async def test_ticket_query_builder_applies_combined_filters(
+    db_session: AsyncSession, test_epic: Epic, dev_user: User
+):
+    from app.routers.tickets import _build_ticket_filters_query
+
+    ticket_alpha = Ticket(
+        title="Alpha dashboard",
+        description="Revisión del login",
+        status=TicketStatus.TODO,
+        priority=TicketPriority.LOW,
+        epic_id=test_epic.id,
+        assignee_id=dev_user.id,
+    )
+    ticket_beta = Ticket(
+        title="Beta dashboard",
+        description="Otra tarea",
+        status=TicketStatus.IN_PROGRESS,
+        priority=TicketPriority.HIGH,
+        epic_id=test_epic.id,
+        assignee_id=dev_user.id,
+    )
+    db_session.add_all([ticket_alpha, ticket_beta])
+    await db_session.flush()
+
+    query = _build_ticket_filters_query(
+        select(Ticket),
+        search="alpha",
+        status=[TicketStatus.TODO],
+        priority=[TicketPriority.LOW],
+        assignee_ids=[dev_user.id],
+        sort_by="title",
+        sort_order="asc",
+    )
+    result = await db_session.execute(query)
+    tickets = result.scalars().all()
+
+    assert [ticket.title for ticket in tickets] == ["Alpha dashboard"]

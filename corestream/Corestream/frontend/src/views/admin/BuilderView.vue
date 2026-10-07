@@ -56,6 +56,53 @@
 
     <!-- ======== Pestaña: tablero de épicas y tickets ======== -->
     <template v-else>
+    <div class="mt-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm sticky top-0 z-10 backdrop-blur-sm">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-[var(--teal)] text-lg">🔎</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">Búsqueda global</span>
+        </div>
+        <button
+          v-if="builderGlobalSearchQuery.trim()"
+          @click="clearBuilderGlobalSearch"
+          class="text-[11px] text-[var(--text-muted)] underline hover:text-[var(--teal)]"
+        >
+          Limpiar
+        </button>
+      </div>
+
+      <div class="mt-3">
+        <input
+          v-model="builderGlobalSearchQuery"
+          @input="runBuilderGlobalSearch"
+          type="text"
+          placeholder="Buscar épicas, tickets, subtareas, usuarios…"
+          class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
+        />
+      </div>
+
+      <div v-if="builderGlobalSearchLoading" class="mt-2 text-[11px] text-[var(--text-muted)]">Buscando coincidencias…</div>
+      <div v-else-if="hasBuilderGlobalSearchResults" class="mt-3 space-y-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)] p-2">
+        <div v-for="(items, groupName) in builderGlobalSearchResults" :key="groupName">
+          <div v-if="items.length" class="space-y-1.5">
+            <p class="px-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+              {{ builderGlobalSearchLabel(groupName) }}
+            </p>
+            <button
+              v-for="item in items.slice(0, 5)"
+              :key="`${groupName}-${item.id || item.title || item.name || item.email}`"
+              type="button"
+              @click="applyBuilderGlobalSearchResult(groupName, item)"
+              class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-left text-xs text-[var(--text-primary)] hover:border-[var(--teal)] hover:bg-[var(--teal)]/5"
+            >
+              <span class="font-medium">{{ builderGlobalSearchValue(groupName, item) }}</span>
+              <span v-if="builderGlobalSearchMeta(groupName, item)" class="ml-2 text-[var(--text-muted)]">{{ builderGlobalSearchMeta(groupName, item) }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
       <div>
         <p class="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Aplicaciones activas</p>
@@ -348,12 +395,50 @@
         <p v-if="tagError" class="mt-2 text-xs text-red-400">{{ tagError }}</p>
       </section>
 
-      <div class="mb-4">
+      <div class="mb-4 space-y-3">
         <input
           v-model="searchQuery"
           placeholder="Buscar tickets por título o estado…"
           class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none focus:border-[var(--teal)]"
         />
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-medium text-[var(--text-muted)]">Estado:</span>
+          <button
+            v-for="status in ['all', 'TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED', 'DONE']"
+            :key="status"
+            type="button"
+            @click="ticketStatusFilter = status as any"
+            :class="[
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+              ticketStatusFilter === status
+                ? 'bg-[var(--teal)] text-white'
+                : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
+            ]"
+          >
+            {{ status === 'all' ? 'Todos' : statusLabel(status) }}
+          </button>
+          <button v-if="ticketStatusFilter !== 'all'" type="button" @click="ticketStatusFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">Quitar</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-medium text-[var(--text-muted)]">Prioridad:</span>
+          <button
+            v-for="priority in ['all', 'LOW', 'MEDIUM', 'HIGH', 'URGENT']"
+            :key="priority"
+            type="button"
+            @click="ticketPriorityFilter = priority as any"
+            :class="[
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+              ticketPriorityFilter === priority
+                ? 'bg-[var(--teal)] text-white'
+                : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
+            ]"
+          >
+            {{ priority === 'all' ? 'Todas' : priorityLabel(priority) }}
+          </button>
+          <button v-if="ticketPriorityFilter !== 'all'" type="button" @click="ticketPriorityFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">Quitar</button>
+        </div>
         <!-- ============================================================ -->
         <!-- NEW-03: filtro por etiquetas con chips                        -->
         <!-- Es un botón que alterna: un click filtra y otro quita el      -->
@@ -361,7 +446,7 @@
         <!-- deseleccionar, así que no había forma evidente de volver a    -->
         <!-- ver todos los tickets).                                       -->
         <!-- ============================================================ -->
-        <div v-if="availableTags.length" class="mt-2 flex flex-wrap items-center gap-2">
+        <div v-if="availableTags.length" class="flex flex-wrap items-center gap-2">
           <span class="text-xs text-[var(--text-muted)]">Etiquetas:</span>
           <button
             v-for="tag in availableTags"
@@ -1085,6 +1170,11 @@ const ticketError = ref('')
 
 /** Texto de la consulta/búsqueda de tickets (título o estado) */
 const searchQuery = ref('')
+const ticketStatusFilter = ref<'all' | 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'>('all')
+const ticketPriorityFilter = ref<'all' | Priority>('all')
+const builderGlobalSearchQuery = ref('')
+const builderGlobalSearchResults = ref<Record<string, any[]>>({})
+const builderGlobalSearchLoading = ref(false)
 /** Usuarios del sistema para el combo "Asignado" (GET /api/users/, solo ADMIN) */
 const usersList = ref<User[]>([])
 /** Ticket cuyo formulario de edición está abierto */
@@ -1731,18 +1821,18 @@ const removeSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
 const visibleTickets = (epicId: string): Ticket[] => {
   const list = epicTickets.value[epicId] ?? []
   const q = searchQuery.value.trim().toLowerCase()
-  return list.filter(
-    (t) => {
-      const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
-      const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
-      return matchesQuery && matchesTags
-    }
-  )
+  return list.filter((t) => {
+    const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
+    const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
+    const matchesStatus = ticketStatusFilter.value === 'all' || t.status === ticketStatusFilter.value
+    const matchesPriority = ticketPriorityFilter.value === 'all' || t.priority === ticketPriorityFilter.value
+    return matchesQuery && matchesTags && matchesStatus && matchesPriority
+  })
 }
 
-/** ¿Hay algún filtro de tickets activo? (búsqueda por texto o etiquetas) */
+/** ¿Hay algún filtro de tickets activo? (búsqueda por texto, etiquetas, estado o prioridad) */
 const hasTicketFilters = computed(
-  (): boolean => !!searchQuery.value.trim() || tagFilterIds.value.length > 0
+  (): boolean => !!searchQuery.value.trim() || tagFilterIds.value.length > 0 || ticketStatusFilter.value !== 'all' || ticketPriorityFilter.value !== 'all'
 )
 
 /**
@@ -1772,6 +1862,66 @@ const toggleTagFilter = (tagId: string): void => {
 const clearTicketFilters = (): void => {
   searchQuery.value = ''
   tagFilterIds.value = []
+  ticketStatusFilter.value = 'all'
+  ticketPriorityFilter.value = 'all'
+}
+
+const runBuilderGlobalSearch = async (): Promise<void> => {
+  const query = builderGlobalSearchQuery.value.trim()
+  if (!query) {
+    builderGlobalSearchResults.value = {}
+    return
+  }
+
+  builderGlobalSearchLoading.value = true
+  try {
+    builderGlobalSearchResults.value = await api.tickets.globalSearch(query, 6)
+  } catch (err: any) {
+    console.error('Error en búsqueda global del builder:', err)
+    builderGlobalSearchResults.value = {}
+  } finally {
+    builderGlobalSearchLoading.value = false
+  }
+}
+
+const clearBuilderGlobalSearch = (): void => {
+  builderGlobalSearchQuery.value = ''
+  builderGlobalSearchResults.value = {}
+}
+
+const hasBuilderGlobalSearchResults = computed(() => Object.values(builderGlobalSearchResults.value).some((items) => items.length > 0))
+
+const builderGlobalSearchLabel = (group: string): string => ({
+  tickets: 'Tickets',
+  epics: 'Épicas',
+  subtasks: 'Subtareas',
+  projects: 'Proyectos',
+  documents: 'Documentos',
+  users: 'Usuarios'
+} as Record<string, string>)[group] ?? group
+
+const builderGlobalSearchValue = (group: string, item: any): string => {
+  if (group === 'users') return item.fullName || item.email || item.name || 'Usuario'
+  if (group === 'documents') return item.title || item.name || 'Documento'
+  if (group === 'projects' || group === 'applications') return item.name || item.title || 'Proyecto'
+  return item.title || item.name || item.fullName || item.email || 'Resultado'
+}
+
+const builderGlobalSearchMeta = (group: string, item: any): string => {
+  if (group === 'tickets') return item.status ? String(item.status).replace('_', ' ') : ''
+  if (group === 'epics') return item.applicationName || item.projectName || ''
+  if (group === 'users') return item.email || ''
+  if (group === 'subtasks') return item.status || item.ticketTitle || ''
+  return item.appName || item.projectName || item.owner || ''
+}
+
+const applyBuilderGlobalSearchResult = (group: string, item: any): void => {
+  const value = builderGlobalSearchValue(group, item)
+  if (value) {
+    searchQuery.value = value
+    builderGlobalSearchQuery.value = value
+  }
+  builderGlobalSearchResults.value = {}
 }
 
 const loadTags = async (): Promise<void> => {

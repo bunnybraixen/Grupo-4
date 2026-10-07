@@ -92,6 +92,8 @@ class Incident(Base):
     - comentarios (discusión del incidente)
     """
 
+    __allow_unmapped__ = True
+
     __tablename__ = "incidents"
 
     # Campo identificador único
@@ -285,44 +287,37 @@ class Incident(Base):
         Index(
             "idx_incident_category",
             "category",
-            doc="Índice para búsquedas rápidas por categoría"
         ),
         # Índice compuesto para filtrado por estado
         Index(
             "idx_incident_status",
             "status",
-            doc="Índice para búsquedas rápidas por estado"
         ),
         # Índice compuesto para filtrado por severidad
         Index(
             "idx_incident_severity",
             "severity",
-            doc="Índice para búsquedas rápidas por severidad"
         ),
         # Índice para búsquedas por asignado
         Index(
             "idx_incident_assignee_id",
             "assignee_id",
-            doc="Índice para listar incidentes por persona asignada"
         ),
         # Índice para búsquedas por aplicación
         Index(
             "idx_incident_application_id",
             "application_id",
-            doc="Índice para listar incidentes por aplicación"
         ),
         # Índice compuesto para listados típicos
         Index(
             "idx_incident_status_priority",
             "status",
             "priority_order",
-            doc="Índice para listados ordenados por estado y prioridad"
         ),
         # Índice para búsquedas por reporter
         Index(
             "idx_incident_reporter_id",
             "reporter_id",
-            doc="Índice para listar incidentes reportados por usuario"
         ),
     )
 
@@ -360,6 +355,8 @@ class IncidentComment(Base):
     agregar comentarios, notas y actualizaciones sobre el progreso.
     Mantiene relación con el incidente y el usuario que comenta.
     """
+
+    __allow_unmapped__ = True
 
     __tablename__ = "incident_comments"
 
@@ -415,19 +412,16 @@ class IncidentComment(Base):
         Index(
             "idx_incident_comment_incident_id",
             "incident_id",
-            doc="Índice para obtener comentarios de un incidente"
         ),
         # Índice para listar comentarios por usuario
         Index(
             "idx_incident_comment_user_id",
             "user_id",
-            doc="Índice para listar comentarios de un usuario"
         ),
         # Índice temporal para ordenamiento
         Index(
             "idx_incident_comment_created_at",
             "created_at",
-            doc="Índice para ordenar comentarios cronológicamente"
         ),
     )
 
