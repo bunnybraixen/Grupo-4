@@ -1933,6 +1933,148 @@ export const api = {
       const response = await apiClient.get<TicketSlaStatus>(`/sla/tickets/${ticketId}`)
       return response.data
     }
+  },
+
+  /**
+   * ========================================
+   * MÓDULO DE INCIDENTES
+   * ========================================
+   *
+   * Esta sección no existía: `api.incidents` era `undefined` y el store reventaba
+   * con "can't access property 'my', ...incidents is undefined".
+   * Los listados del backend responden `{ items, total, by_category, by_severity }`.
+   */
+  incidents: {
+    /** Listado general con filtros opcionales (category/severity/status/search/appId) */
+    list: async (params?: Record<string, unknown>): Promise<any> => {
+      const response = await apiClient.get('/incidents/', { params })
+      return response.data
+    },
+
+    /** Incidentes reportados o asignados al usuario actual */
+    my: async (): Promise<any> => {
+      const response = await apiClient.get('/incidents/my-incidents')
+      return response.data
+    },
+
+    /** Detalle de un incidente */
+    get: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.get(`/incidents/${incidentId}`)
+      return response.data
+    },
+
+    /** Crea un incidente (payload snake_case) */
+    create: async (payload: Record<string, unknown>): Promise<any> => {
+      const response = await apiClient.post('/incidents/', payload)
+      return response.data
+    },
+
+    /** Actualización parcial (título, descripción, severidad, estado, ...) */
+    update: async (incidentId: string, payload: Record<string, unknown>): Promise<any> => {
+      const response = await apiClient.put(`/incidents/${incidentId}`, payload)
+      return response.data
+    },
+
+    /** Cambia el estado usando el mismo PUT del backend */
+    updateStatus: async (incidentId: string, status: string): Promise<any> => {
+      const response = await apiClient.put(`/incidents/${incidentId}`, { status })
+      return response.data
+    },
+
+    /** Asigna el incidente a un usuario */
+    assign: async (incidentId: string, assigneeId: string, reason?: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/assign`, {
+        assignee_id: assigneeId,
+        reason
+      })
+      return response.data
+    },
+
+    /** Quita la asignación */
+    unassign: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/unassign`)
+      return response.data
+    },
+
+    /** Estado → IN_PROGRESS */
+    start: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/start`)
+      return response.data
+    },
+
+    /** Estado → UNDER_REVIEW */
+    review: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/review`)
+      return response.data
+    },
+
+    /** Estado → RESOLVED con notas */
+    resolve: async (
+      incidentId: string,
+      resolutionNotes: string,
+      fixedInVersion?: string
+    ): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/resolve`, {
+        resolution_notes: resolutionNotes,
+        fixed_in_version: fixedInVersion
+      })
+      return response.data
+    },
+
+    /** Estado → CLOSED */
+    close: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/close`)
+      return response.data
+    },
+
+    /** Estado → REOPENED */
+    reopen: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/reopen`)
+      return response.data
+    },
+
+    /** Orden de prioridad (drag & drop) */
+    updatePriority: async (incidentId: string, newPriorityOrder: number): Promise<any> => {
+      const response = await apiClient.patch(
+        `/incidents/${incidentId}/priority?new_priority=${newPriorityOrder}`
+      )
+      return response.data
+    },
+
+    /** Elimina un incidente (solo ADMIN) */
+    remove: async (incidentId: string): Promise<void> => {
+      await apiClient.delete(`/incidents/${incidentId}`)
+    },
+
+    /** Comentarios de un incidente */
+    comments: async (incidentId: string): Promise<any> => {
+      const response = await apiClient.get(`/incidents/${incidentId}/comments`)
+      return response.data
+    },
+
+    /** Agrega un comentario */
+    addComment: async (incidentId: string, content: string): Promise<any> => {
+      const response = await apiClient.post(`/incidents/${incidentId}/comments`, { content })
+      return response.data
+    },
+
+    /** Incidentes de una aplicación agrupados por categoría */
+    byApp: async (appId: string): Promise<any> => {
+      const response = await apiClient.get(`/incidents/by-app/${appId}`)
+      return response.data
+    },
+
+    /** Incidentes agrupados por usuario asignado */
+    byTeam: async (): Promise<any> => {
+      const response = await apiClient.get('/incidents/by-team')
+      return response.data
+    },
+
+    /** Métricas del dashboard de incidentes */
+    dashboard: async (): Promise<any> => {
+      const response = await apiClient.get('/incidents/dashboard/stats')
+      return response.data
+    }
   }
 }
 

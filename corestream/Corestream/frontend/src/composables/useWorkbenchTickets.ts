@@ -23,6 +23,7 @@ export function useWorkbenchTickets() {
     searchQuery,
     priorityFilter,
     assigneeFilterIds,
+    sprintFilterId,
     sortBy,
     sortOrder,
     tagFilterIds,
@@ -45,7 +46,8 @@ export function useWorkbenchTickets() {
     store.setSearchQuery('')
     store.setPriorityFilter('all')
     store.setAssigneeFilterIds([])
-    store.setSort('createdAt', 'desc')
+    store.setSprintFilterId('')
+    store.setSort('default', 'desc')
     store.setTagFilterIds([])
     refresh()
   })
@@ -60,6 +62,7 @@ export function useWorkbenchTickets() {
     searchQuery,
     priorityFilter,
     assigneeFilterIds,
+    sprintFilterId,
     sortBy,
     sortOrder,
     /** NEW-03: IDs de las etiquetas seleccionadas como filtro */
@@ -71,6 +74,7 @@ export function useWorkbenchTickets() {
     setSearchQuery: store.setSearchQuery,
     setPriorityFilter: store.setPriorityFilter,
     setAssigneeFilterIds: store.setAssigneeFilterIds,
+    setSprintFilterId: store.setSprintFilterId,
     setSort: store.setSort,
     /** NEW-03: cambia el filtro de etiquetas */
     setTagFilterIds: store.setTagFilterIds,

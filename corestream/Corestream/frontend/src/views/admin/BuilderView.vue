@@ -113,7 +113,7 @@
 
       <button
         v-if="canManageApplications"
-        @click="showNewApp = !showNewApp"
+        @click="openNewApp"
         class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)] hover:bg-[var(--teal-90)]"
       >
         + Nueva aplicación
@@ -314,11 +314,12 @@
     </div>
 
     <!-- Formulario nueva aplicación -->
-    <div v-if="showNewApp" class="mt-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--teal)]/50">
+    <div v-if="showNewApp" id="new-app-form" class="mt-6 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--teal)]/50">
       <input
+        ref="newAppNameInput"
         v-model="newAppName"
         placeholder="Nombre de la aplicación…"
-        class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 mb-3 outline-none"
+        class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2 mb-3 outline-none focus:border-[var(--teal)]"
       />
       <textarea
         v-model="newAppDescription"
@@ -395,12 +396,39 @@
         <p v-if="tagError" class="mt-2 text-xs text-red-400">{{ tagError }}</p>
       </section>
 
-      <div class="mb-4 space-y-3">
+      <div id="builder-ticket-filters" class="mb-4 space-y-3">
         <input
           v-model="searchQuery"
-          placeholder="Buscar tickets por título o estado…"
+          placeholder="Buscar tickets por título, descripción o estado…"
           class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none focus:border-[var(--teal)]"
         />
+
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+            <span>Responsable</span>
+            <select v-model="ticketAssigneeFilter" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
+              <option value="">Todos</option>
+              <option v-for="user in usersList" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+            <span>Sprint</span>
+            <select v-model="ticketSprintFilter" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
+              <option value="">Todos</option>
+              <option v-for="sprint in selectedAppSprints" :key="sprint.id" :value="sprint.id">{{ sprint.name }}</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+            <span>Ordenar por</span>
+            <select v-model="ticketSortBy" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
+              <option value="default">Orden por defecto</option>
+              <option value="status">Estado</option>
+              <option value="priority">Prioridad</option>
+              <option value="title">Nombre alfabético</option>
+              <option value="progress">Avance</option>
+            </select>
+          </label>
+        </div>
 
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-medium text-[var(--text-muted)]">Estado:</span>
@@ -1087,7 +1115,7 @@
  * BuilderView (Admin) - WEB-08
  * Creación de aplicaciones -> épicas -> tickets y avance básico de estado.
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
@@ -1099,6 +1127,7 @@ import TicketHistory from '@/components/shared/TicketHistory.vue'
 import SprintPlannerPanel from '@/components/builder/SprintPlannerPanel.vue'
 import SlaSettingsPanel from '@/components/builder/SlaSettingsPanel.vue'
 import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Tag } from '@/types'
+import type { Sprint } from '@/types/sprint'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -1120,6 +1149,7 @@ const showNewApp = ref(false)
 const newAppName = ref('')
 const newAppDescription = ref('')
 const newAppTeamId = ref('')
+const newAppNameInput = ref<HTMLInputElement | null>(null)
 const appError = ref('')
 const editingAppId = ref<string | null>(null)
 const editAppForm = ref({ name: '', description: '', teamId: '', isArchived: false })
@@ -1172,6 +1202,10 @@ const ticketError = ref('')
 const searchQuery = ref('')
 const ticketStatusFilter = ref<'all' | 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'>('all')
 const ticketPriorityFilter = ref<'all' | Priority>('all')
+const ticketAssigneeFilter = ref('')
+const ticketSprintFilter = ref('')
+const ticketSortBy = ref<'default' | 'status' | 'priority' | 'title' | 'progress'>('default')
+const selectedAppSprints = ref<Sprint[]>([])
 const builderGlobalSearchQuery = ref('')
 const builderGlobalSearchResults = ref<Record<string, any[]>>({})
 const builderGlobalSearchLoading = ref(false)
@@ -1361,7 +1395,18 @@ const onSprintRefresh = async (epicIds: string[]): Promise<void> => {
 const selectApplication = async (appId: string): Promise<void> => {
   selectedAppId.value = appId
   showNewEpic.value = false
-  await fetchEpics()
+  ticketSprintFilter.value = ''
+  await Promise.all([fetchEpics(), loadUsers(), loadSprintsForApplication(appId)])
+}
+
+const loadSprintsForApplication = async (appId: string): Promise<void> => {
+  selectedAppSprints.value = []
+  if (!appId) return
+  try {
+    selectedAppSprints.value = await api.sprints.list({ applicationId: appId })
+  } catch (err) {
+    console.error('Error cargando sprints de la aplicación:', err)
+  }
 }
 
 const openEpicCreatorFor = (appId: string): void => {
@@ -1596,6 +1641,15 @@ const toggleAppArchive = async (app: { id: string; isActive?: boolean }): Promis
   }
 }
 
+const openNewApp = async (): Promise<void> => {
+  showNewApp.value = true
+  await nextTick()
+  const el = document.getElementById('new-app-form')
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  await nextTick()
+  newAppNameInput.value?.focus()
+}
+
 const createApp = async (): Promise<void> => {
   working.value = true
   appError.value = ''
@@ -1821,18 +1875,37 @@ const removeSubtask = async (ticket: Ticket, sub: Subtask): Promise<void> => {
 const visibleTickets = (epicId: string): Ticket[] => {
   const list = epicTickets.value[epicId] ?? []
   const q = searchQuery.value.trim().toLowerCase()
-  return list.filter((t) => {
-    const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
+  const filtered = list.filter((t) => {
+    const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
     const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
     const matchesStatus = ticketStatusFilter.value === 'all' || t.status === ticketStatusFilter.value
     const matchesPriority = ticketPriorityFilter.value === 'all' || t.priority === ticketPriorityFilter.value
-    return matchesQuery && matchesTags && matchesStatus && matchesPriority
+    const matchesAssignee = !ticketAssigneeFilter.value || t.assigneeId === ticketAssigneeFilter.value
+    const matchesSprint = !ticketSprintFilter.value || t.sprintId === ticketSprintFilter.value
+    return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint
   })
+  if (ticketSortBy.value === 'priority') {
+    const priorityOrder: Record<string, number> = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+    return filtered.sort((a, b) => (priorityOrder[b.priority] ?? 0) - (priorityOrder[a.priority] ?? 0))
+  }
+  if (ticketSortBy.value === 'status') {
+    const statusOrder: Record<string, number> = { TODO: 1, IN_PROGRESS: 2, BLOCKED: 3, REDIRECTED: 4, DONE: 5 }
+    return filtered.sort((a, b) => (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0))
+  }
+  if (ticketSortBy.value === 'title') return filtered.sort((a, b) => a.title.localeCompare(b.title))
+  if (ticketSortBy.value === 'progress') return filtered.sort((a, b) => ticketProgress(b) - ticketProgress(a))
+  return filtered.sort((a, b) => a.orderIndex - b.orderIndex)
+}
+
+const ticketProgress = (ticket: Ticket): number => {
+  const subtasks = ticket.subtasks ?? []
+  if (!subtasks.length) return ticket.status === 'DONE' ? 100 : 0
+  return Math.round((subtasks.filter((subtask) => subtask.isCompleted).length / subtasks.length) * 100)
 }
 
 /** ¿Hay algún filtro de tickets activo? (búsqueda por texto, etiquetas, estado o prioridad) */
 const hasTicketFilters = computed(
-  (): boolean => !!searchQuery.value.trim() || tagFilterIds.value.length > 0 || ticketStatusFilter.value !== 'all' || ticketPriorityFilter.value !== 'all'
+  (): boolean => !!searchQuery.value.trim() || tagFilterIds.value.length > 0 || ticketStatusFilter.value !== 'all' || ticketPriorityFilter.value !== 'all' || !!ticketAssigneeFilter.value || !!ticketSprintFilter.value
 )
 
 /**
@@ -1864,6 +1937,8 @@ const clearTicketFilters = (): void => {
   tagFilterIds.value = []
   ticketStatusFilter.value = 'all'
   ticketPriorityFilter.value = 'all'
+  ticketAssigneeFilter.value = ''
+  ticketSprintFilter.value = ''
 }
 
 const runBuilderGlobalSearch = async (): Promise<void> => {
@@ -1901,21 +1976,35 @@ const builderGlobalSearchLabel = (group: string): string => ({
 } as Record<string, string>)[group] ?? group
 
 const builderGlobalSearchValue = (group: string, item: any): string => {
-  if (group === 'users') return item.fullName || item.email || item.name || 'Usuario'
+  if (group === 'users') return item.subtitle || item.email || item.title || 'Usuario'
   if (group === 'documents') return item.title || item.name || 'Documento'
-  if (group === 'projects' || group === 'applications') return item.name || item.title || 'Proyecto'
+  if (group === 'projects' || group === 'applications') return item.title || item.name || 'Proyecto'
   return item.title || item.name || item.fullName || item.email || 'Resultado'
 }
 
 const builderGlobalSearchMeta = (group: string, item: any): string => {
   if (group === 'tickets') return item.status ? String(item.status).replace('_', ' ') : ''
-  if (group === 'epics') return item.applicationName || item.projectName || ''
-  if (group === 'users') return item.email || ''
+  if (group === 'epics') return item.applicationName || item.projectName || item.subtitle || ''
+  if (group === 'users') return item.title || item.fullName || ''
   if (group === 'subtasks') return item.status || item.ticketTitle || ''
-  return item.appName || item.projectName || item.owner || ''
+  return item.subtitle || item.appName || item.projectName || item.owner || ''
 }
 
-const applyBuilderGlobalSearchResult = (group: string, item: any): void => {
+const applyBuilderGlobalSearchResult = async (group: string, item: any): Promise<void> => {
+  if (group === 'projects' || group === 'applications') {
+    if (activeApplications.value.some((app) => app.id === item.id)) {
+      await selectApplication(item.id)
+      document.getElementById('builder-ticket-filters')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    builderGlobalSearchResults.value = {}
+    return
+  }
+  if (group === 'users' && item.id) {
+    ticketAssigneeFilter.value = item.id
+    document.getElementById('builder-ticket-filters')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    builderGlobalSearchResults.value = {}
+    return
+  }
   const value = builderGlobalSearchValue(group, item)
   if (value) {
     searchQuery.value = value
@@ -2372,7 +2461,7 @@ onMounted(async () => {
     const firstActiveApp = activeApplications.value[0]
     if (firstActiveApp) {
       selectedAppId.value = firstActiveApp.id
-      await fetchEpics()
+      await Promise.all([fetchEpics(), loadUsers(), loadSprintsForApplication(firstActiveApp.id)])
     }
   } catch (err) {
     console.error('Error cargando datos del builder:', err)

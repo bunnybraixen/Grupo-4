@@ -57,13 +57,11 @@ class UserUpdate(BaseModel):
     """
     Esquema para actualizar datos de un usuario existente.
     Todos los campos son opcionales para permitir actualizaciones parciales.
-    
-    Atributos:
-        full_name: Nuevo nombre completo (opcional)
-        specialty: Nueva especialidad (opcional)
-        avatar_url: URL de la imagen de perfil (opcional)
     """
     full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
     specialty: Optional[str] = None
     avatar_url: Optional[str] = None
 

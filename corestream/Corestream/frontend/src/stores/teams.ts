@@ -234,25 +234,29 @@ export const useTeamsStore = defineStore('teams', () => {
     return updated
   }
 
-  const deleteTeam = (id: string) => {
-    teams.value = teams.value.filter((t) => t.id !== id)
-    // Limpiar asignaciones de proyectos a este equipo
-    for (const appId in appTeams.value) {
-      if (appTeams.value[appId] === id) {
-        delete appTeams.value[appId]
+  const deleteTeam = async (id: string) => {
+    const removeLocal = () => {
+      teams.value = teams.value.filter((t) => t.id !== id)
+      // Limpiar asignaciones de proyectos a este equipo
+      for (const appId in appTeams.value) {
+        if (appTeams.value[appId] === id) {
+          delete appTeams.value[appId]
+        }
       }
+      saveToStorage()
     }
-    saveToStorage()
 
-    // Borrar también en el backend (los ids `team-...` aún no existen allí).
-    void (async () => {
-      if (!hasSession() || id.startsWith('team-')) return
-      try {
-        await api.teams.remove(id)
-      } catch (err) {
-        console.error('No se pudo eliminar el equipo en el backend:', err)
-      }
-    })()
+    // Los ids `team-...` solo existen en localStorage: basta con quitarlos de la caché.
+    if (!hasSession() || id.startsWith('team-')) {
+      removeLocal()
+      return
+    }
+
+    // Primero el backend (fuente de verdad). Antes el error iba solo al
+    // console y, como `refreshFromServer()` vuelve a traer la lista del
+    // servidor, el equipo reaparecía sin ningún mensaje en la UI.
+    await api.teams.remove(id)
+    removeLocal()
   }
 
   const assignTeamToApp = (appId: string, teamId: string | null) => {

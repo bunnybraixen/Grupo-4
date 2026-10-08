@@ -18,18 +18,26 @@ en la consola del navegador, ejecuta:
   console.log('STATUS:', res.status);
   console.log('BODY:', await res.text());
 })();
+
+
 Si devuelve 201 o 200, perfecto. No hagas login todavía.
 Después vuelve a PowerShell:
+
 docker compose exec postgres psql -U corestream -d corestream
+
 Y comprueba:
+
 SELECT id, email, full_name, role, is_active
 FROM users
 WHERE email = 'admin@corestream.com';
+
 Probablemente aparecerá como DEVELOPER, porque el registro normal seguramente asigna ese rol por defecto.
+
 Entonces ejecutamos:
 UPDATE users
 SET role = 'ADMIN'
 WHERE email = 'admin@corestream.com';
+
 Y verificamos:
 SELECT id, email, full_name, role, is_active
 FROM users
@@ -38,8 +46,11 @@ Queremos obtener algo así:
 admin@corestream.com | Administrador | ADMIN | t
 Después:
 \q
+
+
 Finalmente, inicia sesión como ADMIN
 En el navegador:
+
 (async () => {
   const email = 'admin@corestream.com';
   const password = 'AdminPassword123!';

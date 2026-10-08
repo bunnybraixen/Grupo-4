@@ -1852,6 +1852,59 @@ async def accept_redirected_ticket(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aceptar ticket: {exc}") from exc
 
 
+@router.post("/{ticket_id}/reject-redirect", response_model=TicketResponse)
+async def reject_redirected_ticket(
+    ticket_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketResponse:
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
+    if ticket.status != TicketStatus.REDIRECTED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El ticket no está esperando aceptación")
+    if str(ticket.assignee_id) != get_user_id(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo el nuevo responsable puede rechazar el ticket")
+
+    redirect_event = (await db.execute(
+        select(TicketEvent)
+        .where(TicketEvent.ticket_id == ticket_id, TicketEvent.event_type == TicketEventType.REDIRECTED)
+        .order_by(TicketEvent.created_at.desc())
+        .limit(1)
+    )).scalars().first()
+    if not redirect_event or not redirect_event.from_user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se encontró el responsable anterior")
+
+    now = datetime.now(timezone.utc)
+    previous_status = (redirect_event.detail or {}).get("from_status", "IN_PROGRESS")
+    try:
+        ticket.status = TicketStatus(previous_status)
+    except ValueError:
+        ticket.status = TicketStatus.IN_PROGRESS
+    ticket.assignee_id = redirect_event.from_user_id
+    ticket.timer_started_at = now if ticket.status == TicketStatus.IN_PROGRESS else None
+    ticket.blocked_timer_started_at = now if ticket.status == TicketStatus.BLOCKED else None
+    db.add(TicketEvent(
+        ticket_id=ticket_id,
+        user_id=UUID(get_user_id(current_user)),
+        event_type=TicketEventType.STATUS_CHANGED,
+        detail={
+            "from_status": "REDIRECTED",
+            "to_status": ticket.status.value,
+            "action": "REJECT_REDIRECT",
+            "recorded_at": now.isoformat(),
+        },
+    ))
+    try:
+        await db.commit()
+        await db.refresh(ticket)
+        return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al rechazar la redirección: {exc}") from exc
+
+
 @router.get("/redirect-candidates/list")
 async def get_redirect_candidates(
     current_user: User = Depends(get_current_user),

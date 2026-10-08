@@ -24,7 +24,10 @@ export interface Incident {
   updatedAt?: string | null
   mitigationState?: string
   applicationId?: string | null
+  applicationName?: string | null
+  assignee?: { id: string; fullName?: string; email?: string } | null
   createdAt?: string | null
+  resolutionNotes?: string | null
 }
 
 export interface IncidentFilters {

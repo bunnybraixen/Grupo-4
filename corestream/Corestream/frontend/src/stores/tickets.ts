@@ -32,7 +32,7 @@ type StatusFilter = 'all' | 'todo' | 'in_progress' | 'blocked' | 'redirected' | 
 type DateFilter = 'all' | 'overdue' | 'today' | 'week' | 'later'
 type PriorityFilter = 'all' | TicketPriority
 
-type TicketSortBy = 'createdAt' | 'dueDate' | 'priority' | 'status' | 'title'
+type TicketSortBy = 'default' | 'createdAt' | 'dueDate' | 'priority' | 'status' | 'title' | 'progress'
 type TicketSortOrder = 'asc' | 'desc'
 
 interface TicketFilters {
@@ -78,6 +78,9 @@ export const useTicketsStore = defineStore('tickets', () => {
 
   /** IDs de responsables seleccionados */
   const assigneeFilterIds = ref<string[]>([])
+
+  /** ID del Sprint seleccionado en el Workbench */
+  const sprintFilterId = ref('')
 
   /** Orden de resultados */
   const sortBy = ref<TicketSortBy>('createdAt')
@@ -142,6 +145,10 @@ export const useTicketsStore = defineStore('tickets', () => {
       )
     }
 
+    if (sprintFilterId.value) {
+      result = result.filter(ticket => ticket.sprintId === sprintFilterId.value)
+    }
+
     // Aplicar filtro de estado
     if (statusFilter.value !== 'all') {
       result = result.filter(ticket => {
@@ -195,12 +202,23 @@ export const useTicketsStore = defineStore('tickets', () => {
       )
     }
 
+    if (sortBy.value === 'default') return result
+
     const direction = sortOrder.value === 'asc' ? 1 : -1
     result.sort((a, b) => {
       const valueA = a[sortBy.value === 'createdAt' ? 'createdAt' : sortBy.value === 'dueDate' ? 'dueDate' :
         sortBy.value === 'priority' ? 'priority' : sortBy.value === 'status' ? 'status' : 'title'] as any
       const valueB = b[sortBy.value === 'createdAt' ? 'createdAt' : sortBy.value === 'dueDate' ? 'dueDate' :
         sortBy.value === 'priority' ? 'priority' : sortBy.value === 'status' ? 'status' : 'title'] as any
+
+      if (sortBy.value === 'progress') {
+        const progress = (ticket: Ticket): number => {
+          const subtasks = ticket.subtasks ?? []
+          if (!subtasks.length) return ticket.status === TicketStatus.DONE ? 100 : 0
+          return (subtasks.filter(subtask => subtask.isCompleted).length / subtasks.length) * 100
+        }
+        return (progress(a) - progress(b)) * direction
+      }
 
       if (sortBy.value === 'priority') {
         const order = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
@@ -938,6 +956,10 @@ export const useTicketsStore = defineStore('tickets', () => {
     assigneeFilterIds.value = [...ids]
   }
 
+  const setSprintFilterId = (sprintId: string): void => {
+    sprintFilterId.value = sprintId
+  }
+
   const setSort = (field: TicketSortBy, order: TicketSortOrder = 'desc'): void => {
     sortBy.value = field
     sortOrder.value = order
@@ -982,6 +1004,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     searchQuery,
     priorityFilter,
     assigneeFilterIds,
+    sprintFilterId,
     sortBy,
     sortOrder,
     tagFilterIds,
@@ -1025,6 +1048,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     setSearchQuery,
     setPriorityFilter,
     setAssigneeFilterIds,
+    setSprintFilterId,
     setSort,
     setTagFilterIds,
     clear,

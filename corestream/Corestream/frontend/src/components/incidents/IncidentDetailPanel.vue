@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Incident } from '@/types/incidents'
 
 const props = defineProps<{ incident: Incident | null }>()
 const emit = defineEmits(['close', 'update-status', 'assign', 'resolve', 'add-comment'])
+const resolutionNotes = ref('')
 </script>
 
 <template>
@@ -43,9 +45,16 @@ const emit = defineEmits(['close', 'update-status', 'assign', 'resolve', 'add-co
         @click="emit('update-status', incident.id, 'IN_PROGRESS')"
       >Marcar en progreso</button>
       <button
-        class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm"
-        @click="emit('resolve', incident.id)"
+        class="px-3 py-2 rounded-lg bg-green-600 text-white text-sm disabled:opacity-50"
+        :disabled="!resolutionNotes.trim()"
+        @click="emit('resolve', incident.id, resolutionNotes.trim()); resolutionNotes = ''"
       >Resolver</button>
     </div>
+    <textarea
+      v-model="resolutionNotes"
+      rows="3"
+      placeholder="Notas de resolución requeridas..."
+      class="mt-3 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+    />
   </aside>
 </template>

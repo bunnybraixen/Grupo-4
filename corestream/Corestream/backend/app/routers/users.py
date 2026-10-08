@@ -7,6 +7,7 @@ Proporciona endpoints para:
 - Obtener estadísticas y métricas de usuarios individuales
 """
 
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -80,23 +81,12 @@ async def list_users(
     description="Recupera los detalles de un usuario específico"
 )
 async def get_user(
-    user_id: int,
+    user_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Obtiene los detalles de un usuario específico.
-
-    Args:
-        user_id (int): ID del usuario a obtener
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        UserResponse: Datos del usuario solicitado
-
-    Raises:
-        HTTPException: Si el usuario no existe (estado 404)
     """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -117,25 +107,13 @@ async def get_user(
     description="Modifica los datos de un usuario (requiere permisos de ADMIN)"
 )
 async def update_user(
-    user_id: int,
+    user_id: UUID,
     user_update: UserUpdate,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Actualiza los datos de un usuario específico.
-
-    Args:
-        user_id (int): ID del usuario a actualizar
-        user_update (UserUpdate): Nuevos datos del usuario
-        current_user (User): Usuario autenticado con rol ADMIN
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        UserResponse: Usuario actualizado
-
-    Raises:
-        HTTPException: Si el usuario no existe (404) o hay error en actualización (400)
     """
     # Buscar el usuario a actualizar
     result = await db.execute(select(User).where(User.id == user_id))
@@ -150,6 +128,11 @@ async def update_user(
     try:
         # Aplicar cambios únicamente a campos proporcionados
         update_data = user_update.dict(exclude_unset=True)
+        if "password" in update_data and update_data["password"]:
+            from app.services.auth_service import AuthService
+            user.hashed_password = AuthService._hash_password(update_data.pop("password"))
+        if "role" in update_data and update_data["role"]:
+            user.role = UserRole(update_data.pop("role"))
         for field, value in update_data.items():
             setattr(user, field, value)
 
@@ -173,7 +156,7 @@ async def update_user(
     description="Marca un usuario como inactivo o lo elimina del sistema"
 )
 async def delete_user(
-    user_id: int,
+    user_id: UUID,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
 ) -> None:
@@ -227,23 +210,12 @@ async def delete_user(
     description="Asciende a un usuario a rol de TEAM_LEADER (requiere ADMIN)"
 )
 async def promote_user(
-    user_id: int,
+    user_id: UUID,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Promueve un usuario regular a líder de equipo.
-
-    Args:
-        user_id (int): ID del usuario a promover
-        current_user (User): Usuario autenticado con rol ADMIN
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        UserResponse: Usuario con nuevo rol actualizado
-
-    Raises:
-        HTTPException: Si el usuario no existe (404) o ya es líder (400)
     """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -276,29 +248,52 @@ async def promote_user(
 
 
 @router.post(
+    "/{user_id}/change-role",
+    response_model=UserResponse,
+    summary="Cambiar rol de usuario",
+    description="Actualiza el rol de un usuario (requiere ADMIN)"
+)
+async def change_role(
+    user_id: UUID,
+    role_data: dict,
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db)
+) -> UserResponse:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Usuario con ID {user_id} no encontrado"
+        )
+    new_role = role_data.get("role")
+    if new_role:
+        try:
+            user.role = UserRole(new_role)
+            await db.commit()
+            await db.refresh(user)
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Rol inválido: {str(e)}"
+            )
+    return UserResponse.from_orm(user)
+
+
+@router.post(
     "/{user_id}/demote",
     response_model=UserResponse,
     summary="Degradar usuario de líder",
     description="Reduce el rol de un líder de equipo a usuario regular (requiere ADMIN)"
 )
 async def demote_user(
-    user_id: int,
+    user_id: UUID,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
     """
     Degrada un líder de equipo a usuario regular.
-
-    Args:
-        user_id (int): ID del usuario a degradar
-        current_user (User): Usuario autenticado con rol ADMIN
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        UserResponse: Usuario con rol actualizado
-
-    Raises:
-        HTTPException: Si el usuario no existe (404) o no es líder (400)
     """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -316,7 +311,7 @@ async def demote_user(
         )
 
     try:
-        user.role = UserRole.USER
+        user.role = UserRole.DEVELOPER
         await db.commit()
         await db.refresh(user)
 
@@ -336,7 +331,7 @@ async def demote_user(
     description="Retorna métricas de desempeño y actividad del usuario"
 )
 async def get_user_stats(
-    user_id: int,
+    user_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:

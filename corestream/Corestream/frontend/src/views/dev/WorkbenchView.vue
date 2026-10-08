@@ -41,7 +41,7 @@
       v-if="isDeveloper"
       class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm"
     >
-      <WorkbenchDashboard />
+      <WorkbenchDashboard @select-application="selectAppFromSearch" />
     </div>
 
     <!-- Proyectos Asignados a mi Equipo -->
@@ -529,6 +529,12 @@ const selectApp = async (appId: string) => {
   if (selectedAppId.value) {
     await loadAppMetrics(selectedAppId.value)
   }
+}
+
+const selectAppFromSearch = async (appId: string) => {
+  selectedAppId.value = appId
+  ticketError.value = ''
+  await loadAppMetrics(appId)
 }
 
 const loadAppMetrics = async (appId: string) => {

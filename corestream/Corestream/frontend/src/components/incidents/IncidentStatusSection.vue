@@ -8,6 +8,7 @@ const props = defineProps<{
   dotClass?: string
   headerClass?: string
   defaultOpen?: boolean
+  canResolve?: boolean
 }>()
 
 const emit = defineEmits(['select', 'action'])
@@ -29,6 +30,7 @@ const emit = defineEmits(['select', 'action'])
       <div
         v-for="incident in incidents"
         :key="incident.id"
+        :id="`incident-${incident.id}`"
         class="cursor-pointer rounded-lg border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:hover:border-blue-600 dark:hover:bg-slate-800"
         @click="emit('select', incident)"
       >
@@ -37,6 +39,12 @@ const emit = defineEmits(['select', 'action'])
           <span class="text-xs uppercase text-slate-500">{{ incident.severity }}</span>
         </div>
         <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ incident.status }}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button v-if="incident.status === 'OPEN' || incident.status === 'REOPENED'" type="button" class="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white" @click.stop="emit('action', incident.id, 'start')">Iniciar</button>
+          <button v-if="incident.status === 'IN_PROGRESS'" type="button" class="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white" @click.stop="emit('action', incident.id, 'review')">Enviar a revisión</button>
+          <button v-if="incident.status === 'UNDER_REVIEW' && canResolve" type="button" class="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white" @click.stop="emit('action', incident.id, 'resolve')">Resolver</button>
+          <button v-if="incident.status === 'RESOLVED' || incident.status === 'CLOSED'" type="button" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:text-slate-200" @click.stop="emit('action', incident.id, 'reopen')">Reabrir</button>
+        </div>
       </div>
     </div>
   </section>

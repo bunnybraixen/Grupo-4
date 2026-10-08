@@ -11,14 +11,17 @@ Fecha: 2026
 
 from typing import Optional, List
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.core.dependencies import require_role
 from app.models.user import User, UserRole
+from app.schemas.user import TokenPayload
 from app.schemas.incident import (
     IncidentCreate,
     IncidentUpdate,
@@ -41,9 +44,6 @@ from app.services.incident_service import IncidentService
 router = APIRouter(
     prefix="/incidents",
     tags=["Incidentes"],
-    doc_extra={
-        "description": "Endpoints para gestión completa de tickets de incidentes en aplicaciones"
-    }
 )
 
 
@@ -64,6 +64,34 @@ async def get_incident_service(db: AsyncSession = Depends(get_db)) -> IncidentSe
     return IncidentService(db)
 
 
+async def get_current_db_user(
+    token: TokenPayload = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Devuelve el usuario real de la base de datos para el JWT actual.
+
+    `get_current_user` solo devuelve el payload del token (sub/role/exp), sin
+    `id` ni `email`; los endpoints de incidentes necesitan el ORM `User`.
+    """
+    try:
+        user_uuid = UUID(str(token.sub))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido: subject inválido",
+        )
+    user = (
+        await db.execute(select(User).where(User.id == user_uuid))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido: usuario no encontrado",
+        )
+    return user
+
+
 # ============================================================================
 # ENDPOINTS CRUD - CREAR, LISTAR, OBTENER, ACTUALIZAR, ELIMINAR
 # ============================================================================
@@ -77,7 +105,7 @@ async def get_incident_service(db: AsyncSession = Depends(get_db)) -> IncidentSe
 )
 async def create_incident(
     incident_data: IncidentCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -122,7 +150,7 @@ async def list_incidents(
     assignee_id: Optional[str] = Query(None, description="Filtrar por asignado"),
     app_id: Optional[str] = Query(None, description="Filtrar por aplicación"),
     search: Optional[str] = Query(None, description="Búsqueda por título/descripción"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentListResponse:
@@ -170,7 +198,7 @@ async def list_incidents(
 )
 async def get_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -207,7 +235,7 @@ async def get_incident(
 async def update_incident(
     incident_id: str = Path(..., description="ID del incidente"),
     incident_data: IncidentUpdate = ...,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -237,9 +265,9 @@ async def update_incident(
             detail=f"Incidente con ID {incident_id} no encontrado"
         )
 
-    # Validar permisos: reportero, asignado o admin
-    if (current_user.id != incident.reporter_id and
-        current_user.id != incident.assignee_id and
+    # Validar permisos: reportero, asignado o admin (ids UUID -> str)
+    if (str(current_user.id) != str(incident.reporter_id) and
+        str(current_user.id) != str(incident.assignee_id) and
         current_user.role != UserRole.ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -260,7 +288,7 @@ async def update_incident(
 )
 async def delete_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     _: None = Depends(require_role(UserRole.ADMIN)),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
@@ -301,7 +329,7 @@ async def delete_incident(
 async def assign_incident(
     incident_id: str = Path(..., description="ID del incidente"),
     reassign_data: IncidentReassign = ...,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -348,7 +376,7 @@ async def assign_incident(
 )
 async def unassign_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -390,7 +418,7 @@ async def unassign_incident(
 )
 async def start_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -423,7 +451,7 @@ async def start_incident(
 )
 async def review_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -457,7 +485,7 @@ async def review_incident(
 async def resolve_incident(
     incident_id: str = Path(..., description="ID del incidente"),
     resolve_data: IncidentResolve = ...,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -495,7 +523,7 @@ async def resolve_incident(
 )
 async def close_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -528,7 +556,7 @@ async def close_incident(
 )
 async def reopen_incident(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -566,7 +594,7 @@ async def reopen_incident(
 async def update_priority(
     incident_id: str = Path(..., description="ID del incidente"),
     new_priority: int = Query(..., description="Nuevo orden de prioridad"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentResponse:
@@ -605,7 +633,7 @@ async def update_priority(
 )
 async def get_incident_comments(
     incident_id: str = Path(..., description="ID del incidente"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> List[IncidentCommentResponse]:
@@ -637,7 +665,7 @@ async def get_incident_comments(
 async def add_comment(
     incident_id: str = Path(..., description="ID del incidente"),
     comment_data: IncidentCommentCreate = ...,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentCommentResponse:
@@ -687,7 +715,7 @@ async def add_comment(
 )
 async def get_incidents_by_app(
     app_id: str = Path(..., description="ID de la aplicación"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> List[ByCategoryResponse]:
@@ -714,7 +742,7 @@ async def get_incidents_by_app(
     description="Obtiene incidentes agrupados por usuario asignado."
 )
 async def get_incidents_by_team(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> List[IncidentsByTeamResponse]:
@@ -742,7 +770,7 @@ async def get_incidents_by_team(
     description="Obtiene incidentes del usuario actual (reportados y asignados)."
 )
 async def get_my_incidents(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> IncidentListResponse:
@@ -770,7 +798,7 @@ async def get_my_incidents(
     description="Obtiene métricas de alto nivel para el dashboard de incidentes."
 )
 async def get_dashboard(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
 ) -> DashboardStats:
@@ -802,7 +830,7 @@ async def get_dashboard(
 )
 async def batch_reorder_priorities(
     updates: List[PriorityUpdateRequest],
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_db_user),
     _: None = Depends(require_role(UserRole.ADMIN)),
     service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db)
@@ -828,3 +856,25 @@ async def batch_reorder_priorities(
         "updated_count": result,
         "message": f"Se actualizaron {result} prioridades"
     }
+
+
+# ============================================================================
+# ORDEN DE RUTAS
+# ============================================================================
+# FastAPI registra en orden de declaración: `GET /{incident_id}` (arriba) se
+# tragaba `/my-incidents`, `/dashboard/stats`, `/by-app/{id}` y `/by-team`, y
+# el service fallaba con "invalid UUID 'my-incidents'". Se mueven las rutas
+# estáticas al principio para que coincidan primero.
+_STATIC_GET_PATHS = tuple(f"/incidents{path}" for path in (
+    "/my-incidents",
+    "/dashboard/stats",
+    "/by-app/{app_id}",
+    "/by-team",
+))
+_static_routes = [
+    route for route in list(router.routes)
+    if getattr(route, "path", None) in _STATIC_GET_PATHS and "GET" in getattr(route, "methods", set())
+]
+for route in _static_routes:
+    router.routes.remove(route)
+router.routes[0:0] = _static_routes

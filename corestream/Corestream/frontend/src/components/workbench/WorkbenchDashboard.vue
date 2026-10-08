@@ -94,7 +94,7 @@
         />
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div id="workbench-ticket-filters" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
           <span>Asignado</span>
           <select
@@ -110,17 +110,33 @@
         </label>
 
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
+          <span>Sprint</span>
+          <select
+            :value="sprintFilterId"
+            @change="setSprintFilterId(($event.target as HTMLSelectElement).value)"
+            class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
+          >
+            <option value="">Todos los sprints</option>
+            <option v-for="sprint in workbenchSprints" :key="sprint.id" :value="sprint.id">
+              {{ sprint.name }}{{ sprint.appName ? ` · ${sprint.appName}` : '' }}
+            </option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
           <span>Ordenar por</span>
           <select
             :value="sortBy"
             @change="setSort(($event.target as HTMLSelectElement).value as any, sortOrder)"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
           >
-            <option value="createdAt">Fecha de creación</option>
-            <option value="dueDate">Fecha límite</option>
+            <option value="default">Orden por defecto</option>
             <option value="priority">Prioridad</option>
+            <option value="title">Nombre alfabético</option>
+            <option value="progress">Avance</option>
             <option value="status">Estado</option>
-            <option value="title">Título</option>
+            <option value="dueDate">Fecha límite</option>
+            <option value="createdAt">Fecha de creación</option>
           </select>
         </label>
 
@@ -553,6 +569,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
@@ -573,6 +590,7 @@ const {
   searchQuery,
   priorityFilter,
   assigneeFilterIds,
+  sprintFilterId,
   sortBy,
   sortOrder,
   tagFilterIds,
@@ -583,17 +601,34 @@ const {
   setSearchQuery,
   setPriorityFilter,
   setAssigneeFilterIds,
+  setSprintFilterId,
   setSort,
   setTagFilterIds,
   updateTicketTags,
   refresh,
+  rawTickets,
 } = useWorkbenchTickets()
+
+const workbenchSprints = computed(() => {
+  const sprints = new Map<string, { id: string; name: string; appName?: string }>()
+  for (const ticket of rawTickets.value) {
+    if (!ticket.sprintId) continue
+    sprints.set(ticket.sprintId, {
+      id: ticket.sprintId,
+      name: ticket.sprintName || 'Sprint',
+      appName: ticket.appName,
+    })
+  }
+  return [...sprints.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
 
 // =====================================================================
 // AUTH / PERMISOS
 // =====================================================================
 
 const authStore = useAuthStore()
+const router = useRouter()
+const emit = defineEmits<{ selectApplication: [applicationId: string] }>()
 const teamsStore = useTeamsStore()
 const userRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
 const isGroupLeader = computed(() => {
@@ -637,6 +672,26 @@ const globalSearchQuery = ref('')
 const globalSearchResults = ref<Record<string, any[]>>({})
 const globalSearchLoading = ref(false)
 
+const globalSearchLabel = (group: string): string => ({
+  tickets: 'Tickets',
+  incidents: 'Incidentes',
+  epics: 'Épicas',
+  subtasks: 'Subtareas',
+  projects: 'Proyectos',
+  documents: 'Documentos',
+  users: 'Usuarios',
+} as Record<string, string>)[group] ?? group
+
+const globalSearchDisplayValue = (group: string, item: any): string => {
+  if (group === 'users') return item.subtitle || item.email || item.title || 'Usuario'
+  return item.title || item.name || item.fullName || item.email || 'Resultado'
+}
+
+const globalSearchMeta = (group: string, item: any): string => {
+  if (group === 'users') return item.title || item.fullName || ''
+  return item.subtitle || item.status || item.projectName || ''
+}
+
 const onAssigneeFilterChange = (event: Event) => {
   const value = (event.target as HTMLSelectElement).value
   setAssigneeFilterIds(value ? [value] : [])
@@ -667,31 +722,23 @@ const clearGlobalSearch = () => {
 
 const hasGlobalSearchResults = computed(() => Object.values(globalSearchResults.value).some((items) => items.length > 0))
 
-const globalSearchLabel = (group: string): string => ({
-  tickets: 'Tickets',
-  epics: 'Épicas',
-  subtasks: 'Subtareas',
-  projects: 'Proyectos',
-  documents: 'Documentos',
-  users: 'Usuarios'
-} as Record<string, string>)[group] ?? group
-
-const globalSearchDisplayValue = (group: string, item: any): string => {
-  if (group === 'users') return item.fullName || item.email || item.name || 'Usuario'
-  if (group === 'documents') return item.title || item.name || 'Documento'
-  if (group === 'projects' || group === 'applications') return item.name || item.title || 'Proyecto'
-  return item.title || item.name || item.fullName || item.email || 'Resultado'
-}
-
-const globalSearchMeta = (group: string, item: any): string => {
-  if (group === 'tickets') return item.status ? String(item.status).replace('_', ' ') : ''
-  if (group === 'epics') return item.applicationName || item.projectName || ''
-  if (group === 'users') return item.email || ''
-  if (group === 'subtasks') return item.status || item.ticketTitle || ''
-  return item.appName || item.projectName || item.owner || ''
-}
-
 const applyGlobalSearchResult = (group: string, item: any) => {
+  if ((group === 'projects' || group === 'applications') && item.id) {
+    emit('selectApplication', item.id)
+    globalSearchResults.value = {}
+    return
+  }
+  if (group === 'users' && item.id) {
+    setAssigneeFilterIds([item.id])
+    document.getElementById('workbench-ticket-filters')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    globalSearchResults.value = {}
+    return
+  }
+  if (group === 'incidents' && item.id) {
+    router.push({ name: 'MyIncidents', query: { search: item.title || '', incident: item.id } })
+    globalSearchResults.value = {}
+    return
+  }
   const value = globalSearchDisplayValue(group, item)
   if (value) {
     setSearchQuery(value)
@@ -763,7 +810,7 @@ const formatDuration = (seconds: number): string => {
 }
 
 const hasActiveFilters = computed(
-  () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || priorityFilter.value !== 'all' || !!searchQuery.value.trim() || tagFilterIds.value.length > 0,
+  () => statusFilter.value !== 'all' || dateFilter.value !== 'all' || priorityFilter.value !== 'all' || !!searchQuery.value.trim() || tagFilterIds.value.length > 0 || assigneeFilterIds.value.length > 0 || !!sprintFilterId.value,
 )
 
 const clearFilters = () => {
@@ -772,6 +819,8 @@ const clearFilters = () => {
   setSearchQuery('')
   setPriorityFilter('all')
   setTagFilterIds([])
+  setAssigneeFilterIds([])
+  setSprintFilterId('')
 }
 
 // =====================================================================
@@ -874,7 +923,7 @@ const acceptRedirect = async (ticket: Ticket) => {
   working.value = true
   actionError.value = ''
   try {
-    await api.tickets.acceptRedirect(ticket.id)
+    await apiClient.post(`/tickets/${ticket.id}/accept-redirect`)
     await refresh()
     await loadTicketEvents(ticket.id)
   } catch (err: any) {

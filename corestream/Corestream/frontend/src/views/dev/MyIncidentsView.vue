@@ -36,27 +36,28 @@
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-              {{ $t?.('incidents.myIncidents') || 'Mis Incidentes' }}
+              Mis Incidentes
             </h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ $t?.('incidents.myIncidentsSubtitle') || 'Incidentes asignados a ti. Gestiona su progreso y resolución.' }}
+              Tickets bloqueados que esperan tu respuesta.
             </p>
           </div>
-
-          <!-- Resumen rápido: contadores por estado -->
-          <div class="flex items-center gap-3">
-            <div
-              v-for="summary in statusSummary"
-              :key="summary.label"
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-              :class="summary.bgClass"
-            >
-              <span :class="['w-2 h-2 rounded-full', summary.dotClass]"></span>
-              <span>{{ summary.count }}</span>
-              <span class="hidden sm:inline">{{ summary.label }}</span>
-            </div>
-          </div>
         </div>
+
+        <div class="mb-5">
+          <label for="incident-search" class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar incidente o ticket</label>
+          <input
+            id="incident-search"
+            v-model="searchQuery"
+            type="search"
+            placeholder="Título, descripción o proyecto..."
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          />
+        </div>
+
+        <p v-if="actionError" class="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {{ actionError }}
+        </p>
 
         <!-- Estado de carga -->
         <div v-if="store.isLoading" class="flex items-center justify-center py-20">
@@ -70,7 +71,7 @@
 
         <!-- Estado vacío: sin incidentes asignados -->
         <div
-          v-else-if="store.myIncidents.length === 0"
+          v-else-if="blockedTickets.length === 0 && redirectedTickets.length === 0"
           class="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500"
         >
           <svg class="w-16 h-16 mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,69 +88,76 @@
 
         <!-- ===== SECCIONES POR ESTADO ===== -->
         <div v-else class="space-y-6">
+          <p v-if="!searchedIncidents.length && !blockedTickets.length && !redirectedTickets.length" class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            No hay incidentes ni tickets que coincidan con la búsqueda.
+          </p>
           <!--
             Sección: Abiertos / Reabiertos
             Requieren atención inmediata del desarrollador.
           -->
-          <IncidentStatusSection
-            v-if="openIncidents.length > 0"
-            :title="$t?.('incidents.sections.open') || 'Abiertos'"
-            :count="openIncidents.length"
-            :incidents="openIncidents"
-            dot-class="bg-blue-500"
-            header-class="border-blue-400"
-            :default-open="true"
-            @select="onSelectIncident"
-            @action="onQuickAction"
-          />
+          <section v-if="redirectedTickets.length" class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
+            <h2 class="mb-3 text-base font-semibold text-amber-900 dark:text-amber-200">Redirecciones pendientes de respuesta</h2>
+            <div class="space-y-2">
+              <article v-for="ticket in redirectedTickets" :key="ticket.id" class="rounded-lg border border-amber-200 bg-white p-3 dark:border-amber-900 dark:bg-slate-900">
+                <button type="button" class="text-left" @click="router.push({ name: 'Workbench' })">
+                  <span class="block font-medium text-gray-900 dark:text-white">{{ ticket.title }}</span>
+                  <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || 'Ticket redirigido' }}</span>
+                </button>
+                <div class="mt-3 flex gap-2">
+                  <button type="button" :disabled="ticketActionLoading" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" @click="answerRedirect(ticket.id, true)">Aceptar</button>
+                  <button type="button" :disabled="ticketActionLoading" class="rounded-md border border-amber-500 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200 disabled:opacity-50" @click="answerRedirect(ticket.id, false)">Rechazar</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="blockedTickets.length" class="rounded-xl border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-slate-900">
+            <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-white">Tickets bloqueados</h2>
+            <div class="space-y-3">
+              <article
+                v-for="ticket in blockedTickets"
+                :key="ticket.id"
+                class="rounded-lg border border-gray-200 p-3 dark:border-slate-700"
+              >
+                <p class="font-medium text-gray-900 dark:text-white">{{ ticket.title }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || 'Ticket bloqueado' }}</p>
+                <p v-if="ticket.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ ticket.description }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <input
+                    v-model="resolutionDrafts[ticket.id]"
+                    maxlength="500"
+                    placeholder="Respuesta o resolución (mínimo 10 caracteres)"
+                    class="min-w-[240px] flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    :disabled="ticketActionLoading || (resolutionDrafts[ticket.id] || '').trim().length < 10"
+                    class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    @click="resolveTicketBlock(ticket.id)"
+                  >
+                    Resolver y reanudar
+                  </button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- Secciones por estado removidas: la vista muestra solo tickets bloqueados -->
 
           <!--
             Sección: En Progreso
             Incidentes en los que el desarrollador está trabajando.
           -->
-          <IncidentStatusSection
-            v-if="inProgressIncidents.length > 0"
-            :title="$t?.('incidents.sections.inProgress') || 'En Progreso'"
-            :count="inProgressIncidents.length"
-            :incidents="inProgressIncidents"
-            dot-class="bg-yellow-500"
-            header-class="border-yellow-400"
-            :default-open="true"
-            @select="onSelectIncident"
-            @action="onQuickAction"
-          />
 
           <!--
             Sección: En Revisión
             Incidentes enviados para revisión por el admin.
           -->
-          <IncidentStatusSection
-            v-if="underReviewIncidents.length > 0"
-            :title="$t?.('incidents.sections.underReview') || 'En Revisión'"
-            :count="underReviewIncidents.length"
-            :incidents="underReviewIncidents"
-            dot-class="bg-purple-500"
-            header-class="border-purple-400"
-            :default-open="true"
-            @select="onSelectIncident"
-            @action="onQuickAction"
-          />
 
           <!--
             Sección: Resueltos / Cerrados
             Historial de incidentes completados (colapsada por defecto).
           -->
-          <IncidentStatusSection
-            v-if="resolvedIncidents.length > 0"
-            :title="$t?.('incidents.sections.resolved') || 'Resueltos / Cerrados'"
-            :count="resolvedIncidents.length"
-            :incidents="resolvedIncidents"
-            dot-class="bg-green-500"
-            header-class="border-green-400"
-            :default-open="false"
-            @select="onSelectIncident"
-            @action="onQuickAction"
-          />
         </div>
       </div>
     </div>
@@ -188,7 +196,14 @@
  * y un panel de detalle para información completa.
  */
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useIncidentsStore } from '@/stores/incidents'
+import { useAuthStore } from '@/stores/auth'
+import { useApplicationsStore } from '@/stores/applications'
+import { useTeamsStore } from '@/stores/teams'
+import { api } from '@/services/api'
+import apiClient from '@/services/api'
+import type { Ticket } from '@/types'
 import type { Incident, IncidentStatus } from '@/types/incidents'
 import { IncidentStatus as StatusEnum } from '@/types/incidents'
 import IncidentDetailPanel from '@/components/incidents/IncidentDetailPanel.vue'
@@ -197,6 +212,142 @@ import IncidentStatusSection from '@/components/incidents/IncidentStatusSection.
 // === Store ===
 
 const store = useIncidentsStore()
+const authStore = useAuthStore()
+const applicationsStore = useApplicationsStore()
+const teamsStore = useTeamsStore()
+const route = useRoute()
+const router = useRouter()
+const isTeamLeader = computed(() => authStore.isTeamLeader || authStore.isAdmin)
+const searchQuery = ref('')
+const workbenchTickets = ref<Ticket[]>([])
+const teamBlockedTickets = ref<Ticket[]>([])
+const ticketActionLoading = ref(false)
+const actionError = ref('')
+
+const matchesSearch = (value: string | undefined): boolean =>
+  !searchQuery.value.trim() || (value ?? '').toLowerCase().includes(searchQuery.value.trim().toLowerCase())
+
+const searchedIncidents = computed(() => store.myIncidents.filter((incident) =>
+  matchesSearch(`${incident.title} ${incident.description ?? ''} ${incident.applicationName ?? ''}`)
+))
+const searchedTickets = computed(() => {
+  const base = isTeamLeader.value
+    ? [...workbenchTickets.value, ...teamBlockedTickets.value]
+    : workbenchTickets.value
+  const seen = new Set<string>()
+  const merged = base.filter((ticket) => {
+    if (seen.has(ticket.id)) return false
+    seen.add(ticket.id)
+    return true
+  })
+  return merged.filter((ticket) =>
+    matchesSearch(`${ticket.title} ${ticket.description ?? ''} ${ticket.appName ?? ''} ${ticket.epicTitle ?? ''}`)
+  )
+})
+const blockedTickets = computed(() => searchedTickets.value.filter((ticket) =>
+  ['BLOCKED', 'BLOCKED_QUESTION'].includes(String(ticket.status))
+))
+const redirectedTickets = computed(() => searchedTickets.value.filter((ticket) => String(ticket.status) === 'REDIRECTED'))
+
+const unwrapList = (response: any): any[] => {
+  let node = response?.data ?? response
+  if (node && typeof node === 'object' && 'data' in node) node = (node as any).data
+  if (Array.isArray(node)) return node
+  if (Array.isArray(node?.items)) return node.items
+  if (Array.isArray(node?.data)) return node.data
+  return []
+}
+
+const refreshWorkbenchTickets = async (): Promise<void> => {
+  try {
+    const response: any = await api.tickets.getMyWorkbench()
+    workbenchTickets.value = unwrapList(response)
+  } catch (error) {
+    console.error('No se pudieron cargar los tickets bloqueados/redirigidos:', error)
+    workbenchTickets.value = []
+  }
+}
+
+/**
+ * Team Leader: trae TODOS los bloqueados de los proyectos de su equipo,
+ * sin importar a quién estén asignados. El workbench solo trae los propios,
+ * por eso el ticket 12 (de dev@corestream) no le aparecía al líder.
+ */
+const refreshTeamBlockedTickets = async (): Promise<void> => {
+  teamBlockedTickets.value = []
+  if (!isTeamLeader.value) return
+  try {
+    teamsStore.loadFromStorage()
+    const email = authStore.user?.email || localStorage.getItem('userEmail') || ''
+    const appIds = new Set<string>()
+    for (const team of teamsStore.getUserTeams(email)) {
+      for (const appId of team.applicationIds ?? []) appIds.add(String(appId))
+    }
+    // Admin sin equipo: recorre todas las apps cargadas.
+    if (appIds.size === 0 && authStore.isAdmin) {
+      try { await applicationsStore.fetchAll() } catch { /* sigue con lo que haya */ }
+      for (const app of applicationsStore.applications ?? []) appIds.add(String((app as any).id))
+    }
+    const collected: Ticket[] = []
+    for (const appId of appIds) {
+      let epics: any[] = []
+      try { epics = unwrapList(await api.epics.listByApplication(appId)) } catch { continue }
+      for (const epic of epics) {
+        let tickets: any[] = []
+        try { tickets = unwrapList(await api.tickets.listByEpic(String((epic as any).id))) } catch { continue }
+        for (const t of tickets) {
+          if (['BLOCKED', 'BLOCKED_QUESTION'].includes(String((t as any).status))) collected.push(t as Ticket)
+        }
+      }
+    }
+    teamBlockedTickets.value = collected
+  } catch (error) {
+    console.error('No se pudieron cargar los bloqueados del equipo:', error)
+    teamBlockedTickets.value = []
+  }
+}
+
+const answerRedirect = async (ticketId: string, accept: boolean): Promise<void> => {
+  ticketActionLoading.value = true
+  actionError.value = ''
+  try {
+    const action = accept ? 'accept-redirect' : 'reject-redirect'
+    await apiClient.post(`/tickets/${ticketId}/${action}`)
+    await Promise.all([refreshWorkbenchTickets(), refreshTeamBlockedTickets()])
+  } catch (error: any) {
+    console.error('Error actualizando redirección:', error?.response?.status, error?.response?.data || error)
+    actionError.value = error?.response?.data?.detail || error?.message || 'No se pudo actualizar la redirección.'
+  } finally {
+    ticketActionLoading.value = false
+  }
+}
+
+const resolutionDrafts = ref<Record<string, string>>({})
+
+/**
+ * Resuelve el bloqueo del ticket con el mismo flujo que el Builder/Workbench:
+ * POST /tickets/{id}/resolve-question con la redacción escrita por el usuario.
+ */
+const resolveTicketBlock = async (ticketId: string): Promise<void> => {
+  const resolution = (resolutionDrafts.value[ticketId] || '').trim()
+  if (resolution.length < 10) return
+  ticketActionLoading.value = true
+  actionError.value = ''
+  try {
+    await apiClient.post(`/tickets/${ticketId}/resolve-question`, { resolution })
+    delete resolutionDrafts.value[ticketId]
+    await Promise.all([refreshWorkbenchTickets(), refreshTeamBlockedTickets()])
+  } catch (error: any) {
+    const data = error?.response?.data
+    actionError.value =
+      data?.detail ||
+      data?.error ||
+      `HTTP ${error?.response?.status ?? '?'}: ${error?.message ?? 'error desconocido'}`
+    console.error('Error resolviendo bloqueo:', error?.response?.status, data || error)
+  } finally {
+    ticketActionLoading.value = false
+  }
+}
 
 // === Estado local ===
 
@@ -210,7 +361,7 @@ const selectedIncident = ref<Incident | null>(null)
  * Estos son los que necesitan atención inmediata.
  */
 const openIncidents = computed(() => {
-  return store.myIncidents
+  return searchedIncidents.value
     .filter((i) => i.status === StatusEnum.OPEN || i.status === StatusEnum.REOPENED)
     .sort((a, b) => a.priorityOrder - b.priorityOrder)
 })
@@ -220,7 +371,7 @@ const openIncidents = computed(() => {
  * Actualmente siendo trabajados por el desarrollador.
  */
 const inProgressIncidents = computed(() => {
-  return store.myIncidents
+  return searchedIncidents.value
     .filter((i) => i.status === StatusEnum.IN_PROGRESS)
     .sort((a, b) => a.priorityOrder - b.priorityOrder)
 })
@@ -230,7 +381,7 @@ const inProgressIncidents = computed(() => {
  * Esperando aprobación del administrador.
  */
 const underReviewIncidents = computed(() => {
-  return store.myIncidents
+  return searchedIncidents.value
     .filter((i) => i.status === StatusEnum.UNDER_REVIEW)
     .sort((a, b) => a.priorityOrder - b.priorityOrder)
 })
@@ -240,7 +391,7 @@ const underReviewIncidents = computed(() => {
  * Historial de trabajo completado.
  */
 const resolvedIncidents = computed(() => {
-  return store.myIncidents
+  return searchedIncidents.value
     .filter((i) => i.status === StatusEnum.RESOLVED || i.status === StatusEnum.CLOSED)
     .sort((a, b) => {
       // Ordenar por fecha de resolución, más recientes primero
@@ -298,19 +449,34 @@ function onSelectIncident(incident: Incident) {
  *   - RESOLVED → reopen (si se encontró un nuevo problema)
  */
 async function onQuickAction(incidentId: string, action: string) {
-  switch (action) {
-    case 'start':
-      await store.start(incidentId)
-      break
-    case 'review':
-      await store.review(incidentId)
-      break
-    case 'reopen':
-      await store.reopen(incidentId)
-      break
+  actionError.value = ''
+  try {
+    switch (action) {
+      case 'start':
+        await store.start(incidentId)
+        break
+      case 'review':
+        await store.review(incidentId)
+        break
+      case 'reopen':
+        await store.reopen(incidentId)
+        break
+      case 'resolve': {
+        const notes = window.prompt('Notas de resolución:')?.trim()
+        if (!notes) return
+        await store.resolve(incidentId, notes)
+        break
+      }
+    }
+    await store.fetchMyIncidents()
+  } catch (error: any) {
+    const data = error?.response?.data
+    actionError.value =
+      data?.detail ||
+      data?.error ||
+      `HTTP ${error?.response?.status ?? '?'}: ${error?.message ?? 'error desconocido'}`
+    console.error('Error en acción de incidente:', error?.response?.status, data || error)
   }
-  // Recargar incidentes del usuario
-  await store.fetchMyIncidents()
 }
 
 /**
@@ -342,6 +508,16 @@ async function onAddComment(incidentId: string, content: string) {
  * Al montar la vista, carga los incidentes asignados al usuario actual.
  */
 onMounted(async () => {
+  searchQuery.value = String(route.query.search ?? '')
   await store.fetchMyIncidents()
+  await Promise.all([refreshWorkbenchTickets(), refreshTeamBlockedTickets()])
+  const incidentId = String(route.query.incident ?? '')
+  if (incidentId) {
+    selectedIncident.value = store.myIncidents.find((incident) => incident.id === incidentId) ?? null
+    if (selectedIncident.value) {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+      document.getElementById(`incident-${incidentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 })
 </script>
