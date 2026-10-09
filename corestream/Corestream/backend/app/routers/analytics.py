@@ -280,7 +280,7 @@ async def get_burndown_chart(
 )
 async def export_performance_csv(
     app_id: UUID,
-    current_user = Depends(Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER]))),
+    current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> StreamingResponse:
     """
