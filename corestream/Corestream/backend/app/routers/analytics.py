@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
+from uuid import UUID
 from datetime import datetime, timedelta
 import csv
 import io
@@ -34,8 +35,8 @@ router = APIRouter(prefix="/analytics", tags=["Analíticas"])
     description="Retorna estadísticas resumidas de una aplicación"
 )
 async def get_application_summary(
-    app_id: int,
-    current_user = Depends(get_current_user),
+    app_id: UUID,
+    current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
@@ -118,10 +119,10 @@ async def get_application_summary(
     description="Retorna métricas de desempeño por usuario en una aplicación"
 )
 async def get_performance_data(
-    app_id: int,
+    app_id: UUID,
     start_date: Optional[str] = Query(None, description="Fecha inicial (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Fecha final (YYYY-MM-DD)"),
-    current_user = Depends(get_current_user),
+    current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
@@ -192,8 +193,8 @@ async def get_performance_data(
     description="Retorna datos de actividad en formato de mapa de calor"
 )
 async def get_heatmap_data(
-    app_id: int,
-    current_user = Depends(get_current_user),
+    app_id: UUID,
+    current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
@@ -235,8 +236,8 @@ async def get_heatmap_data(
     description="Retorna datos del gráfico burndown de una épica"
 )
 async def get_burndown_chart(
-    epic_id: int,
-    current_user = Depends(get_current_user),
+    epic_id: UUID,
+    current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
@@ -278,8 +279,8 @@ async def get_burndown_chart(
     description="Exporta datos de desempeño de una aplicación en formato CSV"
 )
 async def export_performance_csv(
-    app_id: int,
-    current_user = Depends(require_role(UserRole.TEAM_LEADER)),
+    app_id: UUID,
+    current_user = Depends(Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER]))),
     db: AsyncSession = Depends(get_db)
 ) -> StreamingResponse:
     """
@@ -287,7 +288,7 @@ async def export_performance_csv(
 
     Args:
         app_id (int): ID de la aplicación
-        current_user (User): Usuario autenticado con rol TEAM_LEADER
+        current_user (User): Usuario autenticado con rol ADMIN o GROUP_LEADER
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:
