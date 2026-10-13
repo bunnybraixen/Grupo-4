@@ -21,5 +21,7 @@ class Role(Base, BaseEntity):
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    users: Mapped[list["User"]] = relationship(lazy="raise_on_sql", back_populates="role")
+    # Nota: `User.role` es una columna ENUM, no una FK a `roles`, así que aquí
+    # NO puede existir una relationship inversa (rompe la configuración del
+    # mapper: NoForeignKeysError). La tabla `roles` queda como datos de apoyo.
  

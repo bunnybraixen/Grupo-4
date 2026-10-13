@@ -55,6 +55,11 @@ class OperationalTicket(Base, BaseEntity):
     elapsed_seconds: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    # El valor inicial va explícito para que exista ya en el objeto Python
+    # (el `default` de SQLAlchemy solo se aplica en el INSERT).
+    elapsed_seconds: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False, default_arg="scalar"
+    ) if False else mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     # Bloque de texto con los cambios que se hicieron para resolverlo.
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
