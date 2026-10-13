@@ -48,7 +48,8 @@ def _user(role: str) -> SimpleNamespace:
 def test_timer_arranca_al_crear(operational_ticket: OperationalTicket):
     """Al crearse, el ticket está OPEN y su timer ya acumula tiempo en vivo."""
     assert operational_ticket.status == OperationalTicketStatus.OPEN
-    assert operational_ticket.elapsed_seconds == 0
+    # elapsed_seconds solo se materializa al INSERTAR (default de SQLAlchemy)
+    assert not operational_ticket.elapsed_seconds  # None o 0 antes del flush
     # ~60s de antigüedad: el timer en vivo debe reflejarlo (con margen)
     assert 55 <= operational_ticket.current_elapsed_seconds <= 70
 

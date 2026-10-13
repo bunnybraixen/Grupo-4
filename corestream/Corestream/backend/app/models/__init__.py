@@ -37,6 +37,7 @@ from .base import Base, BaseEntity
 
 # Importar modelos en orden de dependencias
 from .user import User, UserRole
+from .role import Role
 from .team import Team
 from .application import Application
 from .epic import Epic
@@ -61,6 +62,7 @@ __all__ = [
     # User
     "User",
     "UserRole",
+    "Role",
 
     # Team
     "Team",

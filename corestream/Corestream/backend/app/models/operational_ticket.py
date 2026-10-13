@@ -51,7 +51,10 @@ class OperationalTicket(Base, BaseEntity):
         DateTime(timezone=True), nullable=True
     )
     # Duración congelada al resolver; mientras está abierto se calcula en vivo.
-    elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # `server_default` cubre filas creadas por SQL directo (p. ej. la migración).
+    elapsed_seconds: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     # Bloque de texto con los cambios que se hicieron para resolverlo.
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
