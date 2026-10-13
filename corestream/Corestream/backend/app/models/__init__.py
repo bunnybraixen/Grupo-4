@@ -49,6 +49,7 @@ from .subtask import Subtask
 from .ticket_event import TicketEvent, TicketEventType
 from .notification import Notification, NotificationType
 from .document import Document, DocumentType
+from .operational_ticket import OperationalTicket, OperationalTicketStatus
 
 
 # Exportar todas las clases públicas
@@ -98,5 +99,9 @@ __all__ = [
     # Document
     "Document",
     "DocumentType",
-    
+
+    # Ticket operacional de Soporte
+    "OperationalTicket",
+    "OperationalTicketStatus",
+
 ]

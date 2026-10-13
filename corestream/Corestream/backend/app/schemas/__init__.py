@@ -72,6 +72,11 @@ from app.schemas.ticket_comment import (
     TicketCommentUpdate,
     TicketCommentResponse,
 )
+from app.schemas.operational_ticket import (
+    OperationalTicketCreate,
+    OperationalTicketResolve,
+    OperationalTicketResponse,
+)
 
 from app.schemas.sprint import (
     SprintCreate,
@@ -166,4 +171,8 @@ __all__ = [
     "SLASummary",
     "TicketSLAStatus",
     "SLAStatusListResponse",
+    # Tickets operacionales de Soporte
+    "OperationalTicketCreate",
+    "OperationalTicketResolve",
+    "OperationalTicketResponse",
 ]

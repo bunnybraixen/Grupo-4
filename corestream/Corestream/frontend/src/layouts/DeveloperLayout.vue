@@ -32,7 +32,15 @@
         >
           Mis Cargas
         </router-link>
-        
+
+        <!-- Soporte operacional: visible para Dev Leader y Dev -->
+        <router-link
+          to="/dev/support"
+          class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          Soporte
+        </router-link>
+
         <!-- Solo visible para líderes de grupo -->
         <router-link
           v-if="isGroupLeader"

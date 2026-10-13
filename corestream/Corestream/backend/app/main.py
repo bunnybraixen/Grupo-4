@@ -109,7 +109,7 @@ app.add_middleware(
 # Cada router maneja un dominio específico de la aplicación.
 # WEB-08: se montan los routers de la cadena auth -> applications -> epics -> tickets
 # (más subtasks) para poder probar el ciclo de vida completo de tickets.
-from app.routers import applications, auth, epics, subtasks, teams, tickets, users, notifications, tags, sprints, sla, search, incidents  # noqa: E402
+from app.routers import applications, auth, epics, subtasks, teams, tickets, users, notifications, tags, sprints, sla, search, incidents, operational_support  # noqa: E402
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
@@ -135,6 +135,9 @@ app.include_router(teams.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 # Incidentes: CRUD, estados, comentarios y "mis incidentes" (/dev/my-incidents)
 app.include_router(incidents.router, prefix="/api")
+# Tickets operacionales de Soporte: creación con timer por cualquier rol,
+# resolución (con bloque de cambios) solo para ADMIN/GROUP_LEADER.
+app.include_router(operational_support.router, prefix="/api")
 
 # Endpoint de salud para verificar que la API está funcionando
 @app.get(

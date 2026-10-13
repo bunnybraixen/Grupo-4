@@ -2075,6 +2075,47 @@ export const api = {
       const response = await apiClient.get('/incidents/dashboard/stats')
       return response.data
     }
+  },
+
+  /**
+   * ========================================
+   * MÓDULO: Tickets operacionales de Soporte
+   * ========================================
+   *
+   * El interceptor de case solo convierte /tickets|epics|.../, así que aquí se
+   * envían/reciben claves snake_case explícitamente (mismo patrón que incidents).
+   */
+  operationalSupport: {
+    /** Listado completo; `status` ('OPEN' | 'RESOLVED') filtra los archivados */
+    list: async (status?: string): Promise<any[]> => {
+      const response = await apiClient.get('/operational-support/', {
+        params: status ? { status_filter: status } : undefined
+      })
+      return response.data
+    },
+
+    /** Crea un ticket operacional (título + problema); el timer arranca solo */
+    create: async (payload: { title: string; problem: string }): Promise<any> => {
+      const response = await apiClient.post('/operational-support/', {
+        title: payload.title,
+        problem: payload.problem
+      })
+      return response.data
+    },
+
+    /** Detalle de un ticket (incluye los cambios si está resuelto) */
+    get: async (ticketId: string): Promise<any> => {
+      const response = await apiClient.get(`/operational-support/${ticketId}`)
+      return response.data
+    },
+
+    /** Resuelve y archiva el ticket (solo ADMIN/GROUP_LEADER en el backend) */
+    resolve: async (ticketId: string, resolutionNotes: string): Promise<any> => {
+      const response = await apiClient.post(`/operational-support/${ticketId}/resolve`, {
+        resolution_notes: resolutionNotes
+      })
+      return response.data
+    }
   }
 }
 

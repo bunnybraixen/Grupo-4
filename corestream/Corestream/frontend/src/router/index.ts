@@ -190,6 +190,21 @@ const routes: RouteRecordRaw[] = [
           requiredRoles: ['ADMIN'],
           title: 'Incidentes - CoreStream Admin'
         }
+      },
+
+      {
+        /**
+         * Soporte operacional (Admin)
+         * Tickets con título + problema, timer en marcha y archivado de resueltos.
+         */
+        path: 'support',
+        name: 'AdminSupport',
+        component: () => import('@/views/shared/SupportOperationsView.vue'),
+        meta: {
+          requiresAuth: true,
+          requiredRoles: ['ADMIN'],
+          title: 'Soporte - CoreStream Admin'
+        }
       }
     ]
   },
@@ -291,6 +306,21 @@ const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
           title: 'Mis Incidentes - CoreStream'
+        }
+      },
+
+      {
+        /**
+         * Soporte operacional (Dev Leader y Dev)
+         * Mismo componente que /admin/support: tickets con timer y archivado.
+         */
+        path: 'support',
+        name: 'DevSupport',
+        component: () => import('@/views/shared/SupportOperationsView.vue'),
+        meta: {
+          requiresAuth: true,
+          requiredRoles: ['DEVELOPER', 'GROUP_LEADER'],
+          title: 'Soporte - CoreStream'
         }
       }
     ]
