@@ -1623,7 +1623,7 @@ export const api = {
       epicId?: string
     }): Promise<ApiResponse<Document[]>> => {
       const response = await apiClient.get<ApiResponse<Document[]>>(
-        '/documents',
+        '/documents/',
         { params: filters }
       )
       return response.data
@@ -1648,7 +1648,7 @@ export const api = {
       formData.append('docType', data.docType || 'OTHER')
 
       const response = await apiClient.post<ApiResponse<Document>>(
-        '/documents',
+        '/documents/',
         formData,
         {
           headers: {
