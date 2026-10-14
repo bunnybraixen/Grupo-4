@@ -43,7 +43,7 @@ async def upload_file(
     - download_url: URL para descargar
     """
     try:
-        user_id = str(current_user.id)
+        user_id = str(getattr(current_user, "sub", current_user.id))
         metadata = await FileService.upload_file(file, user_id)
 
         return {
@@ -78,7 +78,8 @@ async def download_file(
     **Respuesta:**
     - Archivo en stream
     """
-    file_path = FileService.get_file_path(file_id, str(current_user.id))
+    user_id = str(getattr(current_user, "sub", current_user.id))
+    file_path = FileService.get_file_path(file_id, user_id)
 
     if not file_path:
         raise HTTPException(
@@ -107,7 +108,8 @@ async def get_file_info(
     **Respuesta:**
     - id, filename, size, extension, created_at
     """
-    file_info = FileService.get_file_info(file_id, str(current_user.id))
+    user_id = str(getattr(current_user, "sub", current_user.id))
+    file_info = FileService.get_file_info(file_id, user_id)
 
     if not file_info:
         raise HTTPException(
@@ -131,7 +133,8 @@ async def list_files(
     **Respuesta:**
     - Lista de archivos con metadatos
     """
-    files = FileService.list_files(str(current_user.id))
+    user_id = str(getattr(current_user, "sub", current_user.id))
+    files = FileService.list_files(user_id)
 
     return {
         "status": "success",
@@ -154,7 +157,8 @@ async def delete_file(
     **Respuesta:**
     - Confirmación de eliminación
     """
-    if FileService.delete_file(file_id, str(current_user.id)):
+    user_id = str(getattr(current_user, "sub", current_user.id))
+    if FileService.delete_file(file_id, user_id):
         return {
             "status": "success",
             "message": f"Archivo {file_id} eliminado exitosamente",

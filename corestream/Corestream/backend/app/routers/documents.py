@@ -1,257 +1,261 @@
-"""
-Router de Gestión de Documentos.
+"""Endpoints para adjuntar archivos a tickets y épicas."""
 
-Proporciona endpoints para:
-- Listar documentos de una épica
-- Cargar nuevos documentos (multipart)
-- Descargar archivos
-- Eliminar documentos
-"""
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from enum import Enum
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List
-import os
-from datetime import datetime
 
+from app.config import get_settings
 from app.database import get_db
-from app.models import Document, Epic, TicketEvent, TicketEventType
-from app.schemas import DocumentResponse
-from app.services import ticket_state_machine
 from app.middleware.auth import get_current_user
+from app.models import Application, Document, DocumentType, Epic, Team, Ticket, User
+from app.schemas import DocumentResponse
 
-# Router para documentos
 router = APIRouter(prefix="/documents", tags=["Documentos"])
+UPLOAD_DIR = Path(get_settings().UPLOAD_DIR) / "documents"
+MAX_FILE_SIZE = 10 * 1024 * 1024
+ALLOWED_EXTENSIONS = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".cs", ".rb", ".go", ".rs",
+    ".php", ".swift", ".kt", ".scala",
+    ".md", ".pdf", ".docx", ".txt", ".rst", ".doc",
+    ".json", ".yaml", ".yml", ".xml", ".sql", ".csv", ".toml", ".env",
+}
 
-# Directorio base para almacenar documentos (ajustar según configuración)
-UPLOAD_DIR = "/tmp/corestream_documents"
+
+def _normalize_role(value: str | Enum | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, Enum):
+        value = value.value
+    role_name = str(value).strip().upper().replace("USERROLE.", "")
+    return role_name.replace("-", "_")
 
 
-@router.get(
-    "/by-epic/{epic_id}",
-    response_model=List[DocumentResponse],
-    summary="Listar documentos de épica",
-    description="Obtiene todos los documentos asociados a una épica"
-)
-async def get_epic_documents(
-    epic_id: int,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> List[DocumentResponse]:
-    """
-    Lista todos los documentos de una épica.
+async def _can_access_document(db: AsyncSession, current_user, document: Document) -> bool:
+    role = _normalize_role(getattr(current_user, "role", None))
+    user_uuid = UUID(str(current_user.sub))
 
-    Args:
-        epic_id (int): ID de la épica
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
+    if role == "ADMIN":
+        return True
 
-    Returns:
-        List[DocumentResponse]: Lista de documentos
+    if document.ticket_id is not None:
+        ticket = (await db.execute(select(Ticket).where(Ticket.id == document.ticket_id))).scalar_one_or_none()
+        if ticket is None:
+            return False
 
-    Raises:
-        HTTPException: Si la épica no existe (404)
-    """
-    # Verificar que la épica existe
-    epic_check = await db.execute(
-        select(Epic).where(Epic.id == epic_id)
-    )
-    if not epic_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Épica con ID {epic_id} no encontrada"
-        )
+        if role in {"GROUP_LEADER", "TEAM_LEADER"}:
+            epic = (await db.execute(select(Epic).where(Epic.id == ticket.epic_id))).scalar_one_or_none()
+            if epic is None:
+                return False
+            team_rows = (await db.execute(select(Team))).scalars().all()
+            user_email = (await db.execute(select(User.email).where(User.id == user_uuid))).scalar_one_or_none()
+            user_email_l = (user_email or "").strip().lower()
+            app_ids = set()
+            for team in team_rows:
+                if user_email_l in {str(email).strip().lower() for email in (team.member_emails or [])}:
+                    for app_id in team.application_ids or []:
+                        try:
+                            app_ids.add(UUID(str(app_id)))
+                        except (TypeError, ValueError):
+                            continue
+            owned_apps = (await db.execute(select(Application.id).where(Application.owner_id == user_uuid))).scalars().all()
+            app_ids.update(owned_apps)
+            return epic.application_id in app_ids
 
-    # Obtener documentos de la épica
-    result = await db.execute(
-        select(Document)
-        .where(Document.epic_id == epic_id)
-        .order_by(Document.created_at.desc())
-    )
+        if role == "DEVELOPER":
+            return ticket.assignee_id == user_uuid
+
+    if document.epic_id is not None:
+        epic = (await db.execute(select(Epic).where(Epic.id == document.epic_id))).scalar_one_or_none()
+        if epic is None:
+            return False
+        if role in {"GROUP_LEADER", "TEAM_LEADER"}:
+            team_rows = (await db.execute(select(Team))).scalars().all()
+            user_email = (await db.execute(select(User.email).where(User.id == user_uuid))).scalar_one_or_none()
+            user_email_l = (user_email or "").strip().lower()
+            app_ids = set()
+            for team in team_rows:
+                if user_email_l in {str(email).strip().lower() for email in (team.member_emails or [])}:
+                    for app_id in team.application_ids or []:
+                        try:
+                            app_ids.add(UUID(str(app_id)))
+                        except (TypeError, ValueError):
+                            continue
+            owned_apps = (await db.execute(select(Application.id).where(Application.owner_id == user_uuid))).scalars().all()
+            app_ids.update(owned_apps)
+            return epic.application_id in app_ids
+
+        if role == "DEVELOPER":
+            return False
+
+    return False
+
+
+async def _require_document_access(db: AsyncSession, current_user, doc_id: UUID) -> Document:
+    document = (await db.execute(select(Document).where(Document.id == doc_id))).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento no encontrado")
+    if not await _can_access_document(db, current_user, document):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento no disponible para este usuario")
+    return document
+
+
+@router.get("/", response_model=list[DocumentResponse], summary="Listar documentos visibles")
+async def list_documents(
+    ticketId: str | None = Query(default=None, alias="ticketId"),
+    epicId: str | None = Query(default=None, alias="epicId"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DocumentResponse]:
+    query = select(Document)
+    if ticketId:
+        query = query.where(Document.ticket_id == UUID(ticketId))
+    if epicId:
+        query = query.where(Document.epic_id == UUID(epicId))
+    query = query.order_by(Document.created_at.desc())
+
+    result = await db.execute(query)
     documents = result.scalars().all()
 
-    return [DocumentResponse.from_orm(doc) for doc in documents]
+    allowed_documents = []
+    for document in documents:
+        if await _can_access_document(db, current_user, document):
+            allowed_documents.append(document)
+
+    return [DocumentResponse.model_validate(doc) for doc in allowed_documents]
 
 
-@router.post(
-    "/upload",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Cargar documento",
-    description="Carga un archivo de documentación a una épica"
-)
+@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED, summary="Subir documento a ticket o épica")
 async def upload_document(
     file: UploadFile = File(...),
-    epic_id: int = None,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    ticketId: str | None = Form(default=None),
+    epicId: str | None = Form(default=None),
+    docType: str = Form(default="DOCUMENTATION"),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> DocumentResponse:
-    """
-    Carga un archivo de documentación.
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nombre de archivo inválido")
 
-    Args:
-        file (UploadFile): Archivo a cargar
-        epic_id (int): ID de la épica donde cargar el documento
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
+    filename = Path(file.filename).name
+    extension = Path(filename).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Extensión no permitida: {extension}")
 
-    Returns:
-        DocumentResponse: Documento creado
+    if ticketId:
+        ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+        if ticket is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
+    if epicId:
+        epic = (await db.execute(select(Epic).where(Epic.id == UUID(epicId)))).scalar_one_or_none()
+        if epic is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Épica no encontrada")
 
-    Raises:
-        HTTPException: Si la épica no existe (404) o hay error en carga (400)
-    """
-    # Verificar que la épica existe si se proporciona
-    if epic_id:
-        epic_check = await db.execute(
-            select(Epic).where(Epic.id == epic_id)
-        )
-        if not epic_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Épica con ID {epic_id} no encontrada"
-            )
+    role = _normalize_role(getattr(current_user, "role", None))
+    user_uuid = UUID(str(current_user.sub))
+    if role == "DEVELOPER":
+        if not ticketId:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Los desarrolladores solo pueden adjuntar archivos a tickets asignados")
+        ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+        if ticket is None or ticket.assignee_id != user_uuid:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo puedes adjuntar archivos a tus tickets asignados")
+    elif role in {"GROUP_LEADER", "TEAM_LEADER"}:
+        authorized_app_ids: set[UUID] = set()
+        team_rows = (await db.execute(select(Team))).scalars().all()
+        user_email = (await db.execute(select(User.email).where(User.id == user_uuid))).scalar_one_or_none() or ""
+        user_email_l = user_email.strip().lower()
+        for team in team_rows:
+            if user_email_l in {str(email).strip().lower() for email in (team.member_emails or [])}:
+                for app_id in team.application_ids or []:
+                    try:
+                        authorized_app_ids.add(UUID(str(app_id)))
+                    except (TypeError, ValueError):
+                        continue
+        owned_apps = (await db.execute(select(Application.id).where(Application.owner_id == user_uuid))).scalars().all()
+        authorized_app_ids.update(owned_apps)
+        if ticketId:
+            ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+            if ticket is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
+            epic = (await db.execute(select(Epic).where(Epic.id == ticket.epic_id))).scalar_one_or_none()
+            if epic is None or epic.application_id not in authorized_app_ids:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a ese proyecto")
+        if epicId:
+            epic = (await db.execute(select(Epic).where(Epic.id == UUID(epicId)))).scalar_one_or_none()
+            if epic is None or epic.application_id not in authorized_app_ids:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a esa épica")
 
-    try:
-        # Crear directorio si no existe
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="El archivo supera el máximo de 10 MB")
 
-        # Generar nombre único para el archivo
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        safe_filename = f"{timestamp}_{file.filename}"
-        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{uuid4()}_{filename}"
+    target_path = UPLOAD_DIR / safe_name
+    with open(target_path, "wb") as fh:
+        fh.write(contents)
 
-        # Guardar archivo
-        contents = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(contents)
+    doc_type = DocumentType.DOCUMENTATION
+    requested = str(docType or "DOCUMENTATION").upper()
+    if requested == "CODE":
+        doc_type = DocumentType.CODE
+    elif requested == "DOCUMENTATION":
+        doc_type = DocumentType.DOCUMENTATION
 
-        # Crear registro en base de datos
-        document = Document(
-            epic_id=epic_id,
-            filename=file.filename,
-            file_path=file_path,
-            file_size=len(contents),
-            mime_type=file.content_type,
-            uploaded_by=current_user.id
-        )
-        db.add(document)
-        await db.commit()
-        await db.refresh(document)
-
-        return DocumentResponse.from_orm(document)
-
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al cargar documento: {str(e)}"
-        )
-
-
-@router.get(
-    "/{doc_id}/download",
-    summary="Descargar documento",
-    description="Descarga un archivo de documentación"
-)
-async def download_document(
-    doc_id: int,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> FileResponse:
-    """
-    Descarga un documento.
-
-    Args:
-        doc_id (int): ID del documento a descargar
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        FileResponse: Archivo para descargar
-
-    Raises:
-        HTTPException: Si el documento no existe (404) o no se puede descargar (400)
-    """
-    result = await db.execute(
-        select(Document).where(Document.id == doc_id)
+    document = Document(
+        filename=filename,
+        file_path=str(target_path),
+        file_size=len(contents),
+        mime_type=file.content_type or "application/octet-stream",
+        epic_id=UUID(epicId) if epicId else None,
+        ticket_id=UUID(ticketId) if ticketId else None,
+        uploaded_by_id=user_uuid,
+        doc_type=doc_type,
     )
-    document = result.scalar_one_or_none()
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    return DocumentResponse.model_validate(document)
 
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Documento con ID {doc_id} no encontrado"
-        )
 
-    # Verificar que el archivo existe
-    if not os.path.exists(document.file_path):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Archivo no encontrado en el sistema de archivos"
-        )
-
-    try:
-        return FileResponse(
-            path=document.file_path,
-            filename=document.filename,
-            media_type=document.mime_type
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al descargar documento: {str(e)}"
-        )
+@router.get("/{doc_id}/download", summary="Descargar documento")
+async def download_document(
+    doc_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    document = await _require_document_access(db, current_user, doc_id)
+    if not Path(document.file_path).exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado en el sistema")
+    return FileResponse(path=document.file_path, filename=document.filename, media_type=document.mime_type)
 
 
 @router.delete(
     "/{doc_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
     summary="Eliminar documento",
-    description="Elimina un documento de forma permanente"
 )
 async def delete_document(
-    doc_id: int,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> None:
-    """
-    Elimina un documento.
-
-    Args:
-        doc_id (int): ID del documento a eliminar
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Raises:
-        HTTPException: Si el documento no existe (404) o hay error en eliminación (400)
-    """
-    result = await db.execute(
-        select(Document).where(Document.id == doc_id)
-    )
-    document = result.scalar_one_or_none()
-
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Documento con ID {doc_id} no encontrado"
-        )
-
+    doc_id: UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    document = await _require_document_access(db, current_user, doc_id)
     try:
-        # Eliminar archivo del sistema de archivos
-        if os.path.exists(document.file_path):
-            os.remove(document.file_path)
-
-        # Eliminar registro de base de datos
+        path = Path(document.file_path)
+        if path.exists():
+            path.unlink()
         await db.delete(document)
         await db.commit()
-
-    except Exception as e:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as exc:  # pragma: no cover - error de I/O
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar documento: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al eliminar documento: {exc}") from exc

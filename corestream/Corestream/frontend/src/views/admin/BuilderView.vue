@@ -945,6 +945,17 @@
                 >{{ ticket.prLink }}</a>
                 <span v-else>—</span>
               </p>
+
+              <div class="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)]/40 p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <span class="font-medium text-[var(--text-primary)]">Documentos del ticket</span>
+                  <span class="rounded-full bg-[var(--bg-tag)] px-2 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+                    adjuntos
+                  </span>
+                </div>
+                <FileUpload v-if="ticket.id" :ticket-id="ticket.id" />
+              </div>
+
               <p>
                 <span class="text-[var(--text-muted)]">Subtareas:</span>
                 {{ (ticket.subtasks ?? []).filter((s) => s.isCompleted).length }}/{{ (ticket.subtasks ?? []).length }} completadas
@@ -1126,6 +1137,7 @@ import apiClient from '@/services/api'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import SprintPlannerPanel from '@/components/builder/SprintPlannerPanel.vue'
 import SlaSettingsPanel from '@/components/builder/SlaSettingsPanel.vue'
+import FileUpload from '@/components/FileUpload.vue'
 import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Tag } from '@/types'
 import type { Sprint } from '@/types/sprint'
 
@@ -1158,10 +1170,13 @@ const editEpicForm = ref({ title: '', description: '' })
 const draggedEpicId = ref<string | null>(null)
 const dropTargetEpicId = ref<string | null>(null)
 
+const normalizeRole = (role?: string | null) =>
+  String(role ?? '').trim().toUpperCase().replace('USERROLE.', '').replace('-', '_')
+
 const currentUserRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
-const isAdmin = computed(() => currentUserRole.value === 'ADMIN')
-const isGroupLeader = computed(() => currentUserRole.value === 'GROUP_LEADER')
-const isDeveloper = computed(() => currentUserRole.value === 'DEVELOPER')
+const isAdmin = computed(() => normalizeRole(currentUserRole.value) === 'ADMIN')
+const isGroupLeader = computed(() => normalizeRole(currentUserRole.value) === 'GROUP_LEADER')
+const isDeveloper = computed(() => normalizeRole(currentUserRole.value) === 'DEVELOPER')
 const canManageApplications = computed(() => isAdmin.value || isGroupLeader.value)
 
 const activeApplications = computed(() =>

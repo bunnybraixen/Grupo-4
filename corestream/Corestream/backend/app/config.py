@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # Modo debug - activa información detallada de errores y recarga automática
     # IMPORTANTE: Desactivar en producción por razones de seguridad
     DEBUG: bool = True
+
+    # Directorio base para adjuntos persistentes: documentos y uploads
+    UPLOAD_DIR: str = "/tmp/corestream_storage"
     
     # Configuración de Pydantic Settings
     class Config:

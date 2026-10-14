@@ -269,6 +269,15 @@ class Ticket(Base, BaseEntity):
 
     tags = relationship("Tag", secondary="ticket_tags", back_populates="tickets")
 
+    documents = relationship(
+        "Document",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        primaryjoin="Ticket.id == Document.ticket_id",
+        foreign_keys="Document.ticket_id",
+        doc="Archivos adjuntos asociados a este ticket",
+    )
+
     def _loaded_relation(self, name: str):
         """
         Devuelve una relación SOLO si ya fue precargada (selectinload).

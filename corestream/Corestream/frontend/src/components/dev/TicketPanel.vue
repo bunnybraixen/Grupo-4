@@ -94,6 +94,19 @@
           </p>
         </div>
 
+        <!-- Documentos del ticket -->
+        <div class="px-6 py-4 border-b border-[var(--border-subtle)]">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+              Documentos del ticket
+            </h3>
+            <span class="rounded-full bg-[var(--bg-tag)] px-2 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+              adjuntos
+            </span>
+          </div>
+          <FileUpload v-if="ticket?.id" :ticket-id="ticket.id" />
+        </div>
+
         <!-- Subtareas -->
         <div class="px-6 py-4 border-b border-[var(--border-subtle)]">
           <SubtaskChecklist
@@ -303,6 +316,7 @@ import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useDialogStore } from '@/stores/dialog'
 import SubtaskChecklist from '@/components/workbench/SubtaskChecklist.vue'
+import FileUpload from '@/components/FileUpload.vue'
 import type { Ticket } from '@/types'
 
 const props = defineProps<{

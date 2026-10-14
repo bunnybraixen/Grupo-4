@@ -29,6 +29,7 @@ from app.middleware.rbac import (
     _normalize_role,
     require_permissions,
 )
+from app.routers.documents import _normalize_role as normalize_document_role
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -62,6 +63,11 @@ class TestNormalizeRole:
 
     def test_lowercase_string_normalized_to_uppercase(self):
         assert _normalize_role("admin") == "ADMIN"
+
+    def test_document_role_helper_accepts_enum_member_admin(self):
+        from app.models.user import UserRole as ModelUserRole
+
+        assert normalize_document_role(ModelUserRole.ADMIN) == "ADMIN"
 
     def test_mixed_case_string_normalized(self):
         assert _normalize_role("Team_Leader") == "TEAM_LEADER"

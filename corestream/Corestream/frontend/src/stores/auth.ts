@@ -48,20 +48,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   // ========== GETTERS COMPUTADOS ==========
 
+  const normalizeRole = (role?: string | null) =>
+    String(role ?? '').trim().toUpperCase().replace('USERROLE.', '').replace('-', '_')
+
   /**
    * Comprueba si el usuario tiene rol de administrador
    */
-  const isAdmin = computed(() => user.value?.role === 'ADMIN')
+  const isAdmin = computed(() => normalizeRole(user.value?.role ?? localStorage.getItem('userRole')) === 'ADMIN')
 
   /**
    * Comprueba si el usuario tiene rol de desarrollador
    */
-  const isDeveloper = computed(() => user.value?.role === 'DEVELOPER')
+  const isDeveloper = computed(() => normalizeRole(user.value?.role ?? localStorage.getItem('userRole')) === 'DEVELOPER')
 
   /**
    * Comprueba si el usuario tiene rol de líder de grupo
    */
-  const isGroupLeader = computed(() => user.value?.role === 'GROUP_LEADER')
+  const isGroupLeader = computed(() => normalizeRole(user.value?.role ?? localStorage.getItem('userRole')) === 'GROUP_LEADER')
 
   /**
    * Líder de equipo, aceptando los dos nombres que usa el proyecto:
@@ -70,7 +73,7 @@ export const useAuthStore = defineStore('auth', () => {
    * de gestión en la interfaz (mismo desajuste que había en el backend).
    */
   const isTeamLeader = computed(() => {
-    const role = String(user.value?.role ?? localStorage.getItem('userRole') ?? '').toUpperCase()
+    const role = normalizeRole(user.value?.role ?? localStorage.getItem('userRole'))
     return role === 'GROUP_LEADER' || role === 'TEAM_LEADER'
   })
 
