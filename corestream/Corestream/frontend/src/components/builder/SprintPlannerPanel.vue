@@ -225,6 +225,33 @@
       </article>
     </div>
 
+    <section v-if="velocityHistory.length" class="space-y-3 border-y border-[var(--border-subtle)] py-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-sm font-semibold text-[var(--text-primary)]">Velocity histórica</h3>
+        <p class="text-xs text-[var(--text-muted)]">
+          Promedio: <span class="font-semibold text-[var(--teal)]">{{ historyAverage }} pts</span>
+        </p>
+      </div>
+      <div class="space-y-2">
+        <div
+          v-for="sprint in velocityHistory"
+          :key="sprint.id"
+          class="grid grid-cols-[minmax(5rem,1fr)_minmax(5rem,2fr)_auto] items-center gap-3 text-xs"
+        >
+          <span class="truncate text-[var(--text-primary)]">{{ sprint.name }}</span>
+          <div class="h-2 overflow-hidden rounded-full bg-[var(--bg-app)]">
+            <div
+              class="h-full rounded-full bg-[var(--teal)]"
+              :style="{ width: `${historyMax ? (sprint.velocity / historyMax) * 100 : 0}%` }"
+            ></div>
+          </div>
+          <span class="whitespace-nowrap text-[var(--text-muted)]">
+            {{ sprint.velocity }} pts · {{ sprint.storyPointsCompleted }} completados
+          </span>
+        </div>
+      </div>
+    </section>
+
     <!-- ============================ DETALLE DEL SPRINT ============================ -->
     <div v-if="selected" class="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -516,6 +543,23 @@ const filteredSprints = computed((): Sprint[] =>
   projectFilter.value
     ? store.sprints.filter((sprint) => sprint.applicationId === projectFilter.value)
     : store.sprints
+)
+
+/** Velocity de los Sprints cerrados, de más antiguo a más reciente */
+const velocityHistory = computed((): Sprint[] =>
+  filteredSprints.value
+    .filter((sprint) => sprint.status === 'COMPLETED')
+    .sort((first, second) => new Date(first.startDate).getTime() - new Date(second.startDate).getTime())
+)
+
+const historyAverage = computed((): string => {
+  if (!velocityHistory.value.length) return '0'
+  const average = velocityHistory.value.reduce((sum, sprint) => sum + sprint.velocity, 0) / velocityHistory.value.length
+  return average.toFixed(1)
+})
+
+const historyMax = computed((): number =>
+  Math.max(0, ...velocityHistory.value.map((sprint) => sprint.velocity))
 )
 
 /** Sprint en detalle (el store mantiene la versión fresca con tablero) */

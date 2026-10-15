@@ -646,6 +646,16 @@
               type="date"
               class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
             />
+            <label class="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+              Story points
+              <input
+                v-model.number="ticketForm.storyPoints"
+                type="number"
+                min="0"
+                max="1000"
+                class="w-20 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-2 py-2 text-[var(--text-primary)] outline-none"
+              />
+            </label>
           </div>
           <div class="flex gap-2">
             <button
@@ -874,6 +884,16 @@
                     {{ u.fullName || u.email }}
                   </option>
                 </select>
+                <label class="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  Story points
+                  <input
+                    v-model.number="editTicketForm.storyPoints"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    class="w-20 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2 py-2 text-[var(--text-primary)] outline-none"
+                  />
+                </label>
                 <select
                   v-model="editTicketForm.epicId"
                   class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm outline-none"
@@ -1197,11 +1217,12 @@ const showNewEpic = ref(false)
 const newEpicTitle = ref('')
 
 const openTicketFormFor = ref<string | null>(null)
-const ticketForm = ref<{ title: string; description: string; priority: Priority; dueDate: string }>({
+const ticketForm = ref<{ title: string; description: string; priority: Priority; dueDate: string; storyPoints: number }>({
   title: '',
   description: '',
   priority: 'MEDIUM',
-  dueDate: ''
+  dueDate: '',
+  storyPoints: 0
 })
 
 const epicTickets = ref<Record<string, Ticket[]>>({})
@@ -1292,6 +1313,7 @@ const editTicketForm = ref<{
   prLink: string
   assigneeId: string
   epicId: string
+  storyPoints: number
 }>({
   title: '',
   description: '',
@@ -1299,7 +1321,8 @@ const editTicketForm = ref<{
   dueDate: '',
   prLink: '',
   assigneeId: '',
-  epicId: ''
+  epicId: '',
+  storyPoints: 0
 })
 
 const epics = computed(() => epicsStore.epics)
@@ -1729,9 +1752,10 @@ const createTicket = async (epic: Epic): Promise<void> => {
       title: ticketForm.value.title.trim(),
       description: ticketForm.value.description.trim() || undefined,
       priority: ticketForm.value.priority,
-      dueDate: ticketForm.value.dueDate || undefined
+      dueDate: ticketForm.value.dueDate || undefined,
+      storyPoints: ticketForm.value.storyPoints
     })
-    ticketForm.value = { title: '', description: '', priority: 'MEDIUM', dueDate: '' }
+    ticketForm.value = { title: '', description: '', priority: 'MEDIUM', dueDate: '', storyPoints: 0 }
     openTicketFormFor.value = null
     epicTickets.value[epic.id] = [
       created,
@@ -2104,7 +2128,8 @@ const openTicketEditor = async (ticket: Ticket): Promise<void> => {
     dueDate: ticket.dueDate ? String(ticket.dueDate).slice(0, 10) : '',
     prLink: ticket.prLink ?? '',
     assigneeId: ticket.assigneeId ?? '',
-    epicId: ticket.epicId
+    epicId: ticket.epicId,
+    storyPoints: ticket.storyPoints ?? 0
   }
   selectedTicketTagIds.value = (ticket.tags ?? []).map((tag) => tag.id)
   await loadUsers()
@@ -2363,7 +2388,8 @@ const saveTicketEdits = async (ticket: Ticket): Promise<void> => {
       priority: f.priority,
       dueDate: f.dueDate || null,
       prLink: f.prLink.trim() || null,
-      assigneeId: f.assigneeId || null
+      assigneeId: f.assigneeId || null,
+      storyPoints: Number(f.storyPoints) || 0
     } as unknown as Partial<Ticket>)
 
     // NEW-03: etiquetas del ticket en la misma acción de guardado
