@@ -142,6 +142,7 @@ class Document(Base, BaseEntity):
         "User",
         back_populates="uploaded_documents",
         foreign_keys=[uploaded_by_id],
+        lazy="selectin",  # evita MissingGreenlet (lazy load en async) al serializar DocumentResponse
         doc="Usuario que subió este documento"
     )
     

@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -113,11 +114,17 @@ async def list_documents(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[DocumentResponse]:
-    query = select(Document)
-    if ticketId:
-        query = query.where(Document.ticket_id == UUID(ticketId))
-    if epicId:
-        query = query.where(Document.epic_id == UUID(epicId))
+    query = select(Document).options(selectinload(Document.uploaded_by))
+    if ticketId and ticketId.strip() and ticketId.strip().lower() not in {"null", "undefined", "none"}:
+        try:
+            query = query.where(Document.ticket_id == UUID(ticketId.strip()))
+        except (ValueError, TypeError):
+            pass
+    if epicId and epicId.strip() and epicId.strip().lower() not in {"null", "undefined", "none"}:
+        try:
+            query = query.where(Document.epic_id == UUID(epicId.strip()))
+        except (ValueError, TypeError):
+            pass
     query = query.order_by(Document.created_at.desc())
 
     result = await db.execute(query)
@@ -148,21 +155,35 @@ async def upload_document(
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Extensión no permitida: {extension}")
 
-    if ticketId:
-        ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+    ticket_uuid: UUID | None = None
+    if ticketId and ticketId.strip() and ticketId.strip().lower() not in {"null", "undefined", "none"}:
+        try:
+            ticket_uuid = UUID(ticketId.strip())
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID de ticket inválido")
+
+    epic_uuid: UUID | None = None
+    if epicId and epicId.strip() and epicId.strip().lower() not in {"null", "undefined", "none"}:
+        try:
+            epic_uuid = UUID(epicId.strip())
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID de épica inválido")
+
+    if ticket_uuid:
+        ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_uuid))).scalar_one_or_none()
         if ticket is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
-    if epicId:
-        epic = (await db.execute(select(Epic).where(Epic.id == UUID(epicId)))).scalar_one_or_none()
+    if epic_uuid:
+        epic = (await db.execute(select(Epic).where(Epic.id == epic_uuid))).scalar_one_or_none()
         if epic is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Épica no encontrada")
 
     role = _normalize_role(getattr(current_user, "role", None))
     user_uuid = UUID(str(current_user.sub))
     if role == "DEVELOPER":
-        if not ticketId:
+        if not ticket_uuid:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Los desarrolladores solo pueden adjuntar archivos a tickets asignados")
-        ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+        ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_uuid))).scalar_one_or_none()
         if ticket is None or ticket.assignee_id != user_uuid:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo puedes adjuntar archivos a tus tickets asignados")
     elif role in {"GROUP_LEADER", "TEAM_LEADER"}:
@@ -179,15 +200,15 @@ async def upload_document(
                         continue
         owned_apps = (await db.execute(select(Application.id).where(Application.owner_id == user_uuid))).scalars().all()
         authorized_app_ids.update(owned_apps)
-        if ticketId:
-            ticket = (await db.execute(select(Ticket).where(Ticket.id == UUID(ticketId)))).scalar_one_or_none()
+        if ticket_uuid:
+            ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_uuid))).scalar_one_or_none()
             if ticket is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket no encontrado")
             epic = (await db.execute(select(Epic).where(Epic.id == ticket.epic_id))).scalar_one_or_none()
             if epic is None or epic.application_id not in authorized_app_ids:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a ese proyecto")
-        if epicId:
-            epic = (await db.execute(select(Epic).where(Epic.id == UUID(epicId)))).scalar_one_or_none()
+        if epic_uuid:
+            epic = (await db.execute(select(Epic).where(Epic.id == epic_uuid))).scalar_one_or_none()
             if epic is None or epic.application_id not in authorized_app_ids:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a esa épica")
 
@@ -213,15 +234,21 @@ async def upload_document(
         file_path=str(target_path),
         file_size=len(contents),
         mime_type=file.content_type or "application/octet-stream",
-        epic_id=UUID(epicId) if epicId else None,
-        ticket_id=UUID(ticketId) if ticketId else None,
+        epic_id=epic_uuid,
+        ticket_id=ticket_uuid,
         uploaded_by_id=user_uuid,
         doc_type=doc_type,
     )
     db.add(document)
     await db.commit()
-    await db.refresh(document)
-    return DocumentResponse.model_validate(document)
+
+    stmt = (
+        select(Document)
+        .options(selectinload(Document.uploaded_by))
+        .where(Document.id == document.id)
+    )
+    loaded_doc = (await db.execute(stmt)).scalar_one()
+    return DocumentResponse.model_validate(loaded_doc)
 
 
 @router.get("/{doc_id}/download", summary="Descargar documento")
