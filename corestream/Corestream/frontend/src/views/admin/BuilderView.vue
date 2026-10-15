@@ -665,6 +665,7 @@
           <div
             v-for="ticket in visibleTickets(epic.id)"
             :key="ticket.id"
+            :id="`builder-ticket-${ticket.id}`"
             :class="[
               'p-3 flex flex-wrap items-center justify-between gap-2',
               draggedTicketId === ticket.id ? 'opacity-50' : '',
@@ -2006,6 +2007,18 @@ const builderGlobalSearchMeta = (group: string, item: any): string => {
 }
 
 const applyBuilderGlobalSearchResult = async (group: string, item: any): Promise<void> => {
+  if (group === 'documents' && item.ticketId) {
+    if (item.applicationId) await selectApplication(item.applicationId)
+    clearTicketFilters()
+    const ticket = Object.values(epicTickets.value).flat().find((candidate) => candidate.id === item.ticketId)
+    if (ticket) {
+      if (detailTicketId.value !== ticket.id) await toggleTicketDetail(ticket)
+      await nextTick()
+      document.getElementById(`builder-ticket-${ticket.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    builderGlobalSearchResults.value = {}
+    return
+  }
   if (group === 'projects' || group === 'applications') {
     if (activeApplications.value.some((app) => app.id === item.id)) {
       await selectApplication(item.id)

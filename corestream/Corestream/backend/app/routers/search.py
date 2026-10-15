@@ -128,12 +128,20 @@ async def global_search(
         for project in project_rows
     ]
 
-    document_query = select(Document).where(Document.filename.ilike(f"%{term}%"))
+    document_query = select(Document).options(
+        selectinload(Document.ticket).selectinload(Ticket.epic),
+    ).where(Document.filename.ilike(f"%{term}%"))
     if not is_admin:
         document_query = document_query.where(Document.uploaded_by_id == db_user.id)
     document_rows = (await db.execute(document_query.limit(limit))).scalars().all()
     results["documents"] = [
-        _result_item("document", document, title_field="filename", subtitle_field="mime_type", link=f"/documents/{document.id}")
+        {
+            **_result_item("document", document, title_field="filename", subtitle_field="mime_type", link=f"/documents/{document.id}"),
+            "ticketId": str(document.ticket_id) if document.ticket_id else None,
+            "ticketTitle": document.ticket.title if document.ticket else None,
+            "applicationId": str(document.ticket.epic.application_id)
+            if document.ticket and document.ticket.epic else None,
+        }
         for document in document_rows
     ]
 

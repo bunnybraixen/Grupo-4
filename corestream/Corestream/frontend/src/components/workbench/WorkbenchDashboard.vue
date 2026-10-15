@@ -304,6 +304,7 @@
         <div
           v-for="ticket in tickets"
           :key="ticket.id"
+          :id="`workbench-ticket-${ticket.id}`"
           class="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-3 hover:border-[var(--teal)]/40 transition-colors"
         >
           <!-- Breadcrumb App > Épica -->
@@ -587,7 +588,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
@@ -745,7 +746,20 @@ const clearGlobalSearch = () => {
 
 const hasGlobalSearchResults = computed(() => Object.values(globalSearchResults.value).some((items) => items.length > 0))
 
-const applyGlobalSearchResult = (group: string, item: any) => {
+const applyGlobalSearchResult = async (group: string, item: any) => {
+  if (group === 'documents' && item.ticketId) {
+    const ticket = rawTickets.value.find((candidate) => candidate.id === item.ticketId)
+    if (ticket) {
+      clearFilters()
+      setSearchQuery(ticket.title)
+      await nextTick()
+      if (openDetailFor.value !== ticket.id) toggleDetail(ticket.id)
+      await nextTick()
+      document.getElementById(`workbench-ticket-${ticket.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    globalSearchResults.value = {}
+    return
+  }
   if ((group === 'projects' || group === 'applications') && item.id) {
     emit('selectApplication', item.id)
     globalSearchResults.value = {}
