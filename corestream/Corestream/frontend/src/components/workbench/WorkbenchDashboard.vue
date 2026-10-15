@@ -549,6 +549,25 @@
               </button>
             </div>
 
+            <!-- Documentos del ticket -->
+            <div class="pt-2 border-t border-[var(--border-subtle)] space-y-2">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
+                  Documentos del ticket
+                </span>
+                <span class="rounded-full bg-[var(--bg-tag)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
+                  adjuntos
+                </span>
+              </div>
+              <FileUpload v-if="ticket.id && canUploadToTicket(ticket)" :ticket-id="ticket.id" />
+              <div v-else class="rounded-lg border border-dashed border-[var(--border-subtle)] p-3 text-center text-xs text-[var(--text-muted)]">
+                <p>Solo puedes subir archivos a los tickets asignados a ti.</p>
+                <div class="mt-2">
+                  <FileUpload :ticket-id="ticket.id" />
+                </div>
+              </div>
+            </div>
+
             <!-- WEB-11: historial cronológico de eventos del ticket -->
             <div class="pt-2 border-t border-[var(--border-subtle)]">
               <p class="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
@@ -577,6 +596,7 @@ import { api } from '@/services/api'
 import apiClient from '@/services/api'
 import TagChips from '@/components/shared/TagChips.vue'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
+import FileUpload from '@/components/FileUpload.vue'
 import type { Subtask, Tag, Ticket, TicketHistoryEvent, User } from '@/types'
 
 // =====================================================================
@@ -636,6 +656,9 @@ const isGroupLeader = computed(() => {
   return role === 'GROUP_LEADER' || role === 'TEAM_LEADER'
 })
 const isAdmin = computed(() => userRole.value === 'ADMIN')
+const isDeveloper = computed(() => !isAdmin.value && !isGroupLeader.value)
+const currentUserId = computed(() => authStore.user?.id || localStorage.getItem('userId') || '')
+const canUploadToTicket = (ticket: Ticket) => !isDeveloper.value || ticket.assigneeId === currentUserId.value
 const canAssignTickets = computed(() => isGroupLeader.value || isAdmin.value)
 
 /**

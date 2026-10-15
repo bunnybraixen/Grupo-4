@@ -1,37 +1,97 @@
 <template>
   <div class="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 lg:p-8">
     <div class="mx-auto max-w-7xl space-y-6">
-      <header class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+      <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">
             Mis Cargas
           </p>
           <h1 class="text-3xl font-bold text-slate-900 dark:text-white">
-            Archivos de mis tickets
+            Archivos de tickets
           </h1>
         </div>
-        <div class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-          {{ totalDocuments }} documentos visibles
+
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <!-- Buscador -->
+          <div class="relative w-full sm:w-72">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Buscar por archivo, ticket o proyecto..."
+              class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 pl-9 text-sm text-slate-800 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+            />
+            <svg
+              class="absolute left-3 top-2.5 h-4 w-4 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <button
+              v-if="searchQuery.trim()"
+              @click="searchQuery = ''"
+              class="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-center font-medium">
+            {{ totalDocuments }} documentos
+          </div>
         </div>
       </header>
 
-      <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-          Subir archivo
-        </h2>
-        <FileUpload />
+      <!-- Panel de subida con asignación a Ticket -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700 dark:text-slate-300">
+            Subir archivo a ticket
+          </h2>
+
+          <div class="flex items-center gap-2">
+            <label class="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              Ticket asignado:
+            </label>
+            <select
+              v-model="selectedTicketId"
+              class="rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-xs text-slate-800 dark:text-white outline-none focus:border-blue-500 max-w-xs truncate"
+            >
+              <option value="" disabled>Selecciona un ticket...</option>
+              <option v-for="t in availableTickets" :key="t.id" :value="t.id">
+                {{ t.title }} ({{ t.appName }})
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="availableTickets.length === 0 && !isLoading" class="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 text-xs text-amber-700 dark:text-amber-300">
+          No tienes tickets disponibles para adjuntar archivos. Los desarrolladores solo pueden subir archivos a los tickets que les han sido asignados.
+        </div>
+
+        <div v-else-if="!selectedTicketId" class="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-500 dark:text-slate-400">
+          Por favor selecciona un ticket arriba para habilitar la carga de documentos.
+        </div>
+
+        <FileUpload
+          v-else
+          :key="selectedTicketId"
+          :ticket-id="selectedTicketId"
+          @uploaded="onFileUploaded"
+        />
       </div>
 
       <div v-if="isLoading" class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        Cargando tus archivos...
+        Cargando archivos...
       </div>
 
-      <div v-else-if="groupedDocuments.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        No tienes documentos visibles todavía.
+      <div v-else-if="filteredGroupedDocuments.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+        {{ searchQuery.trim() ? 'No se encontraron documentos que coincidan con la búsqueda.' : 'No tienes documentos visibles todavía.' }}
       </div>
 
       <div v-else class="space-y-6">
-        <div v-for="group in groupedDocuments" :key="group.applicationId || 'sin-proyecto'" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div v-for="group in filteredGroupedDocuments" :key="group.applicationId || 'sin-proyecto'" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/60">
             <div>
               <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
@@ -42,7 +102,7 @@
               </h2>
             </div>
             <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-              {{ group.documents.length }} archivos
+              {{ group.documents.length }} archivo{{ group.documents.length === 1 ? '' : 's' }}
             </span>
           </div>
 
@@ -59,6 +119,12 @@
                     <span>{{ formatFileSize(doc.file_size ?? doc.fileSize ?? 0) }}</span>
                     <span>•</span>
                     <span>{{ formatDocType(doc.doc_type ?? doc.docType) }}</span>
+                    <template v-if="doc.ticket_id || doc.ticketId">
+                      <span>•</span>
+                      <span class="font-medium text-blue-600 dark:text-blue-400">
+                        Ticket: {{ getTicketTitle(String(doc.ticket_id ?? doc.ticketId)) }}
+                      </span>
+                    </template>
                     <span>•</span>
                     <span>{{ formatDate(doc.created_at ?? doc.createdAt) }}</span>
                   </div>
@@ -93,6 +159,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 import { useDialogStore } from '@/stores/dialog'
+import { useAuthStore } from '@/stores/auth'
 import FileUpload from '@/components/FileUpload.vue'
 
 type DocRow = {
@@ -120,12 +187,29 @@ type GroupedDocs = {
   documents: DocRow[]
 }
 
+type TicketOption = {
+  id: string
+  title: string
+  appName: string
+}
+
 const dialogStore = useDialogStore()
+const authStore = useAuthStore()
+
 const allDocuments = ref<DocRow[]>([])
 const appMap = ref<Map<string, { id: string; name: string }>>(new Map())
 const epicMap = ref<Map<string, { id: string; applicationId?: string; title?: string }>>(new Map())
-const ticketMap = ref<Map<string, { id: string; epicId?: string }>>(new Map())
+const ticketMap = ref<Map<string, { id: string; epicId?: string; title?: string }>>(new Map())
+const availableTickets = ref<TicketOption[]>([])
+const selectedTicketId = ref<string>('')
+const searchQuery = ref<string>('')
 const isLoading = ref(false)
+
+const userRole = computed(() => authStore.user?.role || localStorage.getItem('userRole') || 'DEVELOPER')
+const isDeveloper = computed(() => {
+  const role = String(userRole.value || '').toUpperCase().replace('USERROLE.', '').replace('-', '_')
+  return role === 'DEVELOPER'
+})
 
 const totalDocuments = computed(() => allDocuments.value.length)
 
@@ -146,6 +230,30 @@ const groupedDocuments = computed<GroupedDocs[]>(() => {
   return Array.from(groups.values()).sort((a, b) => a.applicationName.localeCompare(b.applicationName))
 })
 
+const filteredGroupedDocuments = computed<GroupedDocs[]>(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return groupedDocuments.value
+
+  const results: GroupedDocs[] = []
+  for (const group of groupedDocuments.value) {
+    const matchedDocs = group.documents.filter((doc) => {
+      const name = (doc.filename || '').toLowerCase()
+      const ext = getFileExtension(doc.filename).toLowerCase()
+      const type = (doc.doc_type || doc.docType || '').toLowerCase()
+      const app = group.applicationName.toLowerCase()
+      const ticketTitle = (getTicketTitle(String(doc.ticket_id ?? doc.ticketId ?? '')) || '').toLowerCase()
+      return name.includes(q) || ext.includes(q) || type.includes(q) || app.includes(q) || ticketTitle.includes(q)
+    })
+    if (matchedDocs.length > 0) {
+      results.push({
+        ...group,
+        documents: matchedDocs,
+      })
+    }
+  }
+  return results
+})
+
 onMounted(async () => {
   await loadDocuments()
 })
@@ -157,38 +265,108 @@ const loadDocuments = async () => {
 
   try {
     const apps = normalize<any[]>(await api.applications.list())
-    appMap.value = new Map((apps || []).map((app: any) => [String(app.id), { id: String(app.id), name: app.name || 'Proyecto' }]))
+    appMap.value = new Map(
+      (apps || []).map((app: any) => [String(app.id), { id: String(app.id), name: app.name || 'Proyecto' }])
+    )
 
     for (const app of apps || []) {
       const epics = normalize<any[]>(await api.epics.list(String(app.id)))
       for (const epic of epics || []) {
-        epicMap.value.set(String(epic.id), { id: String(epic.id), applicationId: String(epic.applicationId || app.id), title: epic.title || 'Épica' })
+        epicMap.value.set(String(epic.id), {
+          id: String(epic.id),
+          applicationId: String(epic.applicationId || app.id),
+          title: epic.title || 'Épica',
+        })
       }
+    }
+
+    // Cargar tickets disponibles según rol
+    const ticketOptions: TicketOption[] = []
+    if (isDeveloper.value) {
+      try {
+        const myWorkbenchTickets = normalize<any[]>(await api.tickets.listMyWorkbench())
+        for (const t of myWorkbenchTickets || []) {
+          const appName = t.appName || appMap.value.get(String(t.applicationId))?.name || 'Mi Ticket'
+          ticketOptions.push({
+            id: String(t.id),
+            title: t.title || 'Ticket',
+            appName,
+          })
+          ticketMap.value.set(String(t.id), {
+            id: String(t.id),
+            epicId: t.epicId || t.epic_id,
+            title: t.title,
+          })
+        }
+      } catch (err) {
+        console.error('Error cargando tickets de workbench:', err)
+      }
+    } else {
+      // Team Leader / Group Leader / Admin: tickets de las épicas visibles
+      for (const [epicId, epicInfo] of epicMap.value.entries()) {
+        try {
+          const epTickets = normalize<any[]>(await api.tickets.list({ epicId }))
+          const appName = epicInfo.applicationId ? (appMap.value.get(epicInfo.applicationId)?.name || 'Proyecto') : 'Proyecto'
+          for (const t of epTickets || []) {
+            ticketOptions.push({
+              id: String(t.id),
+              title: t.title || 'Ticket',
+              appName,
+            })
+            ticketMap.value.set(String(t.id), {
+              id: String(t.id),
+              epicId,
+              title: t.title,
+            })
+          }
+        } catch {
+          // Continuar con siguientes épicas
+        }
+      }
+    }
+
+    availableTickets.value = ticketOptions
+    if (ticketOptions.length > 0 && !selectedTicketId.value) {
+      selectedTicketId.value = ticketOptions[0].id
     }
 
     const docs = normalize<DocRow[]>(await api.documents.list())
     allDocuments.value = Array.isArray(docs) ? docs : []
 
+    // Asegurar títulos para tickets de documentos listados
     for (const doc of allDocuments.value) {
       const ticketId = String(doc.ticket_id ?? doc.ticketId ?? '')
-      if (ticketId) {
+      if (ticketId && !ticketMap.value.has(ticketId)) {
         try {
           const ticket = normalize<any>(await api.tickets.getById(ticketId))
           const currentTicket = ticket?.data ?? ticket
           if (currentTicket?.id) {
-            ticketMap.value.set(String(currentTicket.id), { id: String(currentTicket.id), epicId: currentTicket.epicId || currentTicket.epic_id || undefined })
+            ticketMap.value.set(String(currentTicket.id), {
+              id: String(currentTicket.id),
+              epicId: currentTicket.epicId || currentTicket.epic_id,
+              title: currentTicket.title,
+            })
           }
         } catch {
-          // La vista sigue funcionando si el ticket no está disponible en el mapa
+          // La vista sigue funcionando si el ticket no está disponible
         }
       }
     }
   } catch (error) {
-    console.error('Error cargando documentación del desarrollador:', error)
+    console.error('Error cargando documentación:', error)
     allDocuments.value = []
   } finally {
     isLoading.value = false
   }
+}
+
+const onFileUploaded = async () => {
+  await loadDocuments()
+}
+
+const getTicketTitle = (ticketId: string): string => {
+  if (!ticketId) return ''
+  return ticketMap.value.get(ticketId)?.title || ticketId.slice(0, 8)
 }
 
 const resolveApplicationId = (doc: DocRow): string | null => {

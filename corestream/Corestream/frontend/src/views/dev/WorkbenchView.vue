@@ -397,6 +397,20 @@
                   <TicketHistory :events="ticketEvents[ticket.id] ?? []" :loading="ticketEventsLoading === ticket.id" :error="ticketEventsError" />
                 </div>
               </template>
+
+              <!-- Documentos del ticket -->
+              <div class="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)]/40 p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <span class="font-medium text-[var(--text-primary)]">Documentos del ticket</span>
+                  <span class="rounded-full bg-[var(--bg-tag)] px-2 py-1 text-[10px] font-medium text-[var(--text-muted)]">
+                    adjuntos
+                  </span>
+                </div>
+                <FileUpload v-if="ticket.id && canUploadToTicket(ticket)" :ticket-id="ticket.id" />
+                <p v-else class="text-xs text-[var(--text-muted)]">
+                  Solo puedes subir archivos a los tickets asignados a ti.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -425,6 +439,7 @@ import apiClient from '@/services/api'
 import WorkbenchDashboard from '@/components/workbench/WorkbenchDashboard.vue'
 import TagChips from '@/components/shared/TagChips.vue'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
+import FileUpload from '@/components/FileUpload.vue'
 import type { Epic, Subtask, Ticket, TicketHistoryEvent, User } from '@/types'
 
 const applicationsStore = useApplicationsStore()
@@ -446,6 +461,7 @@ const availableAssignees = ref<User[]>([])
 const redirectCandidates = ref<User[]>([])
 const currentUserId = computed(() => authStore.user?.id || localStorage.getItem('userId') || '')
 const canManageTeamTickets = computed(() => isGroupLeader.value || isAdmin.value || userRole.value === 'TEAM_LEADER')
+const canUploadToTicket = (ticket: Ticket) => canManageTeamTickets.value || ticket.assigneeId === currentUserId.value
 const resolutionDrafts = ref<Record<string, string>>({})
 const openQuestionFor = ref<string | null>(null)
 const questionDraft = ref('')
