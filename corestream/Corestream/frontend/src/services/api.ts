@@ -1512,21 +1512,16 @@ export const api = {
      * Obtiene resumen general de analítica
      * Incluye métricas globales, rendimiento del equipo, gráficos
      * 
-     * @param filters - Filtros opcionales (rango de fechas, etc.)
+     * @param appId - ID (UUID) de la aplicación
      * @returns Resumen de analítica
      */
-    getSummary: async (filters?: {
-      startDate?: string
-      endDate?: string
-      applicationId?: string
-    }): Promise<ApiResponse<AnalyticsSummary>> => {
-      const response = await apiClient.get<ApiResponse<AnalyticsSummary>>(
-        '/analytics/summary',
-        { params: filters }
+    
+    getSummary: async (appId: string): Promise<ApplicationSummary> => {
+      const response = await apiClient.get<ApplicationSummary>(
+        `/analytics/summary/${appId}`
       )
       return response.data
     },
-
     /**
      * Obtiene datos de rendimiento de usuarios
      * 

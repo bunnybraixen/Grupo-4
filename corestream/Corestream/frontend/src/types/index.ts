@@ -1064,6 +1064,19 @@ export interface AnalyticsSummary {
 }
 
 /**
+ * Resumen de salud de una aplicación (respuesta de GET /api/analytics/summary/{app_id}).
+ * Los nombres coinciden exactamente con los que devuelve el backend.
+ */
+export interface ApplicationSummary {
+  application_id: string
+  total_tickets: number
+  completed_tickets: number
+  in_progress_tickets: number
+  todo_tickets: number
+  total_epics: number
+  completion_percentage: number
+}
+/**
  * ENTIDADES DE AUTENTICACIÓN
  * ==========================
  */

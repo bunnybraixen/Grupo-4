@@ -21,21 +21,6 @@
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.totalTickets') }}</p>
           <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ summary?.total_tickets ?? 0 }}</p>
-          <div class="flex items-center mt-3 gap-1">
-            <span v-if="weekChange >= 0" class="text-green-500 flex items-center gap-1">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414-1.414L13.586 7H12z" clip-rule="evenodd" />
-              </svg>
-              +{{ weekChange }}%
-            </span>
-            <span v-else class="text-red-500 flex items-center gap-1">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M12 13a1 1 0 110 2H7a1 1 0 01-1-1V9a1 1 0 112 0v3.586l4.293-4.293a1 1 0 011.414 1.414L9.414 13H12z" clip-rule="evenodd" />
-              </svg>
-              {{ weekChange }}%
-            </span>
-            <span class="text-gray-500 text-xs">{{ $t('analytics.weekChange') }}</span>
-          </div>
         </div>
         <!-- Icono de tickets -->
         <div class="bg-blue-100 dark:bg-blue-900 rounded-lg p-3">
@@ -52,15 +37,15 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.completed') }}</p>
-          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ summary?.completed ?? 0 }}</p>
+          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ summary?.completed_tickets ?? 0 }}</p>
           <div class="flex items-center mt-3 gap-1">
             <span class="text-green-500 flex items-center gap-1">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414-1.414L13.586 7H12z" clip-rule="evenodd" />
               </svg>
-              +8%
+              {{ summary?.completion_percentage ?? 0 }}%
             </span>
-            <span class="text-gray-500 text-xs">{{ $t('analytics.thisWeek') }}</span>
+            <span class="text-gray-500 text-xs">{{}}</span>
           </div>
         </div>
         <!-- Icono de checkmark -->
@@ -103,21 +88,6 @@
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.avgTime') }}</p>
           <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.avg_time ?? 0 }}h</p>
-          <div class="flex items-center mt-3 gap-1">
-            <span v-if="timeChange <= 0" class="text-green-500 flex items-center gap-1">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M12 13a1 1 0 110 2H7a1 1 0 01-1-1V9a1 1 0 112 0v3.586l4.293-4.293a1 1 0 011.414 1.414L9.414 13H12z" clip-rule="evenodd" />
-              </svg>
-              {{ timeChange }}%
-            </span>
-            <span v-else class="text-red-500 flex items-center gap-1">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414-1.414L13.586 7H12z" clip-rule="evenodd" />
-              </svg>
-              +{{ timeChange }}%
-            </span>
-            <span class="text-gray-500 text-xs">{{ $t('analytics.vsLastWeek') }}</span>
-          </div>
         </div>
         <!-- Icono de reloj -->
         <div class="bg-purple-100 dark:bg-purple-900 rounded-lg p-3">
@@ -132,56 +102,34 @@
 
 <script setup lang="ts">
 /**
- * COMPOSICIÓN DEL SCRIPT:
- * - Imports de librerías necesarias (composables, stores)
- * - Definición de tipos TypeScript
- * - Referencias reactivas (ref, computed, reactive)
- * - Funciones de ciclo de vida (onMounted)
- * - Funciones auxiliares de cálculo
- * - Watchers para reactividad
+ * MetricCards: tarjetas con las métricas del resumen de una aplicación.
+ * Carga el resumen real desde GET /api/analytics/summary/{app_id}.
  */
 
 import { ref, computed, onMounted } from 'vue'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useApplicationsStore } from '@/stores/applications'
 import { useI18n } from 'vue-i18n'
 
-// TIPOS: Interfaz para los datos de resumen
-interface SummaryData {
-  total_tickets: number
-  completed: number
-  blocked: number
-  avg_time: number
-}
-
-// INICIALIZACIÓN DE STORES Y COMPOSABLES
 const analyticsStore = useAnalyticsStore()
+const applicationsStore = useApplicationsStore()
 const { t } = useI18n()
 
-// REFERENCIAS REACTIVAS: Variables que controlan el estado del componente
 const isLoading = ref(false)
-const weekChange = ref(0)
-const timeChange = ref(-5) // Cambio negativo es bueno (menos tiempo)
 
-// COMPUTED: Propiedades derivadas que se actualizan automáticamente
-const summary = computed<SummaryData | null>(() => analyticsStore.summary)
+const summary = computed(() => analyticsStore.summary)
 
-/**
- * CICLO DE VIDA: onMounted
- * Se ejecuta después de que el componente está montado en el DOM
- * RESPONSABILIDADES:
- * - Cargar datos de resumen del store
- * - Calcular cambios porcentuales semanales
- * - Actualizar referencias reactivas
- */
 onMounted(async () => {
   isLoading.value = true
   try {
-    // Llamar a la acción del store para obtener datos de resumen
-    await analyticsStore.fetchSummary()
-    
-    // Calcular cambios comparativos (simulado)
-    weekChange.value = Math.floor(Math.random() * 20 - 5)
-    timeChange.value = Math.floor(Math.random() * 10 - 8)
+    if (applicationsStore.applications.length === 0) {
+      await applicationsStore.fetchAll()
+    }
+    const appId =
+      applicationsStore.selectedAppId ?? applicationsStore.applications[0]?.id
+    if (appId) {
+      await analyticsStore.fetchSummary(appId)
+    }
   } catch (error) {
     console.error('Error al cargar métricas:', error)
   } finally {
