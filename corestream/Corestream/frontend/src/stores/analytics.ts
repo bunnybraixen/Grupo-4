@@ -14,7 +14,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type {
-  AnalyticsSummary,
+  ApplicationSummary,
   UserPerformance,
   HeatmapEntry,
   BurndownData,
@@ -31,7 +31,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * Resumen analítico de la aplicación seleccionada
    * Incluye métricas generales, tendencias, etc.
    */
-  const summary = ref<AnalyticsSummary | null>(null)
+  const summary = ref<ApplicationSummary | null>(null)
 
   /**
    * Lista de rendimiento por usuario
@@ -185,9 +185,9 @@ export const useAnalyticsStore = defineStore('analytics', () => {
    * Incluye métricas como: tickets totales, completados, en progreso, bloqueados, etc.
    * 
    * @param appId - ID de la aplicación
-   * @returns Promise<AnalyticsSummary>
+   * @returns Promise<ApplicationSummary>
    */
-  const fetchSummary = async (appId: string): Promise<AnalyticsSummary> => {
+  const fetchSummary = async (appId: string): Promise<ApplicationSummary> => {
     isLoading.value = true
     error.value = null
 
