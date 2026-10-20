@@ -43,12 +43,13 @@ async def get_application_summary(
     Obtiene un resumen de métricas de una aplicación.
 
     Args:
-        app_id (int): ID de la aplicación
+        app_id (UUID): ID de la aplicación
         current_user (User): Usuario autenticado
         db (AsyncSession): Sesión asíncrona de base de datos
 
     Returns:
-        dict: Diccionario con métricas resumidas
+        dict: Diccionario con métricas resumidas (totales, estados,
+        prioridades, bloqueados, pendientes y vencidos)
 
     Raises:
         HTTPException: Si la aplicación no existe (404)
@@ -63,34 +64,8 @@ async def get_application_summary(
             detail=f"Aplicación con ID {app_id} no encontrada"
         )
 
-    # Contar tickets por estado
-    total_tickets = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(Epic.application_id == app_id)
-    )
-    total = total_tickets.scalar()
-
-    completed = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.DONE)
-    )
-    completed_count = completed.scalar()
-
-    in_progress = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.IN_PROGRESS)
-    )
-    in_progress_count = in_progress.scalar()
-
-    todo = await db.execute(
-        select(func.count(Ticket.id))
-        .join(Epic)
-        .where(Epic.application_id == app_id, Ticket.status == TicketStatus.TODO)
-    )
-    todo_count = todo.scalar()
+    # Métricas de tickets (estado, prioridad, vencidos) con consultas GROUP BY
+    metrics = await analytics_service.get_ticket_metrics(db, app_id)
 
     # Contar épicas
     epics = await db.execute(
@@ -99,17 +74,22 @@ async def get_application_summary(
     )
     epic_count = epics.scalar()
 
-    # Calcular porcentaje de completación
-    completion_percentage = ((completed_count or 0) / (total or 1)) * 100
-
     return {
         "application_id": app_id,
-        "total_tickets": total,
-        "completed_tickets": completed_count,
-        "in_progress_tickets": in_progress_count,
-        "todo_tickets": todo_count,
+        # Campos que ya consumía el frontend (se conservan)
+        "total_tickets": metrics["total_tickets"],
+        "completed_tickets": metrics["completed_tickets"],
+        "in_progress_tickets": metrics["by_status"]["IN_PROGRESS"],
+        "todo_tickets": metrics["by_status"]["TODO"],
         "total_epics": epic_count,
-        "completion_percentage": round(completion_percentage, 2)
+        "completion_percentage": metrics["completion_percentage"],
+        # Campos nuevos (WEB-06: bloqueados, métricas y salud del proyecto)
+        "blocked_tickets": metrics["blocked_tickets"],
+        "blocked_percentage": metrics["blocked_percentage"],
+        "pending_tickets": metrics["pending_tickets"],
+        "overdue_tickets": metrics["overdue_tickets"],
+        "by_status": metrics["by_status"],
+        "by_priority": metrics["by_priority"],
     }
 
 

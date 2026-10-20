@@ -1075,6 +1075,12 @@ export interface ApplicationSummary {
   todo_tickets: number
   total_epics: number
   completion_percentage: number
+  blocked_tickets: number
+  blocked_percentage: number
+  pending_tickets: number
+  overdue_tickets: number
+  by_status: Record<string, number>
+  by_priority: Record<string, number>
 }
 /**
  * ENTIDADES DE AUTENTICACIÓN

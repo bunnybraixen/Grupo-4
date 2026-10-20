@@ -542,3 +542,80 @@ class AnalyticsService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al generar resumen de proyecto"
             )
+
+
+# ---------------------------------------------------------------------------
+# WEB-06: métricas de tickets por aplicación (estado, prioridad, vencidos)
+# ---------------------------------------------------------------------------
+from uuid import UUID as _UUID  # noqa: E402
+
+from app.models import Epic as _Epic  # noqa: E402
+from app.models import Ticket as _Ticket  # noqa: E402
+from app.models import TicketStatus as _TicketStatus  # noqa: E402
+
+
+async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
+    """
+    Calcula las métricas de tickets de una aplicación con consultas GROUP BY.
+
+    Devuelve cantidades por estado, distribución por prioridad, vencidos y
+    porcentajes. Los tickets se asocian a la aplicación a través de su épica.
+    """
+    base = (
+        select(_Ticket)
+        .join(_Epic, _Epic.id == _Ticket.epic_id)
+        .where(_Epic.application_id == app_id)
+    )
+    base_ids = base.with_only_columns(_Ticket.id).subquery()
+
+    # Cantidad por estado
+    by_status_rows = await db.execute(
+        select(_Ticket.status, func.count(_Ticket.id))
+        .where(_Ticket.id.in_(select(base_ids.c.id)))
+        .group_by(_Ticket.status)
+    )
+    by_status = {s.value: 0 for s in _TicketStatus}
+    for st, qty in by_status_rows.all():
+        by_status[getattr(st, "value", str(st))] = qty
+
+    # Distribución por prioridad
+    by_priority_rows = await db.execute(
+        select(_Ticket.priority, func.count(_Ticket.id))
+        .where(_Ticket.id.in_(select(base_ids.c.id)))
+        .group_by(_Ticket.priority)
+    )
+    by_priority = {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "URGENT": 0}
+    for pr, qty in by_priority_rows.all():
+        by_priority[getattr(pr, "value", str(pr))] = qty
+
+    # Vencidos: due_date pasada y no completados.
+    # due_date es "timestamp without time zone", así que se compara con utcnow() naive.
+    overdue_row = await db.execute(
+        select(func.count(_Ticket.id)).where(
+            _Ticket.id.in_(select(base_ids.c.id)),
+            _Ticket.due_date.is_not(None),
+            _Ticket.due_date < datetime.utcnow(),
+            _Ticket.status != _TicketStatus.DONE,
+        )
+    )
+    overdue = overdue_row.scalar() or 0
+
+    total = sum(by_status.values())
+    done = by_status["DONE"]
+    blocked = by_status["BLOCKED"]
+    pending = total - done
+
+    def pct(n: int) -> float:
+        return round((n / total) * 100, 2) if total else 0.0
+
+    return {
+        "total_tickets": total,
+        "completed_tickets": done,
+        "blocked_tickets": blocked,
+        "pending_tickets": pending,
+        "overdue_tickets": overdue,
+        "completion_percentage": pct(done),
+        "blocked_percentage": pct(blocked),
+        "by_status": by_status,
+        "by_priority": by_priority,
+    }
