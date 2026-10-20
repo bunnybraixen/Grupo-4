@@ -54,12 +54,7 @@ from app.schemas.notification import (
 from app.schemas.document import (
     DocumentResponse,
 )
-from app.schemas.ticket_redirection import (
-    TicketEventResponse,
-    TicketRedirectionRequest,
-    TicketRedirectionResponse,
-    TeamMemberResponse,
-)
+from app.schemas.ticket_event import TicketEventResponse
 from app.schemas.analytics import (
     UserPerformance,
     HeatmapEntry,
@@ -146,9 +141,6 @@ __all__ = [
     "DocumentResponse",
     # Esquemas de Redirección / Eventos de Ticket
     "TicketEventResponse",
-    "TicketRedirectionRequest",
-    "TicketRedirectionResponse",
-    "TeamMemberResponse",
     # Esquemas de Analítica
     "UserPerformance",
     "HeatmapEntry",

@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
-
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, BaseEntity
-from .user import User
 
-
-class UserRole(str, Enum):
-    ADMIN = "ADMIN"
-    TEAM_LEADER = "TEAM_LEADER"
-    DEVELOPER = "DEVELOPER"
+# El enum de roles real es app.models.user.UserRole (columna users.role).
 
 
 class Role(Base, BaseEntity):

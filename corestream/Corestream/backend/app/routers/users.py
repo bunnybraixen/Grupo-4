@@ -16,7 +16,7 @@ from sqlalchemy import select, func
 from typing import List
 
 from app.database import get_db
-from app.models import User, UserRole, Ticket, TicketEvent
+from app.models import User, UserRole, Ticket, TicketEvent, TicketStatus
 from app.schemas import UserResponse, UserUpdate
 from app.middleware.auth import get_current_user, require_role
 
@@ -217,7 +217,7 @@ async def delete_user(
     "/{user_id}/promote",
     response_model=UserResponse,
     summary="Promover usuario a líder",
-    description="Asciende a un usuario a rol de TEAM_LEADER (requiere ADMIN)"
+    description="Asciende a un usuario a rol de GROUP_LEADER (requiere ADMIN)"
 )
 async def promote_user(
     user_id: UUID,
@@ -236,14 +236,14 @@ async def promote_user(
             detail=f"Usuario con ID {user_id} no encontrado"
         )
 
-    if user.role == UserRole.TEAM_LEADER:
+    if user.role == UserRole.GROUP_LEADER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El usuario ya es líder de equipo"
         )
 
     try:
-        user.role = UserRole.TEAM_LEADER
+        user.role = UserRole.GROUP_LEADER
         await db.commit()
         await db.refresh(user)
 
@@ -320,7 +320,7 @@ async def demote_user(
             detail=f"Usuario con ID {user_id} no encontrado"
         )
 
-    if user.role != UserRole.TEAM_LEADER:
+    if user.role != UserRole.GROUP_LEADER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El usuario no es líder de equipo"
@@ -381,8 +381,8 @@ async def get_user_stats(
     # Contar tickets completados por el usuario
     completed_tickets = await db.execute(
         select(func.count(Ticket.id)).where(
-            Ticket.assigned_to == user_id,
-            Ticket.status == "COMPLETED"
+            Ticket.assignee_id == user_id,
+            Ticket.status == TicketStatus.DONE
         )
     )
     completed_count = completed_tickets.scalar()
@@ -390,8 +390,8 @@ async def get_user_stats(
     # Contar tickets en progreso
     in_progress = await db.execute(
         select(func.count(Ticket.id)).where(
-            Ticket.assigned_to == user_id,
-            Ticket.status == "IN_PROGRESS"
+            Ticket.assignee_id == user_id,
+            Ticket.status == TicketStatus.IN_PROGRESS
         )
     )
     in_progress_count = in_progress.scalar()

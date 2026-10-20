@@ -15,7 +15,7 @@ from app.services.file_service import FileService
 logger = logging.getLogger("corestream.uploads")
 
 router = APIRouter(
-    prefix="/api/uploads",
+    prefix="/uploads",
     tags=["uploads"],
 )
 
