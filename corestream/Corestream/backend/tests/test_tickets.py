@@ -16,13 +16,13 @@ from app.middleware.auth import hash_password
 from app.models import (
     Application,
     Epic,
-    Role,
     Ticket,
     TicketEvent,
     TicketEventType,
     TicketPriority,
     TicketStatus,
     User,
+    UserRole,
 )
 from app.services.ticket_state_machine import TicketStateMachine
 
@@ -31,20 +31,12 @@ from app.services.ticket_state_machine import TicketStateMachine
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-async def dev_role(db_session: AsyncSession) -> Role:
-    role = Role(name="DEVELOPER")
-    db_session.add(role)
-    await db_session.flush()
-    return role
-
-
-@pytest.fixture
-async def dev_user(db_session: AsyncSession, dev_role: Role) -> User:
+async def dev_user(db_session: AsyncSession) -> User:
     user = User(
         email="dev@test.com",
         full_name="Test Developer",
         hashed_password=hash_password("Test1234!"),
-        role_id=dev_role.id,
+        role=UserRole.DEVELOPER,
         is_active=True,
     )
     db_session.add(user)
@@ -134,23 +126,26 @@ class TestCanTransitionExtra:
     def test_unknown_status_returns_false(self):
         assert TicketStateMachine.can_transition("INVALID_STATUS", "IN_PROGRESS") is False
 
-    def test_todo_cannot_go_to_blocked_question(self):
-        assert TicketStateMachine.can_transition("TODO", "BLOCKED_QUESTION") is False
+    def test_todo_cannot_go_to_blocked(self):
+        assert TicketStateMachine.can_transition("TODO", "BLOCKED") is False
 
-    def test_completed_has_no_valid_transitions(self):
-        targets = ["TODO", "IN_PROGRESS", "BLOCKED_QUESTION", "REDIRECTED", "COMPLETED"]
+    def test_done_has_no_valid_transitions(self):
+        targets = ["TODO", "IN_PROGRESS", "BLOCKED", "REDIRECTED", "DONE"]
         for target in targets:
-            assert TicketStateMachine.can_transition("COMPLETED", target) is False
+            assert TicketStateMachine.can_transition("DONE", target) is False
+
+    def test_redirected_cannot_go_back_to_todo(self):
+        # Un ticket redirigido lo retoma el nuevo responsable (IN_PROGRESS)
+        assert TicketStateMachine.can_transition("REDIRECTED", "TODO") is False
 
     def test_all_valid_transitions(self):
         valid = [
             ("TODO", "IN_PROGRESS"),
-            ("IN_PROGRESS", "BLOCKED_QUESTION"),
+            ("IN_PROGRESS", "BLOCKED"),
             ("IN_PROGRESS", "REDIRECTED"),
-            ("IN_PROGRESS", "COMPLETED"),
+            ("IN_PROGRESS", "DONE"),
             ("BLOCKED", "IN_PROGRESS"),
-            ("BLOCKED_QUESTION", "IN_PROGRESS"),
-            ("REDIRECTED", "TODO"),
+            ("REDIRECTED", "IN_PROGRESS"),
         ]
         for current, new in valid:
             assert TicketStateMachine.can_transition(current, new) is True, \
@@ -235,12 +230,12 @@ class TestTicketCRUD:
     ):
         pr_url = "https://github.com/owner/repo/pull/42"
         in_progress_ticket.pr_link = pr_url
-        in_progress_ticket.status = TicketStatus.COMPLETED
+        in_progress_ticket.status = TicketStatus.DONE
         await db_session.flush()
         await db_session.refresh(in_progress_ticket)
 
         assert in_progress_ticket.pr_link == pr_url
-        assert in_progress_ticket.status == TicketStatus.COMPLETED
+        assert in_progress_ticket.status == TicketStatus.DONE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,29 +256,29 @@ class TestTicketStateTransitions:
     async def test_complete_ticket_with_pr(
         self, db_session: AsyncSession, in_progress_ticket: Ticket
     ):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "COMPLETED")
+        assert TicketStateMachine.can_transition("IN_PROGRESS", "DONE")
         in_progress_ticket.pr_link = "https://github.com/repo/pull/1"
-        in_progress_ticket.status = TicketStatus.COMPLETED
+        in_progress_ticket.status = TicketStatus.DONE
         await db_session.flush()
         await db_session.refresh(in_progress_ticket)
-        assert in_progress_ticket.status == TicketStatus.COMPLETED
+        assert in_progress_ticket.status == TicketStatus.DONE
 
     async def test_raise_question_blocks_ticket(
         self, db_session: AsyncSession, in_progress_ticket: Ticket
     ):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "BLOCKED_QUESTION")
-        in_progress_ticket.status = TicketStatus.BLOCKED_QUESTION
+        assert TicketStateMachine.can_transition("IN_PROGRESS", "BLOCKED")
+        in_progress_ticket.status = TicketStatus.BLOCKED
         await db_session.flush()
         await db_session.refresh(in_progress_ticket)
-        assert in_progress_ticket.status == TicketStatus.BLOCKED_QUESTION
+        assert in_progress_ticket.status == TicketStatus.BLOCKED
 
     async def test_resolve_question_returns_to_in_progress(
         self, db_session: AsyncSession, in_progress_ticket: Ticket
     ):
-        in_progress_ticket.status = TicketStatus.BLOCKED_QUESTION
+        in_progress_ticket.status = TicketStatus.BLOCKED
         await db_session.flush()
 
-        assert TicketStateMachine.can_transition("BLOCKED_QUESTION", "IN_PROGRESS")
+        assert TicketStateMachine.can_transition("BLOCKED", "IN_PROGRESS")
         in_progress_ticket.status = TicketStatus.IN_PROGRESS
         await db_session.flush()
         await db_session.refresh(in_progress_ticket)
@@ -334,8 +329,8 @@ class TestTicketStateTransitions:
         assert events[1].event_type == TicketEventType.QUESTION_RAISED
         assert events[2].event_type == TicketEventType.QUESTION_RESOLVED
 
-    def test_completed_cannot_restart(self):
-        assert TicketStateMachine.can_transition("COMPLETED", "IN_PROGRESS") is False
+    def test_done_cannot_restart(self):
+        assert TicketStateMachine.can_transition("DONE", "IN_PROGRESS") is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -397,7 +392,7 @@ class TestTicketPriorities:
         statuses = [
             TicketStatus.TODO,
             TicketStatus.IN_PROGRESS,
-            TicketStatus.COMPLETED,
+            TicketStatus.DONE,
         ]
         for i, status in enumerate(statuses):
             ticket = Ticket(

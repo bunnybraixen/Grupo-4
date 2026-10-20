@@ -1,21 +1,46 @@
 """
-Tests unitarios para TicketStateMachine — CS-044.
+Tests unitarios para TicketStateMachine (app/services/ticket_state_machine.py).
 
-Sección A: can_transition (función pura, sin DB ni mocks).
-Sección B: métodos de transición async con TimerService y TransitionAuditService mockeados.
-Sección C: log_ticket_event con DB SQLite real (usa fixture sample_ticket).
+Sección A: can_transition contra el grafo real VALID_TRANSITIONS
+           (TODO / IN_PROGRESS / BLOCKED / REDIRECTED / DONE).
+Sección B: transition_to_in_progress y transition_to_completed — las dos
+           transiciones que usan los routers (POST /tickets/{id}/start y
+           /complete). Se mockea TransitionAuditService para aislar la lógica.
+Sección C: log_ticket_event con DB SQLite real (fixture sample_ticket).
+Sección D: métodos heredados basados en dict (transition, complete_ticket,
+           raise_question, resolve_question, redirect_ticket). Ningún router
+           los usa hoy; se cubren sus validaciones de entrada.
+
+NOTA: versiones anteriores de este fichero esperaban estados BLOCKED_QUESTION
+y COMPLETED, un TimerService dentro de la máquina de estados y métodos
+transition_to_blocked / transition_to_redirected. Nada de eso existe ya.
 """
 
-from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import TicketEventType, TicketStatus
+from app.models import TicketEvent, TicketEventType, TicketStatus
+from app.services import ticket_state_machine as tsm_module
 from app.services.ticket_state_machine import TicketStateMachine
+
+ALL_STATES = [s.value for s in TicketStatus]
+
+# Aristas válidas según VALID_TRANSITIONS
+VALID_EDGES = {
+    ("TODO", "IN_PROGRESS"),
+    ("IN_PROGRESS", "BLOCKED"),
+    ("IN_PROGRESS", "REDIRECTED"),
+    ("IN_PROGRESS", "DONE"),
+    ("BLOCKED", "IN_PROGRESS"),
+    ("REDIRECTED", "IN_PROGRESS"),
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sección A — can_transition (síncrono, sin dependencias externas)
@@ -24,368 +49,244 @@ from app.services.ticket_state_machine import TicketStateMachine
 class TestCanTransition:
     """Valida todas las aristas del grafo de transiciones y los casos borde."""
 
-    # Transiciones VÁLIDAS
-    def test_valid_todo_to_in_progress(self):
-        assert TicketStateMachine.can_transition("TODO", "IN_PROGRESS") is True
+    def test_grafo_cubre_todos_los_estados_del_enum(self):
+        # Si se añade un estado a TicketStatus sin reglas de transición, la
+        # máquina lo trataría como desconocido y bloquearía el ticket.
+        assert set(TicketStateMachine.VALID_TRANSITIONS) == set(ALL_STATES)
 
-    def test_valid_in_progress_to_blocked_question(self):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "BLOCKED_QUESTION") is True
+    def test_destinos_del_grafo_son_estados_validos(self):
+        for destinos in TicketStateMachine.VALID_TRANSITIONS.values():
+            assert set(destinos) <= set(ALL_STATES)
 
-    def test_valid_in_progress_to_redirected(self):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "REDIRECTED") is True
+    @pytest.mark.parametrize("current,new", sorted(VALID_EDGES))
+    def test_transiciones_validas(self, current, new):
+        assert TicketStateMachine.can_transition(current, new) is True
 
-    def test_valid_in_progress_to_completed(self):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "COMPLETED") is True
+    @pytest.mark.parametrize(
+        "current,new",
+        sorted(
+            (a, b)
+            for a in ALL_STATES
+            for b in ALL_STATES
+            if a != b and (a, b) not in VALID_EDGES
+        ),
+    )
+    def test_transiciones_invalidas(self, current, new):
+        assert TicketStateMachine.can_transition(current, new) is False
 
-    def test_valid_blocked_to_in_progress(self):
-        assert TicketStateMachine.can_transition("BLOCKED", "IN_PROGRESS") is True
+    def test_done_es_estado_terminal(self):
+        assert TicketStateMachine.VALID_TRANSITIONS["DONE"] == []
 
-    def test_valid_blocked_question_to_in_progress(self):
-        assert TicketStateMachine.can_transition("BLOCKED_QUESTION", "IN_PROGRESS") is True
+    @pytest.mark.parametrize("state", ALL_STATES)
+    def test_mismo_estado_devuelve_false(self, state):
+        assert TicketStateMachine.can_transition(state, state) is False
 
-    def test_valid_redirected_to_todo(self):
-        assert TicketStateMachine.can_transition("REDIRECTED", "TODO") is True
-
-    # Transiciones INVÁLIDAS
-    def test_invalid_completed_to_in_progress(self):
-        assert TicketStateMachine.can_transition("COMPLETED", "IN_PROGRESS") is False
-
-    def test_invalid_completed_to_todo(self):
-        assert TicketStateMachine.can_transition("COMPLETED", "TODO") is False
-
-    def test_invalid_todo_to_completed(self):
-        assert TicketStateMachine.can_transition("TODO", "COMPLETED") is False
-
-    def test_invalid_todo_to_blocked_question(self):
-        assert TicketStateMachine.can_transition("TODO", "BLOCKED_QUESTION") is False
-
-    def test_invalid_in_progress_to_todo(self):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "TODO") is False
-
-    def test_invalid_completed_to_blocked(self):
-        assert TicketStateMachine.can_transition("COMPLETED", "BLOCKED_QUESTION") is False
-
-    # Mismo estado → siempre False
-    def test_same_state_todo_returns_false(self):
-        assert TicketStateMachine.can_transition("TODO", "TODO") is False
-
-    def test_same_state_in_progress_returns_false(self):
-        assert TicketStateMachine.can_transition("IN_PROGRESS", "IN_PROGRESS") is False
-
-    def test_same_state_completed_returns_false(self):
-        assert TicketStateMachine.can_transition("COMPLETED", "COMPLETED") is False
-
-    # Valores inválidos
-    def test_none_current_status_returns_false(self):
+    def test_none_current_status_devuelve_false(self):
         assert TicketStateMachine.can_transition(None, "IN_PROGRESS") is False
 
-    def test_none_new_status_returns_false(self):
+    def test_none_new_status_devuelve_false(self):
         assert TicketStateMachine.can_transition("TODO", None) is False
 
-    def test_unknown_current_state_returns_false(self):
+    def test_estado_desconocido_devuelve_false(self):
         assert TicketStateMachine.can_transition("UNKNOWN", "IN_PROGRESS") is False
 
-    def test_empty_string_current_returns_false(self):
+    def test_estados_legacy_ya_no_existen(self):
+        # BLOCKED_QUESTION y COMPLETED eran los nombres antiguos
+        assert TicketStateMachine.can_transition("IN_PROGRESS", "BLOCKED_QUESTION") is False
+        assert TicketStateMachine.can_transition("IN_PROGRESS", "COMPLETED") is False
+
+    def test_cadena_vacia_devuelve_false(self):
         assert TicketStateMachine.can_transition("", "IN_PROGRESS") is False
 
+    def test_comparacion_es_sensible_a_mayusculas(self):
+        assert TicketStateMachine.can_transition("todo", "in_progress") is False
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers para crear mocks de ticket y usuario
-# ─────────────────────────────────────────────────────────────────────────────
-
-def make_ticket(status: TicketStatus) -> MagicMock:
-    ticket = MagicMock()
-    ticket.id = uuid4()
-    ticket.status = status
-    ticket.assignee_id = uuid4()
-    return ticket
-
-
-def make_user() -> MagicMock:
-    user = MagicMock()
-    user.id = uuid4()
-    return user
-
-
-def make_db() -> MagicMock:
-    return MagicMock()
+    def test_acepta_miembros_del_enum(self):
+        # TicketStatus hereda de str, así que el enum se compara igual que su valor
+        assert TicketStateMachine.can_transition(
+            TicketStatus.TODO, TicketStatus.IN_PROGRESS
+        ) is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sección B — Transiciones async (TimerService y TransitionAuditService mockeados)
+# Helpers para crear dobles de ticket y usuario
 # ─────────────────────────────────────────────────────────────────────────────
+
+def make_ticket(status: TicketStatus, assignee_id=None) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid4(), status=status, assignee_id=assignee_id, pr_link=None
+    )
+
+
+def make_orm_user() -> SimpleNamespace:
+    """Usuario estilo modelo ORM (expone .id como UUID)."""
+    return SimpleNamespace(id=uuid4(), role="DEVELOPER")
+
+
+def make_token_user() -> SimpleNamespace:
+    """Usuario estilo TokenPayload (expone .sub como str, sin .id)."""
+    return SimpleNamespace(sub=str(uuid4()), role="DEVELOPER")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sección B — transition_to_in_progress / transition_to_completed
+# ─────────────────────────────────────────────────────────────────────────────
+
+AUDIT = "app.services.ticket_state_machine.TransitionAuditService.record_transition"
+
 
 class TestTransitionToInProgress:
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_todo(self, mock_timer, mock_audit):
-        mock_audit.record_transition = AsyncMock()
+    async def test_valida_desde_todo(self):
         ticket = make_ticket(TicketStatus.TODO)
-        user = make_user()
-        db = make_db()
-
-        result = await TicketStateMachine.transition_to_in_progress(ticket, user, db)
+        user = make_orm_user()
+        with patch(AUDIT, new=AsyncMock()):
+            result = await TicketStateMachine.transition_to_in_progress(ticket, user, MagicMock())
 
         assert result["status"] == "success"
         assert result["ticket_id"] == str(ticket.id)
+        assert result["previous_status"] == "TODO"
+        assert result["new_status"] == "IN_PROGRESS"
         assert ticket.status == TicketStatus.IN_PROGRESS
+
+    async def test_ticket_libre_se_asigna_a_quien_lo_inicia(self):
+        ticket = make_ticket(TicketStatus.TODO, assignee_id=None)
+        user = make_orm_user()
+        with patch(AUDIT, new=AsyncMock()):
+            result = await TicketStateMachine.transition_to_in_progress(ticket, user, MagicMock())
+
         assert ticket.assignee_id == user.id
+        assert result["assignee_id"] == str(user.id)
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_completed_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.COMPLETED)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_in_progress(ticket, make_user(), make_db())
+    async def test_actor_desde_jwt_se_normaliza_a_uuid(self):
+        # current_user puede ser un TokenPayload: el sub (str) se convierte a UUID
+        ticket = make_ticket(TicketStatus.TODO, assignee_id=None)
+        user = make_token_user()
+        with patch(AUDIT, new=AsyncMock()) as audit:
+            await TicketStateMachine.transition_to_in_progress(ticket, user, MagicMock())
+
+        assert isinstance(ticket.assignee_id, UUID)
+        assert ticket.assignee_id == UUID(user.sub)
+        assert audit.await_args.kwargs["user_id"] == UUID(user.sub)
+
+    async def test_no_reasigna_un_ticket_ya_asignado(self):
+        # La comprobación de "robo" la hace claim_or_assert_assignee en el
+        # router; la máquina de estados respeta el assignee existente.
+        original = uuid4()
+        ticket = make_ticket(TicketStatus.TODO, assignee_id=original)
+        with patch(AUDIT, new=AsyncMock()):
+            await TicketStateMachine.transition_to_in_progress(ticket, make_orm_user(), MagicMock())
+
+        assert ticket.assignee_id == original
+
+    @pytest.mark.parametrize("status", ["IN_PROGRESS", "DONE"])
+    async def test_invalida_lanza_400_y_no_audita(self, status):
+        ticket = make_ticket(TicketStatus(status))
+        with patch(AUDIT, new=AsyncMock()) as audit:
+            with pytest.raises(HTTPException) as exc:
+                await TicketStateMachine.transition_to_in_progress(
+                    ticket, make_orm_user(), MagicMock()
+                )
+
         assert exc.value.status_code == 400
+        assert ticket.status == TicketStatus(status)
+        audit.assert_not_awaited()
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_in_progress_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_in_progress(ticket, make_user(), make_db())
-        assert exc.value.status_code == 400
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_audit_record_called(self, mock_timer, mock_audit):
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.TODO)
-
-        await TicketStateMachine.transition_to_in_progress(ticket, make_user(), make_db())
-
-        mock_audit.record_transition.assert_called_once()
-
-
-class TestTransitionToBlocked:
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_in_progress(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-        question = "¿Cuál es el criterio de aceptación?"
-
-        result = await TicketStateMachine.transition_to_blocked(ticket, make_user(), question, make_db())
-
-        assert result["status"] == "success"
-        assert ticket.status == TicketStatus.BLOCKED_QUESTION
-        assert ticket.block_reason == question
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_pause_timer_called(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-
-        await TicketStateMachine.transition_to_blocked(ticket, make_user(), "pregunta", make_db())
-
-        mock_timer.return_value.pause_timer.assert_called_once()
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_todo_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.TODO)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_blocked(ticket, make_user(), "pregunta", make_db())
-        assert exc.value.status_code == 400
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_completed_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.COMPLETED)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_blocked(ticket, make_user(), "pregunta", make_db())
-        assert exc.value.status_code == 400
-
-
-class TestTransitionFromBlocked:
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_blocked_question(self, mock_timer, mock_audit):
-        mock_timer.return_value.resume_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.BLOCKED_QUESTION)
-        ticket.block_reason = "pregunta anterior"
-
-        result = await TicketStateMachine.transition_to_in_progress_from_blocked(
-            ticket, make_user(), "resolución documentada", make_db()
-        )
-
-        assert result["status"] == "success"
+    @pytest.mark.parametrize("status", ["BLOCKED", "REDIRECTED"])
+    async def test_reanudar_desde_blocked_o_redirected(self, status):
+        ticket = make_ticket(TicketStatus(status), assignee_id=uuid4())
+        with patch(AUDIT, new=AsyncMock()):
+            result = await TicketStateMachine.transition_to_in_progress(
+                ticket, make_orm_user(), MagicMock()
+            )
+        assert result["previous_status"] == status
         assert ticket.status == TicketStatus.IN_PROGRESS
-        assert ticket.block_reason is None
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_resume_timer_called(self, mock_timer, mock_audit):
-        mock_timer.return_value.resume_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.BLOCKED_QUESTION)
-
-        await TicketStateMachine.transition_to_in_progress_from_blocked(
-            ticket, make_user(), "resuelto", make_db()
-        )
-
-        mock_timer.return_value.resume_timer.assert_called_once()
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_redirected_raises_400(self, mock_timer, mock_audit):
-        # REDIRECTED → IN_PROGRESS no es una transición válida
-        ticket = make_ticket(TicketStatus.REDIRECTED)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_in_progress_from_blocked(
-                ticket, make_user(), "resolución", make_db()
-            )
-        assert exc.value.status_code == 400
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_completed_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.COMPLETED)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_in_progress_from_blocked(
-                ticket, make_user(), "resolución", make_db()
-            )
-        assert exc.value.status_code == 400
-
-
-class TestTransitionToRedirected:
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_in_progress(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_event = AsyncMock()
-        old_assignee = uuid4()
-        new_assignee = uuid4()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-        ticket.assignee_id = old_assignee
-
-        result = await TicketStateMachine.transition_to_redirected(
-            ticket, make_user(), new_assignee, "reasignado por carga", make_db()
-        )
-
-        assert result["status"] == "success"
-        assert result["from_user_id"] == str(old_assignee)
-        assert ticket.assignee_id == new_assignee
-        assert ticket.status == TicketStatus.TODO
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_pause_timer_called_only_when_in_progress(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_event = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-
-        await TicketStateMachine.transition_to_redirected(
-            ticket, make_user(), uuid4(), "motivo", make_db()
-        )
-
-        mock_timer.return_value.pause_timer.assert_called_once()
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_todo_no_timer_pause(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_event = AsyncMock()
+    async def test_registra_auditoria_con_from_y_to(self):
         ticket = make_ticket(TicketStatus.TODO)
+        db = MagicMock()
+        with patch(AUDIT, new=AsyncMock()) as audit:
+            await TicketStateMachine.transition_to_in_progress(ticket, make_orm_user(), db)
 
-        await TicketStateMachine.transition_to_redirected(
-            ticket, make_user(), uuid4(), "motivo", make_db()
-        )
+        audit.assert_awaited_once()
+        kwargs = audit.await_args.kwargs
+        assert kwargs["db"] is db
+        assert kwargs["ticket_id"] == ticket.id
+        assert kwargs["event_type"] == TicketEventType.STATUS_CHANGED
+        assert kwargs["from_status"] == "TODO"
+        assert kwargs["to_status"] == "IN_PROGRESS"
+        assert kwargs["extra"] == {"action": "start"}
 
-        mock_timer.return_value.pause_timer.assert_not_called()
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_completed_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.COMPLETED)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_redirected(
-                ticket, make_user(), uuid4(), "motivo", make_db()
+    async def test_no_hace_commit(self):
+        # El commit lo hace el router para que estado y evento sean atómicos
+        db = MagicMock()
+        db.commit = AsyncMock()
+        with patch(AUDIT, new=AsyncMock()):
+            await TicketStateMachine.transition_to_in_progress(
+                make_ticket(TicketStatus.TODO), make_orm_user(), db
             )
-        assert exc.value.status_code == 400
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_null_old_assignee_returns_none(self, mock_timer, mock_audit):
-        mock_timer.return_value.pause_timer = AsyncMock()
-        mock_audit.record_event = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-        ticket.assignee_id = None
-
-        result = await TicketStateMachine.transition_to_redirected(
-            ticket, make_user(), uuid4(), "sin asignado previo", make_db()
-        )
-
-        assert result["from_user_id"] is None
+        db.commit.assert_not_called()
 
 
 class TestTransitionToCompleted:
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_valid_from_in_progress(self, mock_timer, mock_audit):
-        mock_timer.return_value.stop_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
+    async def test_valida_desde_in_progress(self):
+        ticket = make_ticket(TicketStatus.IN_PROGRESS, assignee_id=uuid4())
         pr_url = "https://github.com/org/repo/pull/42"
-
-        result = await TicketStateMachine.transition_to_completed(
-            ticket, make_user(), pr_url, make_db()
-        )
+        with patch(AUDIT, new=AsyncMock()):
+            result = await TicketStateMachine.transition_to_completed(
+                ticket, make_orm_user(), pr_url, MagicMock()
+            )
 
         assert result["status"] == "success"
-        assert ticket.status == TicketStatus.COMPLETED
+        assert result["new_status"] == "DONE"
+        assert result["pr_link"] == pr_url
+        assert ticket.status == TicketStatus.DONE
         assert ticket.pr_link == pr_url
-        assert ticket.completed_at is not None
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_completed_at_is_utc(self, mock_timer, mock_audit):
-        mock_timer.return_value.stop_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
-        before = datetime.now(timezone.utc)
+    async def test_sin_pr_link_no_sobrescribe_el_existente(self):
+        ticket = make_ticket(TicketStatus.IN_PROGRESS, assignee_id=uuid4())
+        ticket.pr_link = "https://github.com/org/repo/pull/1"
+        with patch(AUDIT, new=AsyncMock()):
+            result = await TicketStateMachine.transition_to_completed(
+                ticket, make_orm_user(), None, MagicMock()
+            )
 
-        await TicketStateMachine.transition_to_completed(ticket, make_user(), "pr_url", make_db())
+        assert ticket.pr_link == "https://github.com/org/repo/pull/1"
+        assert result["pr_link"] is None
 
-        after = datetime.now(timezone.utc)
-        assert before <= ticket.completed_at <= after
+    async def test_registra_auditoria(self):
+        ticket = make_ticket(TicketStatus.IN_PROGRESS, assignee_id=uuid4())
+        with patch(AUDIT, new=AsyncMock()) as audit:
+            await TicketStateMachine.transition_to_completed(
+                ticket, make_orm_user(), "https://x/pull/1", MagicMock()
+            )
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_stop_timer_called(self, mock_timer, mock_audit):
-        mock_timer.return_value.stop_timer = AsyncMock()
-        mock_audit.record_transition = AsyncMock()
-        ticket = make_ticket(TicketStatus.IN_PROGRESS)
+        kwargs = audit.await_args.kwargs
+        assert kwargs["from_status"] == "IN_PROGRESS"
+        assert kwargs["to_status"] == "DONE"
+        assert kwargs["extra"] == {"action": "complete", "pr_link": "https://x/pull/1"}
 
-        await TicketStateMachine.transition_to_completed(ticket, make_user(), "url", make_db())
-
-        mock_timer.return_value.stop_timer.assert_called_once()
-
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_todo_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.TODO)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_completed(ticket, make_user(), "url", make_db())
+    @pytest.mark.parametrize("status", ["TODO", "BLOCKED", "REDIRECTED", "DONE"])
+    async def test_invalida_lanza_400(self, status):
+        ticket = make_ticket(TicketStatus(status))
+        with patch(AUDIT, new=AsyncMock()) as audit:
+            with pytest.raises(HTTPException) as exc:
+                await TicketStateMachine.transition_to_completed(
+                    ticket, make_orm_user(), "https://x/pull/1", MagicMock()
+                )
         assert exc.value.status_code == 400
+        assert ticket.status == TicketStatus(status)
+        audit.assert_not_awaited()
 
-    @patch("app.services.ticket_state_machine.TransitionAuditService")
-    @patch("app.services.ticket_state_machine.TimerService")
-    async def test_invalid_from_blocked_raises_400(self, mock_timer, mock_audit):
-        ticket = make_ticket(TicketStatus.BLOCKED_QUESTION)
-        with pytest.raises(HTTPException) as exc:
-            await TicketStateMachine.transition_to_completed(ticket, make_user(), "url", make_db())
-        assert exc.value.status_code == 400
+
+class TestModuleAliases:
+    """Los routers llaman a estas funciones como atributos del MÓDULO."""
+
+    def test_alias_de_modulo_apuntan_a_la_clase(self):
+        assert tsm_module.log_ticket_event is TicketStateMachine.log_ticket_event
+        assert tsm_module.transition_to_in_progress is TicketStateMachine.transition_to_in_progress
+        assert tsm_module.transition_to_completed is TicketStateMachine.transition_to_completed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -394,7 +295,7 @@ class TestTransitionToCompleted:
 
 class TestLogTicketEvent:
 
-    async def test_string_detail_wraps_in_dict(self, db_session: AsyncSession, sample_ticket):
+    async def test_detail_string_se_envuelve_en_dict(self, db_session: AsyncSession, sample_ticket):
         event = await TicketStateMachine.log_ticket_event(
             db=db_session,
             ticket_id=sample_ticket.id,
@@ -407,19 +308,43 @@ class TestLogTicketEvent:
         assert event.detail["message"] == "cambio de estado manual"
         assert "timestamp" in event.detail
 
-    async def test_dict_detail_adds_timestamp(self, db_session: AsyncSession, sample_ticket):
+    async def test_detail_string_json_se_parsea(self, db_session: AsyncSession, sample_ticket):
+        event = await TicketStateMachine.log_ticket_event(
+            db=db_session,
+            ticket_id=sample_ticket.id,
+            event_type=TicketEventType.UPDATED,
+            user_id=sample_ticket.assignee_id,
+            detail='{"campo": "title"}',
+        )
+
+        assert event.detail["campo"] == "title"
+        assert "message" not in event.detail
+
+    async def test_detail_dict_agrega_timestamp(self, db_session: AsyncSession, sample_ticket):
+        original = {"texto": "comentario de prueba"}
         event = await TicketStateMachine.log_ticket_event(
             db=db_session,
             ticket_id=sample_ticket.id,
             event_type=TicketEventType.COMMENT,
             user_id=sample_ticket.assignee_id,
-            detail={"texto": "comentario de prueba"},
+            detail=original,
         )
 
         assert event.detail["texto"] == "comentario de prueba"
         assert "timestamp" in event.detail
+        # No muta el dict del llamador
+        assert "timestamp" not in original
 
-    async def test_enum_event_type_stored_as_string(self, db_session: AsyncSession, sample_ticket):
+    async def test_detail_none_solo_lleva_timestamp(self, db_session: AsyncSession, sample_ticket):
+        event = await TicketStateMachine.log_ticket_event(
+            db=db_session,
+            ticket_id=sample_ticket.id,
+            event_type=TicketEventType.CREATED,
+            user_id=sample_ticket.assignee_id,
+        )
+        assert set(event.detail) == {"timestamp"}
+
+    async def test_event_type_enum_se_conserva(self, db_session: AsyncSession, sample_ticket):
         event = await TicketStateMachine.log_ticket_event(
             db=db_session,
             ticket_id=sample_ticket.id,
@@ -427,15 +352,9 @@ class TestLogTicketEvent:
             user_id=sample_ticket.assignee_id,
             detail="completado",
         )
+        assert event.event_type == TicketEventType.COMPLETED
 
-        event_type_val = (
-            event.event_type.value
-            if hasattr(event.event_type, "value")
-            else event.event_type
-        )
-        assert event_type_val == "COMPLETED"
-
-    async def test_string_event_type_accepted(self, db_session: AsyncSession, sample_ticket):
+    async def test_event_type_string_se_normaliza(self, db_session: AsyncSession, sample_ticket):
         event = await TicketStateMachine.log_ticket_event(
             db=db_session,
             ticket_id=sample_ticket.id,
@@ -444,5 +363,128 @@ class TestLogTicketEvent:
             detail={"pregunta": "¿cuándo?"},
         )
 
-        assert event is not None
+        assert event.event_type == TicketEventType.QUESTION_RAISED
         assert event.ticket_id == sample_ticket.id
+
+    async def test_evento_queda_persistido(self, db_session: AsyncSession, sample_ticket):
+        await TicketStateMachine.log_ticket_event(
+            db=db_session,
+            ticket_id=sample_ticket.id,
+            event_type=TicketEventType.MOVED,
+            user_id=sample_ticket.assignee_id,
+        )
+        rows = (
+            await db_session.execute(
+                select(TicketEvent).where(TicketEvent.ticket_id == sample_ticket.id)
+            )
+        ).scalars().all()
+        assert [e.event_type for e in rows] == [TicketEventType.MOVED]
+
+    async def test_event_type_desconocido_lanza_500_y_hace_rollback(self):
+        db = MagicMock()
+        db.rollback = AsyncMock()
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.log_ticket_event(
+                db=db, ticket_id=uuid4(), event_type="NO_EXISTE", user_id=uuid4()
+            )
+        assert exc.value.status_code == 500
+        db.rollback.assert_awaited_once()
+        db.add.assert_not_called()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sección D — Métodos heredados basados en dict (sin uso desde los routers)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def ticket_dict(status: str) -> dict:
+    return {"id": str(uuid4()), "status": status, "time_spent_seconds": 0}
+
+
+class TestLegacyDictMethods:
+    """Solo se cubren las validaciones previas a tocar la base de datos."""
+
+    async def test_transition_invalida_lanza_400(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.transition(MagicMock(), ticket_dict("DONE"), "TODO", "u")
+        assert exc.value.status_code == 400
+
+    @pytest.mark.parametrize("pr_link", ["", "   ", "github.com/org/repo/pull/1"])
+    async def test_complete_ticket_rechaza_pr_link_invalido(self, pr_link):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.complete_ticket(
+                MagicMock(), ticket_dict("IN_PROGRESS"), "u", pr_link
+            )
+        assert exc.value.status_code == 400
+
+    @pytest.mark.parametrize("status", ["BLOCKED", "REDIRECTED", "DONE"])
+    async def test_complete_ticket_rechaza_estado(self, status):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.complete_ticket(
+                MagicMock(), ticket_dict(status), "u", "https://x/pull/1"
+            )
+        assert exc.value.status_code == 400
+
+    async def test_raise_question_requiere_in_progress(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.raise_question(MagicMock(), ticket_dict("TODO"), "u", "¿?")
+        assert exc.value.status_code == 400
+
+    async def test_raise_question_requiere_texto(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.raise_question(
+                MagicMock(), ticket_dict("IN_PROGRESS"), "u", "   "
+            )
+        assert exc.value.status_code == 400
+
+    async def test_resolve_question_requiere_blocked(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.resolve_question(MagicMock(), ticket_dict("IN_PROGRESS"), "u")
+        assert exc.value.status_code == 400
+
+    async def test_redirect_requiere_motivo_de_10_caracteres(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.redirect_ticket(
+                MagicMock(), ticket_dict("IN_PROGRESS"), "a", "b", "corto"
+            )
+        assert exc.value.status_code == 400
+
+    async def test_redirect_a_si_mismo_lanza_400(self):
+        with pytest.raises(HTTPException) as exc:
+            await TicketStateMachine.redirect_ticket(
+                MagicMock(), ticket_dict("IN_PROGRESS"), "a", "a", "motivo suficientemente largo"
+            )
+        assert exc.value.status_code == 400
+
+    async def test_raise_question_registra_evento(self, db_session: AsyncSession, sample_ticket):
+        await TicketStateMachine.raise_question(
+            db_session,
+            {"id": sample_ticket.id, "status": "IN_PROGRESS"},
+            sample_ticket.assignee_id,
+            "¿Cuál es el criterio de aceptación?",
+        )
+        event = (
+            await db_session.execute(
+                select(TicketEvent).where(TicketEvent.ticket_id == sample_ticket.id)
+            )
+        ).scalar_one()
+        assert event.event_type == TicketEventType.QUESTION_RAISED
+        assert event.detail["question"] == "¿Cuál es el criterio de aceptación?"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "BUG: TicketStateMachine.transition registra el evento con "
+            "event_type='STATE_CHANGED' (ticket_state_machine.py:458), que no "
+            "existe en TicketEventType (es STATUS_CHANGED): toda transición "
+            "válida termina en HTTP 500. Igual pasa con 'TICKET_COMPLETED' "
+            "(línea 609) y 'TICKET_REDIRECTED' (línea 1002). Código sin uso "
+            "desde los routers, pero público."
+        ),
+    )
+    async def test_transition_valida_registra_evento(self, db_session: AsyncSession, sample_ticket):
+        await TicketStateMachine.transition(
+            db_session,
+            {"id": sample_ticket.id, "status": "TODO"},
+            "IN_PROGRESS",
+            sample_ticket.assignee_id,
+        )

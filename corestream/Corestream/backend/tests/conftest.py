@@ -52,10 +52,10 @@ from app.models import (
     Application,
     Base,
     Epic,
-    Role,
     Ticket,
     TicketStatus,
     User,
+    UserRole,
 )
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -76,22 +76,18 @@ async def db_session():
 
 
 @pytest.fixture
-async def sample_role(db_session: AsyncSession):
-    """Rol ADMIN de prueba."""
-    role = Role(name="ADMIN", description="Administrador del sistema")
-    db_session.add(role)
-    await db_session.flush()
-    return role
+async def sample_user(db_session: AsyncSession):
+    """
+    Usuario de prueba con rol ADMIN.
 
-
-@pytest.fixture
-async def sample_user(db_session: AsyncSession, sample_role: Role):
-    """Usuario de prueba con rol ADMIN."""
+    El rol es la columna ENUM `users.role` (UserRole); ya no hay FK a la tabla
+    `roles` ni relación `User.roles`, así que no hace falta crear un Role.
+    """
     user = User(
         email="test@corestream.com",
         full_name="Test User",
         hashed_password=hash_password("testpass123"),
-        role_id=sample_role.id,
+        role=UserRole.ADMIN,
         is_active=True,
     )
     db_session.add(user)

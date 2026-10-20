@@ -1,52 +1,50 @@
 """
-Tests unitarios para AnalyticsService — CS-044.
+Tests unitarios para app/services/analytics_service.py.
 
-Usa DB SQLite en memoria con datos creados explícitamente dentro de cada test.
-Se validan cálculos de eficiencia, bloqueo, churn, heatmap y burndown.
+Sección A: get_ticket_metrics — la única función con lógica real, usada por
+           GET /analytics/application/{app_id}. Se ejecuta contra SQLite en
+           memoria con datos creados explícitamente dentro de cada test.
+Sección B: AnalyticsService — hoy son esqueletos (devuelven listas/dicts
+           vacíos); solo se cubre la validación del rango de fechas.
+Sección C: contrato entre routers/analytics.py y el servicio.
+
+NOTA: la versión anterior probaba métodos (eficiencia, churn, heatmap por día
+de la semana, burndown) que ya no existen en el servicio.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.middleware.auth import hash_password
 from app.models import (
     Application,
     Epic,
-    Role,
+    Sprint,
     Ticket,
     TicketEvent,
     TicketEventType,
+    TicketPriority,
     TicketStatus,
     User,
+    UserRole,
 )
-from app.services.analytics_service import AnalyticsService
-
-# Fecha fija de lunes conocido (2 Jun 2025 = weekday 0)
-MONDAY_UTC = datetime(2025, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
-WEDNESDAY_UTC = datetime(2025, 6, 4, 12, 0, 0, tzinfo=timezone.utc)
-
+from app.services import analytics_service
+from app.services.analytics_service import AnalyticsService, get_ticket_metrics
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers de creación de entidades
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def create_role(db: AsyncSession, name: str = "DEVELOPER") -> Role:
-    role = Role(name=name)
-    db.add(role)
-    await db.flush()
-    return role
 
-
-async def create_user(db: AsyncSession, role_id, full_name: str = "Dev User") -> User:
+async def create_user(db: AsyncSession, full_name: str = "Dev User") -> User:
     user = User(
         email=f"{uuid4()}@test.com",
         full_name=full_name,
-        hashed_password=hash_password("pwd"),
-        role_id=role_id,
+        hashed_password="x",
+        role=UserRole.DEVELOPER,
         is_active=True,
     )
     db.add(user)
@@ -61,13 +59,8 @@ async def create_app(db: AsyncSession) -> Application:
     return app
 
 
-async def create_epic(db: AsyncSession, app_id, due_date=None) -> Epic:
-    epic = Epic(
-        title=f"Epic-{uuid4()}",
-        order_index=0,
-        application_id=app_id,
-        due_date=due_date,
-    )
+async def create_epic(db: AsyncSession, app_id) -> Epic:
+    epic = Epic(title=f"Epic-{uuid4()}", order_index=0, application_id=app_id)
     db.add(epic)
     await db.flush()
     return epic
@@ -76,352 +69,264 @@ async def create_epic(db: AsyncSession, app_id, due_date=None) -> Epic:
 async def create_ticket(
     db: AsyncSession,
     epic_id,
-    assignee_id=None,
     status=TicketStatus.TODO,
+    priority=TicketPriority.MEDIUM,
+    assignee_id=None,
     time_spent: int = 0,
-    completed_at=None,
+    due_date=None,
+    sprint_id=None,
 ) -> Ticket:
     ticket = Ticket(
         title=f"Ticket-{uuid4()}",
         status=status,
+        priority=priority,
         epic_id=epic_id,
         assignee_id=assignee_id,
         time_spent_seconds=time_spent,
-        completed_at=completed_at,
+        due_date=due_date,
+        sprint_id=sprint_id,
     )
     db.add(ticket)
     await db.flush()
     return ticket
 
 
-async def create_event(
-    db: AsyncSession,
-    ticket_id,
-    user_id,
-    event_type: TicketEventType,
-    created_at=None,
-) -> TicketEvent:
-    event = TicketEvent(
-        ticket_id=ticket_id,
-        user_id=user_id,
-        event_type=event_type,
-        detail={"test": True},
-    )
-    if created_at is not None:
-        event.created_at = created_at
-    db.add(event)
-    await db.flush()
-    return event
+@pytest.fixture
+async def app_epic(db_session: AsyncSession):
+    app = await create_app(db_session)
+    epic = await create_epic(db_session, app.id)
+    return app, epic
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tests: get_user_performance
+# Sección A — get_ticket_metrics
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestGetUserPerformance:
+class TestGetTicketMetrics:
 
-    async def test_empty_app_returns_empty_list(self, db_session: AsyncSession):
-        app = await create_app(db_session)
+    async def test_app_vacia_devuelve_ceros(self, db_session: AsyncSession, app_epic):
+        app, _ = app_epic
+        m = await get_ticket_metrics(db_session, app.id)
 
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
+        assert m["total_tickets"] == 0
+        assert m["completion_percentage"] == 0.0
+        assert m["blocked_percentage"] == 0.0
+        assert m["avg_time_hours"] == 0.0
+        # Todas las claves de estado y prioridad presentes aunque estén a 0
+        assert m["by_status"] == {s.value: 0 for s in TicketStatus}
+        assert m["by_priority"] == {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "URGENT": 0}
+        assert m["bottlenecks"] == []
+        assert m["redirection_events"] == []
+
+    async def test_conteos_por_estado_y_porcentajes(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        for status, n in [
+            (TicketStatus.TODO, 3),
+            (TicketStatus.IN_PROGRESS, 2),
+            (TicketStatus.BLOCKED, 1),
+            (TicketStatus.REDIRECTED, 1),
+            (TicketStatus.DONE, 3),
+        ]:
+            for _ in range(n):
+                await create_ticket(db_session, epic.id, status=status)
+
+        m = await get_ticket_metrics(db_session, app.id)
+
+        assert m["total_tickets"] == 10
+        assert m["completed_tickets"] == 3
+        assert m["blocked_tickets"] == 1
+        assert m["pending_tickets"] == 7
+        assert m["redirected_tickets"] == 1
+        assert m["by_status"] == {
+            "TODO": 3, "IN_PROGRESS": 2, "BLOCKED": 1, "REDIRECTED": 1, "DONE": 3,
+        }
+        assert m["completion_percentage"] == 30.0
+        assert m["blocked_percentage"] == 10.0
+
+    async def test_conteos_por_prioridad(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        await create_ticket(db_session, epic.id, priority=TicketPriority.URGENT)
+        await create_ticket(db_session, epic.id, priority=TicketPriority.URGENT)
+        await create_ticket(db_session, epic.id, priority=TicketPriority.LOW)
+
+        m = await get_ticket_metrics(db_session, app.id)
+        assert m["by_priority"] == {"LOW": 1, "MEDIUM": 0, "HIGH": 0, "URGENT": 2}
+
+    async def test_excluye_tickets_de_otras_aplicaciones(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        other_app = await create_app(db_session)
+        other_epic = await create_epic(db_session, other_app.id)
+        await create_ticket(db_session, epic.id)
+        await create_ticket(db_session, other_epic.id)
+        await create_ticket(db_session, other_epic.id)
+
+        m = await get_ticket_metrics(db_session, app.id)
+        assert m["total_tickets"] == 1
+
+    async def test_filtro_por_assignee(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        dev1 = await create_user(db_session)
+        dev2 = await create_user(db_session)
+        await create_ticket(db_session, epic.id, assignee_id=dev1.id, status=TicketStatus.DONE)
+        await create_ticket(db_session, epic.id, assignee_id=dev2.id)
+        await create_ticket(db_session, epic.id)
+
+        m = await get_ticket_metrics(db_session, app.id, assignee_id=dev1.id)
+        assert m["total_tickets"] == 1
+        assert m["completion_percentage"] == 100.0
+
+    async def test_filtro_por_sprint(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        now = datetime.utcnow()
+        sprint = Sprint(
+            name="Sprint 1", application_id=app.id,
+            start_date=now, end_date=now + timedelta(days=14),
         )
+        db_session.add(sprint)
+        await db_session.flush()
+        await create_ticket(db_session, epic.id, sprint_id=sprint.id)
+        await create_ticket(db_session, epic.id, sprint_id=sprint.id)
+        await create_ticket(db_session, epic.id)
 
-        assert result == []
+        m = await get_ticket_metrics(db_session, app.id, sprint_id=sprint.id)
+        assert m["total_tickets"] == 2
 
-    async def test_invalid_date_range_raises_400(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        date_from = datetime(2025, 6, 10, tzinfo=timezone.utc)
-        date_to = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    async def test_vencidos_excluyen_done_y_sin_fecha(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        ayer = datetime.utcnow() - timedelta(days=1)
+        manana = datetime.utcnow() + timedelta(days=1)
+        await create_ticket(db_session, epic.id, status=TicketStatus.IN_PROGRESS, due_date=ayer)
+        await create_ticket(db_session, epic.id, status=TicketStatus.BLOCKED, due_date=ayer)
+        await create_ticket(db_session, epic.id, status=TicketStatus.DONE, due_date=ayer)
+        await create_ticket(db_session, epic.id, status=TicketStatus.TODO, due_date=manana)
+        await create_ticket(db_session, epic.id, status=TicketStatus.TODO)
 
+        m = await get_ticket_metrics(db_session, app.id)
+
+        assert m["overdue_tickets"] == 2
+        assert m["overdue_by_status"] == {"IN_PROGRESS": 1, "BLOCKED": 1}
+        assert m["by_group_status"]["overdue"] == {"IN_PROGRESS": 1, "BLOCKED": 1}
+
+    async def test_agrupaciones_por_grupo(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        await create_ticket(db_session, epic.id, status=TicketStatus.DONE, priority=TicketPriority.HIGH)
+        await create_ticket(db_session, epic.id, status=TicketStatus.BLOCKED, priority=TicketPriority.LOW)
+        await create_ticket(db_session, epic.id, status=TicketStatus.TODO, priority=TicketPriority.LOW)
+
+        m = await get_ticket_metrics(db_session, app.id)
+
+        assert m["by_group_status"]["completed"] == {"DONE": 1}
+        assert m["by_group_status"]["pending"] == {"BLOCKED": 1, "TODO": 1}
+        assert m["by_group_status"]["blocked"] == {"BLOCKED": 1}
+        assert m["by_group_status"]["redirected"] == {}
+        assert m["by_group_priority"]["pending"] == {"LOW": 2}
+        assert m["by_group_priority"]["completed"] == {"HIGH": 1}
+
+    async def test_tiempo_medio_ignora_tickets_sin_tiempo(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        await create_ticket(db_session, epic.id, time_spent=3600)
+        await create_ticket(db_session, epic.id, time_spent=7200)
+        await create_ticket(db_session, epic.id, time_spent=0)
+
+        m = await get_ticket_metrics(db_session, app.id)
+        assert m["avg_time_hours"] == 1.5
+
+    async def test_eventos_de_redireccion(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        dev1 = await create_user(db_session)
+        dev2 = await create_user(db_session)
+        ticket = await create_ticket(db_session, epic.id, status=TicketStatus.REDIRECTED)
+        db_session.add_all([
+            TicketEvent(
+                ticket_id=ticket.id, user_id=dev1.id,
+                event_type=TicketEventType.REDIRECTED,
+                from_user_id=dev1.id, to_user_id=dev2.id,
+                detail={"reason": "carga de trabajo"},
+            ),
+            # Un evento de otro tipo no cuenta como redirección
+            TicketEvent(
+                ticket_id=ticket.id, user_id=dev1.id,
+                event_type=TicketEventType.COMMENT, detail={},
+            ),
+        ])
+        await db_session.flush()
+
+        m = await get_ticket_metrics(db_session, app.id)
+
+        assert m["redirection_events_count"] == 1
+        [evento] = m["redirection_events"]
+        assert evento["ticket_id"] == str(ticket.id)
+        assert evento["ticket_title"] == ticket.title
+        assert evento["from_user_id"] == str(dev1.id)
+        assert evento["to_user_id"] == str(dev2.id)
+        assert evento["detail"] == {"reason": "carga de trabajo"}
+
+    async def test_cuellos_de_botella_excluyen_done(self, db_session: AsyncSession, app_epic):
+        app, epic = app_epic
+        await create_ticket(db_session, epic.id, status=TicketStatus.BLOCKED)
+        await create_ticket(db_session, epic.id, status=TicketStatus.BLOCKED)
+        await create_ticket(db_session, epic.id, status=TicketStatus.TODO)
+        await create_ticket(db_session, epic.id, status=TicketStatus.DONE)
+
+        m = await get_ticket_metrics(db_session, app.id)
+
+        by_status = {b["status"]: b for b in m["bottlenecks"]}
+        assert set(by_status) == {"BLOCKED", "TODO"}
+        assert by_status["BLOCKED"]["ticket_count"] == 2
+        assert len(by_status["BLOCKED"]["tickets"]) == 2
+        for b in m["bottlenecks"]:
+            assert b["average_hours"] >= 0
+            assert b["max_hours"] >= b["average_hours"]
+        # Ordenados de mayor a menor tiempo medio
+        medias = [b["average_hours"] for b in m["bottlenecks"]]
+        assert medias == sorted(medias, reverse=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sección B — AnalyticsService (validación del rango de fechas)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAnalyticsServiceDateRange:
+
+    @pytest.mark.parametrize(
+        "method", [AnalyticsService.get_user_performance, AnalyticsService.get_heatmap_data]
+    )
+    async def test_rango_invertido_lanza_400(self, method):
+        now = datetime.utcnow()
         with pytest.raises(HTTPException) as exc:
-            await AnalyticsService.get_user_performance(
-                app_id=app.id, date_from=date_from, date_to=date_to, db=db_session
-            )
+            await method(None, str(uuid4()), now, now - timedelta(days=1))
         assert exc.value.status_code == 400
 
-    async def test_completed_event_increments_tickets_completed(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=3600)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        assert len(result) == 1
-        assert result[0]["tickets_completed"] == 1
-        assert result[0]["user_id"] == user.id
-
-    async def test_question_raised_increments_blocking_index(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=3600)
-        # 1 pregunta sobre 1 ticket procesado → blocking_index = 100%
-        await create_event(db_session, ticket.id, user.id, TicketEventType.QUESTION_RAISED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        assert len(result) == 1
-        assert result[0]["questions_raised"] == 1
-        assert result[0]["blocking_index"] == 100.0
-
-    async def test_churn_index_from_redirected_events(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=3600)
-        # 1 redirección / 1 asignado → churn_index = 100%
-        await create_event(db_session, ticket.id, user.id, TicketEventType.REDIRECTED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        assert len(result) == 1
-        assert result[0]["churn_index"] == 100.0
-
-    async def test_efficiency_zero_when_no_time_spent(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=0)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        assert result[0]["avg_time_hours"] == 0.0
-        assert result[0]["efficiency"] == 0.0
-
-    async def test_date_filter_excludes_old_events(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=3600)
-        old_date = datetime(2020, 1, 1, tzinfo=timezone.utc)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED, created_at=old_date)
-
-        date_from = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        date_to = datetime(2025, 12, 31, tzinfo=timezone.utc)
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=date_from, date_to=date_to, db=db_session
-        )
-
-        assert result == []
-
-    async def test_user_not_in_db_is_skipped(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id)
-        # Evento con user_id que no existe en la tabla User
-        ghost_user_id = uuid4()
-        await create_event(db_session, ticket.id, ghost_user_id, TicketEventType.COMPLETED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        # El ghost_user_id no existe → se omite del resultado
-        assert all(entry["user_id"] != ghost_user_id for entry in result)
-
-    async def test_multiple_events_same_ticket_counted_once_in_processed(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id, time_spent=3600)
-        # 2 eventos del mismo ticket → tickets_processed = 1 (set deduplication)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.STATUS_CHANGED)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        assert result[0]["tickets_processed"] == 1
-
-    async def test_management_events_do_not_count_as_processed(self, db_session: AsyncSession):
-        """
-        Los eventos de gestión/autoría (CREATED, UPDATED, MOVED, ASSIGNED) NO deben
-        contar como "tickets procesados": un TEAM_LEADER que crea y asigna tickets a
-        otros no los trabajó. Solo el trabajo real (STATUS_CHANGED, COMPLETED, etc.)
-        cuenta.
-        """
-        role = await create_role(db_session)
-        lead = await create_user(db_session, role.id, full_name="Team Lead")
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-
-        # 3 tickets que el lead SOLO creó/editó/movió/asignó (sin trabajarlos)
-        for ev in (
-            TicketEventType.CREATED,
-            TicketEventType.UPDATED,
-            TicketEventType.MOVED,
-            TicketEventType.ASSIGNED,
-        ):
-            t = await create_ticket(db_session, epic.id, assignee_id=lead.id, time_spent=0)
-            await create_event(db_session, t.id, lead.id, ev)
-
-        # 1 ticket que el lead SÍ trabajó (cambió de estado y completó)
-        worked = await create_ticket(db_session, epic.id, assignee_id=lead.id, time_spent=3600)
-        await create_event(db_session, worked.id, lead.id, TicketEventType.STATUS_CHANGED)
-        await create_event(db_session, worked.id, lead.id, TicketEventType.COMPLETED)
-
-        result = await AnalyticsService.get_user_performance(
-            app_id=app.id, date_from=None, date_to=None, db=db_session
-        )
-
-        # Solo el ticket trabajado cuenta como procesado, no los 4 de gestión
-        assert len(result) == 1
-        assert result[0]["tickets_processed"] == 1
-        assert result[0]["tickets_completed"] == 1
+    @pytest.mark.parametrize(
+        "method", [AnalyticsService.get_user_performance, AnalyticsService.get_heatmap_data]
+    )
+    async def test_mismo_dia_es_rango_valido(self, method):
+        now = datetime.utcnow()
+        result = await method(None, str(uuid4()), now, now)
+        assert isinstance(result, list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tests: get_activity_heatmap
+# Sección C — Contrato routers/analytics.py ↔ servicio
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestGetActivityHeatmap:
-
-    async def test_empty_app_returns_empty_list(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-
-        result = await AnalyticsService.get_activity_heatmap(app_id=app.id, db=db_session)
-
-        assert result == []
-
-    async def test_completed_event_on_monday_increments_index_0(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id)
-        await create_event(
-            db_session, ticket.id, user.id, TicketEventType.COMPLETED,
-            created_at=MONDAY_UTC
-        )
-
-        result = await AnalyticsService.get_activity_heatmap(app_id=app.id, db=db_session)
-
-        assert len(result) == 1
-        assert result[0]["data"][0] == 1   # lunes
-        assert sum(result[0]["data"]) == 1
-
-    async def test_completed_events_on_multiple_days(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED, created_at=MONDAY_UTC)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.COMPLETED, created_at=WEDNESDAY_UTC)
-
-        result = await AnalyticsService.get_activity_heatmap(app_id=app.id, db=db_session)
-
-        assert result[0]["data"][0] == 1   # lunes
-        assert result[0]["data"][2] == 1   # miércoles
-        assert sum(result[0]["data"]) == 2
-
-    async def test_non_completed_events_not_counted(self, db_session: AsyncSession):
-        role = await create_role(db_session)
-        user = await create_user(db_session, role.id)
-        app = await create_app(db_session)
-        epic = await create_epic(db_session, app.id)
-        ticket = await create_ticket(db_session, epic.id, assignee_id=user.id)
-        # Solo un evento STATUS_CHANGED (no COMPLETED)
-        await create_event(db_session, ticket.id, user.id, TicketEventType.STATUS_CHANGED, created_at=MONDAY_UTC)
-
-        result = await AnalyticsService.get_activity_heatmap(app_id=app.id, db=db_session)
-
-        assert result == []
+def test_funcion_usada_por_el_endpoint_de_metricas_existe():
+    assert callable(getattr(analytics_service, "get_ticket_metrics", None))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tests: get_burndown_chart
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TestGetBurndownChart:
-
-    async def test_epic_not_found_raises_error(self, db_session: AsyncSession):
-        # El servicio captura la HTTPException 404 y la envuelve en 500
-        with pytest.raises(HTTPException) as exc:
-            await AnalyticsService.get_burndown_chart(epic_id=uuid4(), db=db_session)
-        assert exc.value.status_code == 500
-        assert "Epic no encontrado" in exc.value.detail
-
-    async def test_epic_no_tickets_returns_zero_totals(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        # Usamos due_date naive (sin timezone) para que coincida con created_at de SQLite
-        epic = await create_epic(
-            db_session, app.id,
-            due_date=datetime.utcnow() + timedelta(days=7)
-        )
-
-        result = await AnalyticsService.get_burndown_chart(epic_id=epic.id, db=db_session)
-
-        assert result["total_tickets"] == 0
-        assert result["completed"] == 0
-
-    async def test_ideal_line_starts_at_total_and_ends_at_zero(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        # due_date naive para compatibilidad con created_at naive de SQLite
-        epic = await create_epic(db_session, app.id, due_date=datetime.utcnow() + timedelta(days=10))
-        for _ in range(5):
-            await create_ticket(db_session, epic.id)
-
-        result = await AnalyticsService.get_burndown_chart(epic_id=epic.id, db=db_session)
-
-        assert result["total_tickets"] == 5
-        ideal = result["ideal"]
-        assert ideal[0]["points"] == 5.0
-        assert ideal[-1]["points"] == 0.0
-
-    async def test_actual_line_reflects_completed_tickets(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        # completed_at naive para compatibilidad con el servicio (usa .date())
-        yesterday_naive = datetime.utcnow() - timedelta(days=1)
-        epic = await create_epic(db_session, app.id, due_date=datetime.utcnow() + timedelta(days=9))
-        # 3 tickets: 2 completados ayer, 1 pendiente
-        await create_ticket(
-            db_session, epic.id,
-            status=TicketStatus.COMPLETED, completed_at=yesterday_naive
-        )
-        await create_ticket(
-            db_session, epic.id,
-            status=TicketStatus.COMPLETED, completed_at=yesterday_naive
-        )
-        await create_ticket(db_session, epic.id)
-
-        result = await AnalyticsService.get_burndown_chart(epic_id=epic.id, db=db_session)
-
-        assert result["completed"] == 2
-        # El último punto real debe reflejar 1 ticket pendiente (3 - 2)
-        actual_last = result["actual"][-1]
-        assert actual_last["points"] == 1
-
-    async def test_future_dates_not_in_actual_line(self, db_session: AsyncSession):
-        app = await create_app(db_session)
-        # due_date naive con margen futuro amplio para asegurarnos de tener puntos futuros
-        epic = await create_epic(db_session, app.id, due_date=datetime.utcnow() + timedelta(days=14))
-        await create_ticket(db_session, epic.id)
-
-        result = await AnalyticsService.get_burndown_chart(epic_id=epic.id, db=db_session)
-
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        actual_dates = [pt["date"] for pt in result["actual"]]
-        future_dates = [d for d in actual_dates if d > today_str]
-        assert future_dates == []
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "BUG: routers/analytics.py llama a analytics_service.get_user_performance "
+        "(líneas 172 y 308), get_activity_heatmap (221) y get_burndown_chart (264) "
+        "como funciones del MÓDULO, pero el módulo solo define get_ticket_metrics "
+        "(los otros son métodos de AnalyticsService con otra firma o no existen). "
+        "Los endpoints /performance, /heatmap, /burndown y /export/csv terminan en "
+        "AttributeError -> HTTP 500."
+    ),
+)
+@pytest.mark.parametrize(
+    "name", ["get_user_performance", "get_activity_heatmap", "get_burndown_chart"]
+)
+def test_funciones_usadas_por_el_router_existen_en_el_modulo(name):
+    assert callable(getattr(analytics_service, name, None))
