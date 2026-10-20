@@ -290,6 +290,7 @@ async def get_sla_statuses(
 async def get_sla_alerts(
     application_id: Optional[UUID] = Query(None, description="Filtrar por proyecto"),
     sprint_id: Optional[UUID] = Query(None, description="Filtrar por Sprint"),
+    include_resolved: bool = Query(True, description="Incluir incumplimientos de tickets resueltos"),
     limit: int = Query(200, ge=1, le=1000),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -300,7 +301,7 @@ async def get_sla_alerts(
         application_id=application_id,
         sprint_id=sprint_id,
         only_alerts=True,
-        include_resolved=False,
+        include_resolved=include_resolved,
         limit=limit,
     )
     return statuses

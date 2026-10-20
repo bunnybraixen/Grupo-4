@@ -1256,6 +1256,7 @@ const ticketPriorityFilter = ref<'all' | Priority>('all')
 const ticketAssigneeFilter = ref('')
 const ticketSprintFilter = ref('')
 const ticketOverdueFilter = ref(false)
+const ticketIdFilter = ref('')
 const ticketSortBy = ref<'default' | 'status' | 'priority' | 'title' | 'progress'>('default')
 const selectedAppSprints = ref<Sprint[]>([])
 const builderGlobalSearchQuery = ref('')
@@ -1450,6 +1451,8 @@ const selectApplication = async (appId: string): Promise<void> => {
   selectedAppId.value = appId
   showNewEpic.value = false
   ticketSprintFilter.value = ''
+  ticketIdFilter.value = ''
+  ticketOverdueFilter.value = false
   await Promise.all([fetchEpics(), loadUsers(), loadSprintsForApplication(appId)])
 }
 
@@ -1939,7 +1942,8 @@ const visibleTickets = (epicId: string): Ticket[] => {
     const matchesAssignee = !ticketAssigneeFilter.value || t.assigneeId === ticketAssigneeFilter.value
     const matchesSprint = !ticketSprintFilter.value || t.sprintId === ticketSprintFilter.value
     const matchesOverdue = !ticketOverdueFilter.value || Boolean(t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== 'DONE' && t.status !== 'COMPLETED')
-    return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint && matchesOverdue
+    const matchesTicket = !ticketIdFilter.value || t.id === ticketIdFilter.value
+    return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint && matchesOverdue && matchesTicket
   })
   if (ticketSortBy.value === 'priority') {
     const priorityOrder: Record<string, number> = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
@@ -2541,6 +2545,11 @@ onMounted(async () => {
       const requestedSprintId = typeof route.query.sprintId === 'string' ? route.query.sprintId : ''
       ticketSprintFilter.value = selectedAppSprints.value.some((sprint) => sprint.id === requestedSprintId) ? requestedSprintId : ''
       ticketOverdueFilter.value = route.query.overdue === 'true'
+      ticketIdFilter.value = typeof route.query.ticketId === 'string' ? route.query.ticketId : ''
+      if (route.query.applicationId || route.query.status || route.query.ticketId) {
+        await nextTick()
+        document.getElementById('builder-ticket-filters')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
     }
   } catch (err) {
     console.error('Error cargando datos del builder:', err)

@@ -703,6 +703,7 @@ async def get_ticket_metrics(
 
     now = datetime.now(timezone.utc)
     dwell_by_status: dict[str, list[float]] = {}
+    ticket_dwell: list[dict] = []
     for ticket_id, info in tickets.items():
         if info["status"] in {"DONE", "COMPLETED"}:
             continue
@@ -712,12 +713,23 @@ async def get_ticket_metrics(
         current_time = now.replace(tzinfo=None) if entered_at.tzinfo is None else now
         hours = max(0.0, (current_time - entered_at).total_seconds() / 3600)
         dwell_by_status.setdefault(info["status"], []).append(hours)
+        ticket_dwell.append({
+            "ticket_id": str(ticket_id),
+            "title": info["title"],
+            "status": info["status"],
+            "hours": round(hours, 1),
+        })
     bottlenecks = [
         {
             "status": status,
             "ticket_count": by_status.get(status, 0),
             "average_hours": round(sum(hours) / len(hours), 1),
             "max_hours": round(max(hours), 1),
+            "tickets": sorted(
+                (ticket for ticket in ticket_dwell if ticket["status"] == status),
+                key=lambda ticket: ticket["hours"],
+                reverse=True,
+            )[:3],
         }
         for status, hours in dwell_by_status.items()
     ]

@@ -1099,6 +1099,12 @@ export interface ApplicationSummary {
     ticket_count: number
     average_hours: number
     max_hours: number
+    tickets: Array<{
+      ticket_id: string
+      title: string
+      status: string
+      hours: number
+    }>
   }>
   by_status: Record<string, number>
   by_priority: Record<string, number>

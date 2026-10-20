@@ -58,6 +58,7 @@ export const useSprintsStore = defineStore('sprints', () => {
   const isLoading = ref(false)
   const isSaving = ref(false)
   const error = ref<string | null>(null)
+  let slaAlertsRequestId = 0
 
   // ========== GETTERS ==========
 
@@ -284,10 +285,14 @@ export const useSprintsStore = defineStore('sprints', () => {
     sprintId?: string
     limit?: number
   }): Promise<void> => {
+    const requestId = ++slaAlertsRequestId
     try {
-      slaAlerts.value = await api.sla.alerts(filters)
+      const alerts = await api.sla.alerts(filters)
+      if (requestId === slaAlertsRequestId) slaAlerts.value = alerts
     } catch (err: any) {
-      error.value = err?.response?.data?.detail || 'No se pudieron cargar las alertas de SLA'
+      if (requestId === slaAlertsRequestId) {
+        error.value = err?.response?.data?.detail || 'No se pudieron cargar las alertas de SLA'
+      }
       throw err
     }
   }

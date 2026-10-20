@@ -112,6 +112,19 @@
                 <div class="h-2 rounded-full bg-amber-500" :style="{ width: `${bottleneckWidth(item.ticket_count)}%` }" />
               </div>
             </div>
+            <div class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
+              <p class="mb-2 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Tickets con mayor demora</p>
+              <button
+                v-for="ticket in slowestTickets"
+                :key="ticket.ticket_id"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-700"
+                @click="openBuilderFilter(ticket.status, false, ticket.ticket_id)"
+              >
+                <span class="min-w-0 truncate font-medium text-slate-800 dark:text-slate-200">{{ ticket.title }}</span>
+                <span class="shrink-0 text-xs text-amber-600 dark:text-amber-400">{{ statusLabel(ticket.status) }} · {{ ticket.hours }} h ↗</span>
+              </button>
+            </div>
           </div>
           <p v-else class="mt-4 text-sm text-slate-500 dark:text-slate-400">Sin permanencias registradas.</p>
         </div>
@@ -150,6 +163,10 @@ const projectError = ref('')
 const summaryError = ref('')
 let summaryRequestId = 0
 const selectedSprint = computed(() => sprints.value.find((sprint) => sprint.id === selectedSprintId.value) ?? null)
+const slowestTickets = computed(() => (summary.value?.bottlenecks ?? [])
+  .flatMap((item) => item.tickets ?? [])
+  .sort((a, b) => b.hours - a.hours)
+  .slice(0, 5))
 const plannedProgress = computed(() => {
   if (!selectedSprint.value) return 0
   const start = new Date(selectedSprint.value.startDate).getTime()
@@ -163,6 +180,9 @@ const normalizeList = <T>(response: unknown): T[] => {
   const items = (payload as { items?: unknown } | null)?.items ?? payload
   return Array.isArray(items) ? items as T[] : []
 }
+
+const normalizeRole = (role?: string | null) =>
+  String(role ?? '').trim().toUpperCase().replace('USERROLE.', '').replace('-', '_')
 
 const loadProjects = async () => {
   isLoadingProjects.value = true
@@ -226,14 +246,15 @@ const loadProjectOptions = async (projectId: string) => {
   if (!projectId) return
 
   const team = teamsStore.getTeamForApp(projectId)
-  const memberEmails = new Set((team?.memberEmails ?? []).map((email) => email.toLowerCase()))
+  const memberEmails = new Set((team?.memberEmails ?? []).map((email) => email.trim().toLowerCase()))
   try {
     const [usersResponse, sprintResponse] = await Promise.all([
       api.users.list({ limit: 100 }),
       api.sprints.list({ applicationId: projectId }),
     ])
     developers.value = normalizeList<User>(usersResponse).filter((user) =>
-      user.role === 'DEVELOPER' && memberEmails.has(user.email.toLowerCase())
+      normalizeRole(String(user.role)) === 'DEVELOPER'
+        && memberEmails.has(user.email.trim().toLowerCase())
     )
     sprints.value = sprintResponse
   } catch (error) {
@@ -241,7 +262,7 @@ const loadProjectOptions = async (projectId: string) => {
   }
 }
 
-const openBuilderFilter = (status: string, overdue = false) => {
+const openBuilderFilter = (status: string, overdue = false, ticketId?: string) => {
   void router.push({
     path: '/admin/builder',
     query: {
@@ -250,6 +271,7 @@ const openBuilderFilter = (status: string, overdue = false) => {
       assigneeId: selectedDeveloperId.value || undefined,
       sprintId: selectedSprintId.value || undefined,
       overdue: overdue ? 'true' : undefined,
+      ticketId,
     },
   })
 }
