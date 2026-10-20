@@ -2,11 +2,14 @@
 # Proporciona funciones para conectar, publicar y suscribirse a canales Redis
 
 import json
+import logging
 from typing import Any, Optional
 
 import redis.asyncio as aioredis
 
 from app.config import get_settings
+
+logger = logging.getLogger("corestream.redis")
 
 # Variable global para almacenar la conexión a Redis
 # Se inicializa en el evento startup de FastAPI
@@ -74,9 +77,9 @@ async def init_redis() -> None:
         
         # Verificar la conexión
         await _redis_client.ping()
-        print("Conexión a Redis establecida correctamente")
-    except Exception as e:
-        print(f"Error al conectar a Redis: {e}")
+        logger.info("Conexión a Redis establecida")
+    except Exception:
+        logger.exception("Error al conectar a Redis")
         raise
 
 
@@ -97,7 +100,7 @@ async def close_redis() -> None:
     if _redis_client is not None:
         await _redis_client.close()
         _redis_client = None
-        print("Conexión a Redis cerrada")
+        logger.info("Conexión a Redis cerrada")
 
 
 async def publish_message(channel: str, data: dict[str, Any]) -> int:

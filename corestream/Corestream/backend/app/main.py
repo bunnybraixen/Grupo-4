@@ -1,29 +1,30 @@
 # Archivo principal de la aplicación FastAPI
 # Configura la aplicación, middleware, rutas, eventos de startup/shutdown y WebSockets
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
-from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, status
+from fastapi import FastAPI, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.database import engine, Base, get_db
+from app.database import engine, Base
+from app.logging_config import configure_logging
+from app.middleware.request_id import RequestIDMiddleware
 from app.redis_client import (
     init_redis,
     close_redis,
     subscribe_channel,
-    publish_message,
 )
-from app.middleware import get_current_user
-from app.schemas import TokenPayload
 
 # Importar routers (estos se crearían en carpetas routers/)
 # from app.routers import auth, users, applications, epics, tickets, subtasks, analytics, documents, notifications
 
 # Obtener configuración
 settings = get_settings()
+logger = logging.getLogger("corestream")
 
 
 # Contexto de ciclo de vida de la aplicación
@@ -43,43 +44,30 @@ async def lifespan(app: FastAPI):
         Control a FastAPI durante la ejecución
     """
     # Evento de STARTUP - Ejecuta cuando la aplicación inicia
-    print("Iniciando aplicación CoreStream...")
-    
+    configure_logging(settings.LOG_LEVEL)
+    logger.info("Iniciando aplicación CoreStream")
+
     try:
-        # Inicializar conexión a Redis para sistema de notificaciones
         await init_redis()
-        print("Redis inicializado correctamente")
-        
-        # Crear tablas de base de datos si no existen
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            print("Tablas de base de datos inicializadas")
-        
-        print("Aplicación CoreStream iniciada exitosamente")
-        
-    except Exception as e:
-        print(f"Error durante startup: {e}")
+
+        logger.info("Aplicación CoreStream iniciada")
+
+    except Exception:
+        logger.exception("Error durante el arranque")
         raise
-    
-    # Ceder control a FastAPI
+
     yield
-    
-    # Evento de SHUTDOWN - Ejecuta cuando la aplicación se detiene
-    print("Cerrando aplicación CoreStream...")
-    
+
     try:
-        # Cerrar conexión a Redis
         await close_redis()
-        print("Redis cerrado correctamente")
-        
-        # Cerrar conexión a la base de datos
         await engine.dispose()
-        print("Base de datos desconectada")
-        
-        print("Aplicación CoreStream cerrada correctamente")
-        
-    except Exception as e:
-        print(f"Error durante shutdown: {e}")
+        logger.info("Aplicación CoreStream cerrada")
+
+    except Exception:
+        logger.exception("Error durante el cierre")
 
 
 # Crear instancia de la aplicación FastAPI
@@ -87,9 +75,10 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="API RESTful para gestión de aplicaciones, épicas, tickets y analítica de equipo",
     version="1.0.0",
-    docs_url="/api/docs",  # Documentación Swagger UI
-    redoc_url="/api/redoc",  # Documentación ReDoc
-    openapi_url="/api/openapi.json",  # Esquema OpenAPI JSON
+    # La documentación interactiva solo se publica en modo DEBUG
+    docs_url="/api/docs" if settings.DEBUG else None,
+    redoc_url="/api/redoc" if settings.DEBUG else None,
+    openapi_url="/api/openapi.json" if settings.DEBUG else None,
     lifespan=lifespan,
 )
 
@@ -103,6 +92,9 @@ app.add_middleware(
     allow_methods=["*"],  # Permitir todos los métodos HTTP
     allow_headers=["*"],  # Permitir todos los headers
 )
+
+# Asigna un X-Request-ID a cada petición (aparece en los logs JSON)
+app.add_middleware(RequestIDMiddleware)
 
 
 # Incluir routers con prefijos de API
@@ -267,21 +259,37 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         channel = f"notifications:{user_id}"
         pubsub = await subscribe_channel(channel)
         
-        try:
-            # Escuchar mensajes del canal Redis
+        async def forward_messages() -> None:
+            # Reenvía al cliente lo que se publique en el canal Redis
             async for message in pubsub.listen():
                 if message["type"] == "message":
-                    # Enviar el mensaje al cliente WebSocket
                     await websocket.send_text(message["data"])
-                    
-        except WebSocketDisconnect:
-            # Cliente desconectó
+
+        async def wait_for_disconnect() -> None:
+            # Sin leer del socket nunca se detecta que el cliente se fue (ni
+            # el cierre del servidor), y el handler quedaba colgado para
+            # siempre bloqueando el apagado/recarga de uvicorn.
+            while True:
+                message = await websocket.receive()
+                if message["type"] == "websocket.disconnect":
+                    return
+
+        tasks = [
+            asyncio.create_task(forward_messages()),
+            asyncio.create_task(wait_for_disconnect()),
+        ]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await pubsub.unsubscribe(channel)
-            print(f"Usuario {user_id} desconectado de notificaciones")
+            await pubsub.aclose()
             
-    except Exception as e:
+    except Exception:
         # Error en validación o suscripción
-        print(f"Error en WebSocket: {e}")
+        logger.warning("Error en WebSocket de notificaciones", exc_info=True)
         await websocket.close(code=status.WS_1011_SERVER_ERROR)
 
 
@@ -300,7 +308,7 @@ async def general_exception_handler(request, exc):
     Returns:
         JSONResponse: Respuesta con detalles del error
     """
-    print(f"Error no manejado: {exc}")
+    logger.error("Error no manejado", exc_info=exc)
     
     return JSONResponse(
         status_code=500,

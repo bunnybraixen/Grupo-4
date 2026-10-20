@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # de la excepción al cliente. docker-compose lo activa para desarrollo.
     DEBUG: bool = False
 
+    # Nivel del logging JSON de la aplicación (debug, info, warning, error)
+    LOG_LEVEL: str = "info"
+
     # Directorio base para adjuntos persistentes: documentos y uploads
     UPLOAD_DIR: str = "/tmp/corestream_storage"
     

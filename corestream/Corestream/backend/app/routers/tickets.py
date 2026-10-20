@@ -711,23 +711,6 @@ async def create_ticket_comment(
         db,
     )
 
-    print(
-    "MENCIONES DETECTADAS:",
-    mention_candidates,
-    )
-
-    print(
-        "USUARIOS MENCIONADOS:",
-        [
-            {
-                "id": str(user.id),
-                "full_name": user.full_name,
-                "email": user.email,
-            }
-            for user in mentioned_users
-        ],
-    )
-
     # Obtener el UUID real del usuario desde el JWT
     try:
         actor_id = get_user_id(current_user)
