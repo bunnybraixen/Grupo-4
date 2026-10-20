@@ -16,8 +16,9 @@ from typing import List
 
 from app.database import get_db
 from app.models import Epic, Application, Ticket, TicketStatus
-from app.schemas import EpicResponse, EpicCreate, EpicUpdate, DocumentResponse
+from app.schemas import EpicResponse, EpicCreate, EpicUpdate
 from app.middleware.auth import get_current_user
+from app.services.ticket_permissions import require_admin_or_leader
 
 # Router para épicas
 router = APIRouter(prefix="/epics", tags=["Épicas"])
@@ -95,6 +96,7 @@ async def create_epic(
     Raises:
         HTTPException: Si la aplicación no existe (404) o hay error en creación (400)
     """
+    require_admin_or_leader(current_user)
     # Verificar que la aplicación existe
     app_check = await db.execute(
         select(Application).where(Application.id == epic_data.application_id)
@@ -201,6 +203,7 @@ async def update_epic(
     Raises:
         HTTPException: Si la épica no existe (404) o hay error en actualización (400)
     """
+    require_admin_or_leader(current_user)
     result = await db.execute(
         select(Epic).where(Epic.id == epic_id)
     )
@@ -253,6 +256,7 @@ async def delete_epic(
     Raises:
         HTTPException: Si la épica no existe (404) o hay error en eliminación (400)
     """
+    require_admin_or_leader(current_user)
     result = await db.execute(
         select(Epic).where(Epic.id == epic_id)
     )
@@ -304,6 +308,7 @@ async def reorder_epic(
     Raises:
         HTTPException: Si la épica no existe (404) o índice inválido (400)
     """
+    require_admin_or_leader(current_user)
     result = await db.execute(
         select(Epic).where(Epic.id == epic_id)
     )
@@ -361,65 +366,4 @@ async def reorder_epic(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error al reordenar épica: {str(e)}"
-        )
-
-
-@router.post(
-    "/{epic_id}/documents",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Cargar documento a épica",
-    description="Carga un archivo de documentación a una épica"
-)
-async def upload_epic_document(
-    epic_id: UUID,
-    file_data: dict,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-) -> DocumentResponse:
-    """
-    Carga un documento a una épica específica.
-
-    Args:
-        epic_id (int): ID de la épica
-        file_data (dict): Datos del archivo a cargar
-        current_user (User): Usuario autenticado
-        db (AsyncSession): Sesión asíncrona de base de datos
-
-    Returns:
-        DocumentResponse: Documento creado
-
-    Raises:
-        HTTPException: Si la épica no existe (404) o hay error en carga (400)
-    """
-    # Verificar que la épica existe
-    epic_check = await db.execute(
-        select(Epic).where(Epic.id == epic_id)
-    )
-    if not epic_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Épica con ID {epic_id} no encontrada"
-        )
-
-    try:
-        # Implementar lógica de carga de archivo
-        # Este es un placeholder que debería conectar con el servicio de documentos
-        from app.models import Document
-
-        new_document = Document(
-            epic_id=epic_id,
-            **file_data
-        )
-        db.add(new_document)
-        await db.commit()
-        await db.refresh(new_document)
-
-        return DocumentResponse.from_orm(new_document)
-
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al cargar documento: {str(e)}"
         )

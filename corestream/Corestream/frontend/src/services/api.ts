@@ -939,30 +939,6 @@ export const api = {
         { new_index: data.newIndex }
       )
       return response.data
-    },
-
-    /**
-     * Carga un documento asociado a una épica
-     * 
-     * @param appId - ID de la aplicación
-     * @param epicId - ID de la épica
-     * @param file - Archivo a cargar
-     * @returns Documento creado
-     */
-    uploadDoc: async (appId: string, epicId: string, file: File): Promise<ApiResponse<Document>> => {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await apiClient.post<ApiResponse<Document>>(
-        `/epics/${epicId}/documents`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      )
-      return response.data
     }
   },
 
