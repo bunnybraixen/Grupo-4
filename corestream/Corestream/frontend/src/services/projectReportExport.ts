@@ -111,16 +111,21 @@ class SimplePdf {
   table(headers: string[], rows: string[][]): void {
     const size = 9
     const gap = size + 4
-    // fila de encabezado con fondo
+    // fila de encabezado con fondo; el bloque vive ENTRO del cursor (sin
+    // sobresalir) y el texto se centra verticalmente dentro de él.
     this.ensureSpace(gap * 2)
-    this.current += `0.08 0.15 0.19 rg ${MARGIN} ${PAGE_H - this.y - gap + 3} ${PAGE_W - 2 * MARGIN} ${gap} re f\n`
+    const rectY = PAGE_H - this.y - gap
+    const textY = rectY + 4.5
+    this.current += `0.08 0.15 0.19 rg ${MARGIN} ${rectY} ${PAGE_W - 2 * MARGIN} ${gap} re f\n`
     let x = MARGIN + 4
     for (const header of headers) {
-      this.current += `1 1 1 rg BT /F2 ${size} Tf 1 0 0 1 ${x} ${PAGE_H - this.y} Tm (${pdfEscape(header)}) Tj ET\n`
+      this.current += `1 1 1 rg BT /F2 ${size} Tf 1 0 0 1 ${x} ${textY} Tm (${pdfEscape(header)}) Tj ET\n`
       x += 110
     }
     this.current += '0 0 0 rg\n'
-    this.y += gap
+    // +15: las letras se dibujan HACIA ARRIBA desde la línea base (~9pt de
+    // altura); con 15pt de respiro queda ~3pt de aire bajo el bloque azul.
+    this.y += gap + 15
     for (const row of rows) {
       this.ensureSpace(gap)
       x = MARGIN + 4
