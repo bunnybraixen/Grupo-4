@@ -245,7 +245,13 @@ const loadConfigs = async (): Promise<void> => {
 const loadAlerts = async (): Promise<void> => {
   alertsLoading.value = true
   try {
-    await store.fetchSlaAlerts({ applicationId: props.applicationId || undefined, limit: 200 })
+    // Sin proyecto activo NO se piden alertas: el endpoint sin application_id
+    // devolvería los incumplidos de TODOS los proyectos.
+    if (!props.applicationId) {
+      store.slaAlerts = []
+      return
+    }
+    await store.fetchSlaAlerts({ applicationId: props.applicationId, limit: 200 })
   } catch {
     // store.error ya contiene el detalle
   } finally {

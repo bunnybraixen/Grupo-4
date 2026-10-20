@@ -86,7 +86,13 @@ async def _collect_statuses(
     if sprint_id is not None:
         query = query.where(Ticket.sprint_id == sprint_id)
 
-    result = await db.execute(query.order_by(Ticket.created_at.desc()).limit(limit))
+    # Cuando se piden solo alertas, el estado de SLA se calcula en Python, así
+    # que el LIMIT de la consulta se aplica ANTES del filtro y descartaba los
+    # tickets incumplidos más antiguos (la lista salía vacía aunque existían
+    # Breached). Se trae una ventana amplia y el recorte final se hace DESPUÉS
+    # de filtrar.
+    fetch_limit = max(limit, 2000) if only_alerts else limit
+    result = await db.execute(query.order_by(Ticket.created_at.desc()).limit(fetch_limit))
     tickets = list(result.scalars().all())
 
     configs = await sla_service.load_sla_configs(db)
@@ -100,7 +106,7 @@ async def _collect_statuses(
     if not include_resolved:
         statuses = [item for item in statuses if not item.is_resolved]
     if only_alerts:
-        statuses = [item for item in statuses if item.state in ALERT_STATES]
+        statuses = [item for item in statuses if item.state in ALERT_STATES][:limit]
 
     # Orden por urgencia: primero lo ya incumplido, luego lo que vence antes.
     def sort_key(item: TicketSLAStatus):
