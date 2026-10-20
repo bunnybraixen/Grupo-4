@@ -587,7 +587,7 @@ const availableTickets = computed((): Ticket[] => {
   const alreadyInSprint = new Set((selected.value.tickets ?? []).map((ticket) => ticket.id))
   return projectEpicIds.value
     .flatMap((epicId) => props.ticketsByEpic[epicId] ?? [])
-    .filter((ticket) => !alreadyInSprint.has(ticket.id) && !ticket.sprintId)
+    .filter((ticket) => !alreadyInSprint.has(ticket.id))
 })
 
 /** Tickets disponibles filtrados por la búsqueda */

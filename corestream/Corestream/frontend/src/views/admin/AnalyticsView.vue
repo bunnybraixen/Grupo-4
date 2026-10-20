@@ -252,10 +252,14 @@ const loadProjectOptions = async (projectId: string) => {
       api.users.list({ limit: 100 }),
       api.sprints.list({ applicationId: projectId }),
     ])
-    developers.value = normalizeList<User>(usersResponse).filter((user) =>
-      normalizeRole(String(user.role)) === 'DEVELOPER'
-        && memberEmails.has(user.email.trim().toLowerCase())
-    )
+    const allUsers = normalizeList<User>(usersResponse)
+    const teamEmails = Array.from(memberEmails)
+    // Miembros del equipo del proyecto (cualquier rol: el equipo define quién
+    // trabaja en el proyecto). Si el proyecto no tiene equipo asignado, se
+    // muestra todos los usuarios con rol DEVELOPER como respaldo.
+    developers.value = teamEmails.length
+      ? allUsers.filter((user) => memberEmails.has(user.email.trim().toLowerCase()))
+      : allUsers.filter((user) => normalizeRole(String(user.role)) === 'DEVELOPER')
     sprints.value = sprintResponse
   } catch (error) {
     console.error('No se pudieron cargar desarrolladores o sprints:', error)
