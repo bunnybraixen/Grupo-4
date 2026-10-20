@@ -3,13 +3,17 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.database import get_db
 from app.schemas import TokenPayload
 
 # Configurar contexto de contraseñas con bcrypt para hash seguro
@@ -185,6 +189,15 @@ def verify_token(token: str) -> TokenPayload:
             algorithms=[settings.ALGORITHM]
         )
         
+        # Solo los access tokens autentican peticiones: un refresh token
+        # (7 días) no debe servir como Bearer.
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No se pudo validar el token",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+
         # Extraer datos esperados del payload
         sub: str = payload.get("sub")
         role: str = payload.get("role")
@@ -212,13 +225,17 @@ def verify_token(token: str) -> TokenPayload:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
 ) -> TokenPayload:
     """
     Dependencia FastAPI que extrae y valida el usuario actual desde el token JWT.
     
     Se utiliza en endpoints protegidos para verificar autenticación.
-    Extrae el token del header Authorization y valida su firma.
+    Extrae el token del header Authorization, valida su firma y comprueba en
+    la BD que el usuario sigue existiendo y activo. El rol devuelto es el de
+    la BD, no el del token: así un cambio de rol o una desactivación se
+    aplican de inmediato y no cuando expira el token.
     
     Args:
         credentials: Credenciales Bearer extraídas del header Authorization
@@ -234,14 +251,29 @@ async def get_current_user(
         async def get_profile(current_user: TokenPayload = Depends(get_current_user)):
             return {"user_id": current_user.sub, "role": current_user.role}
     """
+    token_data = verify_token(credentials.credentials)
+
+    from app.models.user import User  # import local: evita ciclo con app.models
+
     try:
-        # Verificar y decodificar el token
-        token_data = verify_token(credentials.credentials)
-        return token_data
-        
-    except HTTPException:
-        # Re-lanzar excepciones HTTP de autenticación
-        raise
+        user_id = UUID(token_data.sub)
+    except ValueError:
+        user_id = None
+    user = None
+    if user_id is not None:
+        result = await db.execute(
+            select(User.role, User.is_active).where(User.id == user_id)
+        )
+        user = result.one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No se pudo validar el token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    role = getattr(user.role, "value", user.role)
+    return TokenPayload(sub=token_data.sub, role=str(role), exp=token_data.exp)
 
 
 def require_role(required_roles):
@@ -273,7 +305,7 @@ def require_role(required_roles):
         if user_role != "ADMIN" and user_role not in normalized_required:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere uno de estos roles: {', '.join(normalized_required)}. Tu rol actual es: {user_role}"
+                detail="No tienes permisos para realizar esta acción"
             )
         
         return current_user

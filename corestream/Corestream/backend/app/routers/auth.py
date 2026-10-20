@@ -9,17 +9,24 @@ Gestiona todos los endpoints relacionados con:
 """
 
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
+
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserResponse, TokenResponse, UserRegister, UserLogin, UserUpdate
+from app.models.user import UserRole
+from app.schemas import UserResponse, TokenResponse, UserRegister, UserLogin, UserSelfUpdate
 from app.services import auth_service
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_role
+from app.middleware.rate_limit import rate_limit_login, record_failed_login
 
 # Creación del router con prefijo y etiqueta para documentación automática
+logger = logging.getLogger("corestream.auth")
+
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
@@ -28,14 +35,18 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar nuevo usuario",
-    description="Crea una nueva cuenta de usuario con email y contraseña"
+    description="Crea una nueva cuenta de usuario con email y contraseña (requiere ADMIN)"
 )
 async def register(
     user_data: UserRegister,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> UserResponse:
     """
     Registra un nuevo usuario en el sistema.
+
+    Solo un ADMIN puede dar de alta usuarios (desde la vista de Equipo); el
+    alta pública permitía crear cuentas a cualquiera.
 
     Args:
         user_data (UserRegister): Datos del usuario a registrar (email, contraseña, nombre)
@@ -74,6 +85,7 @@ async def register(
 )
 async def login(
     credentials: UserLogin,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
     """
@@ -87,8 +99,11 @@ async def login(
         TokenResponse: Contiene access_token y refresh_token
 
     Raises:
-        HTTPException: Si las credenciales son inválidas (estado 401)
+        HTTPException: Si las credenciales son inválidas (estado 401) o hubo
+            demasiados intentos fallidos (estado 429)
     """
+    await rate_limit_login(request, credentials.email)
+
     # Buscar el usuario por email
     result = await db.execute(
         select(User).where(User.email == credentials.email)
@@ -101,26 +116,18 @@ async def login(
     if not user or not auth_service.verify_password(
         credentials.password, user.hashed_password
     ):
+        await record_failed_login(request, credentials.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    # Asegurar rol adecuado según email para pruebas
-    from app.models import UserRole
-    if user.email.lower().startswith("admin@") and user.role != UserRole.ADMIN:
-        user.role = UserRole.ADMIN
-        await db.commit()
-        await db.refresh(user)
-    elif user.email.lower().startswith("leader@") and user.role != UserRole.GROUP_LEADER:
-        user.role = UserRole.GROUP_LEADER
-        await db.commit()
-        await db.refresh(user)
-    elif user.email.lower().startswith("dev@") and user.role != UserRole.DEVELOPER:
-        user.role = UserRole.DEVELOPER
-        await db.commit()
-        await db.refresh(user)
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La cuenta está desactivada"
+        )
 
     # Generar tokens JWT (se incluye el rol en el token: el middleware de
     # autenticación no consulta la BD, y sin claim `role` el RBAC responde 403)
@@ -173,10 +180,11 @@ async def refresh_token(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
-    if not user:
+    if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario no encontrado"
+            detail="Refresh token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"}
         )
 
     # Generar nuevo access_token
@@ -237,7 +245,7 @@ async def get_current_user_profile(
     description="Permite al usuario modificar su propia información (nombre, avatar, etc.)"
 )
 async def update_current_user_profile(
-    user_update: UserUpdate,
+    user_update: UserSelfUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> UserResponse:
@@ -245,7 +253,7 @@ async def update_current_user_profile(
     Actualiza el perfil del usuario autenticado.
 
     Args:
-        user_update (UserUpdate): Datos a actualizar (nombre, avatar, etc.)
+        user_update (UserSelfUpdate): Datos a actualizar (nombre, avatar, etc.)
         current_user (TokenPayload): Usuario autenticado (inyectado por dependencia)
         db (AsyncSession): Sesión asíncrona de base de datos
 
@@ -274,7 +282,7 @@ async def update_current_user_profile(
 
     try:
         # Actualizar únicamente los campos proporcionados
-        update_data = user_update.dict(exclude_unset=True)
+        update_data = user_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(user, field, value)
 
@@ -283,9 +291,10 @@ async def update_current_user_profile(
 
         return UserResponse.from_orm(user)
 
-    except Exception as e:
+    except SQLAlchemyError:
         await db.rollback()
+        logger.exception("Error al actualizar el perfil de %s", user_uuid)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar el perfil: {str(e)}"
+            detail="Error al actualizar el perfil"
         )

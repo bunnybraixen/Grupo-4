@@ -66,6 +66,17 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
 
 
+class UserSelfUpdate(BaseModel):
+    """
+    Campos que un usuario puede cambiar de su propio perfil (PUT /auth/me).
+    Deliberadamente sin `role`, `email` ni `password`: cambiar el rol o el
+    correo es tarea de un ADMIN (PUT /users/{id}).
+    """
+    full_name: Optional[str] = None
+    specialty: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
 class UserResponse(UserBase):
     """
     Esquema de respuesta al consultar datos de un usuario.

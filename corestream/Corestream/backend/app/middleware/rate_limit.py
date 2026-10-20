@@ -12,35 +12,21 @@ ninguno bloqueado. Verificado en la auditoría inicial.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException, Request, status
+from redis.exceptions import RedisError
 
 from app.redis_client import get_redis
 
 _PREFIX = "corestream:ratelimit:"
 
+logger = logging.getLogger("corestream.rate_limit")
 
-async def _hit(key: str, *, max_attempts: int, window_seconds: int) -> None:
-    """
-    Incrementa el contador de `key` y lanza 429 si supera max_attempts
-    dentro de la ventana. INCR + EXPIRE es atómico a efectos prácticos aquí:
-    el único caso límite (perder el EXPIRE por un fallo entre medias) deja el
-    contador sin caducar hasta el próximo reinicio de Redis, lo que en el
-    peor caso es "demasiado estricto", nunca "permite más de la cuenta".
-    """
-    redis = await get_redis()
-    full_key = f"{_PREFIX}{key}"
-
-    count = await redis.incr(full_key)
-    if count == 1:
-        await redis.expire(full_key, window_seconds)
-
-    if count > max_attempts:
-        ttl = await redis.ttl(full_key)
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Demasiados intentos. Intenta de nuevo más tarde.",
-            headers={"Retry-After": str(max(ttl, 1))},
-        )
+# Límites de /auth/login (intentos fallidos por ventana de 5 minutos)
+_LOGIN_WINDOW = 300
+_LOGIN_MAX_PER_IP = 20
+_LOGIN_MAX_PER_EMAIL = 8
 
 
 def _client_ip(request: Request) -> str:
@@ -51,17 +37,50 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "desconocido"
 
 
+def _login_keys(request: Request, email: str | None) -> list[tuple[str, int]]:
+    keys = [(f"login:ip:{_client_ip(request)}", _LOGIN_MAX_PER_IP)]
+    if email:
+        keys.append((f"login:email:{email.lower().strip()}", _LOGIN_MAX_PER_EMAIL))
+    return keys
+
+
 async def rate_limit_login(request: Request, email: str | None = None) -> None:
     """
-    Límite combinado por IP y por cuenta sobre /auth/login.
+    Rechaza con 429 el login si la IP o la cuenta ya agotaron sus intentos
+    fallidos. No incrementa nada: solo cuentan los fallos
+    (ver `record_failed_login`), así los logins correctos —p. ej. los tests
+    E2E— no bloquean a nadie.
 
-    Por IP: una IP no puede intentar más de 20 logins/5min contra ninguna
-    cuenta (frena el barrido de credenciales contra muchos emails).
-    Por cuenta: una cuenta concreta no puede recibir más de 8 intentos/5min
-    sin importar desde cuántas IPs distintas (frena el ataque distribuido
-    contra una sola cuenta).
+    Por IP: 20 fallos/5min contra cualquier cuenta (frena el barrido de
+    credenciales). Por cuenta: 8 fallos/5min desde cualquier IP (frena el
+    ataque distribuido contra una sola cuenta).
+
+    Si Redis no responde se deja pasar (fail-open) y se registra: es
+    preferible a dejar a todos sin poder iniciar sesión.
     """
-    ip = _client_ip(request)
-    await _hit(f"login:ip:{ip}", max_attempts=20, window_seconds=300)
-    if email:
-        await _hit(f"login:email:{email.lower().strip()}", max_attempts=8, window_seconds=300)
+    try:
+        redis = await get_redis()
+        for key, max_attempts in _login_keys(request, email):
+            full_key = f"{_PREFIX}{key}"
+            count = int(await redis.get(full_key) or 0)
+            if count >= max_attempts:
+                ttl = await redis.ttl(full_key)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Demasiados intentos. Intenta de nuevo más tarde.",
+                    headers={"Retry-After": str(max(ttl, 1))},
+                )
+    except RedisError:
+        logger.warning("Rate limit de login no disponible (Redis)", exc_info=True)
+
+
+async def record_failed_login(request: Request, email: str | None = None) -> None:
+    """Suma un intento fallido a los contadores de IP y de cuenta."""
+    try:
+        redis = await get_redis()
+        for key, _ in _login_keys(request, email):
+            full_key = f"{_PREFIX}{key}"
+            if await redis.incr(full_key) == 1:
+                await redis.expire(full_key, _LOGIN_WINDOW)
+    except RedisError:
+        logger.warning("No se pudo registrar el login fallido (Redis)", exc_info=True)

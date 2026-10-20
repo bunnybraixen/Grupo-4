@@ -645,8 +645,7 @@ async def verify_refresh_token(token: Optional[str]) -> Optional[str]:
     except JWTError:
         return None
 
-    token_type = payload.get("type")
-    if token_type is not None and token_type != "refresh":
+    if payload.get("type") != "refresh":
         return None
 
     sub = payload.get("sub")
@@ -657,8 +656,9 @@ async def create_user(db: AsyncSession, user_data) -> "User":
     """
     Crea un usuario a partir del esquema de registro (UserCreate/UserRegister).
 
-    El rol por defecto es DEVELOPER: el alta por invitación no permite
-    autoelevarse. El primer ADMIN se crea con app/scripts/create_admin.py.
+    El rol por defecto es DEVELOPER y nunca se deduce del correo: el rol se
+    cambia después por un ADMIN. El primer ADMIN se crea con
+    app/scripts/create_admin.py.
     Retorna la instancia sin commitear (el router hace commit/refresh).
     """
     email = str(user_data.email).lower().strip()
@@ -670,18 +670,6 @@ async def create_user(db: AsyncSession, user_data) -> "User":
     valid_roles = {r.value for r in UserRole}
     if role not in valid_roles:
         role = UserRole.DEVELOPER.value
-
-    # Asignación de rol por prefijo o bootstrap del primer admin
-    if email.startswith("admin@"):
-        role = UserRole.ADMIN.value
-    elif email.startswith("leader@"):
-        role = UserRole.GROUP_LEADER.value
-    elif email.startswith("dev@"):
-        role = UserRole.DEVELOPER.value
-    elif role != UserRole.ADMIN.value:
-        admins = await db.execute(select(User).where(User.role == UserRole.ADMIN))
-        if admins.scalars().first() is None:
-            role = UserRole.ADMIN.value
 
     new_user = User(
         email=email,

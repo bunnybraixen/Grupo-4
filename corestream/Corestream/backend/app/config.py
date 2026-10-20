@@ -78,8 +78,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "CoreStream API"
     
     # Modo debug - activa información detallada de errores y recarga automática
-    # IMPORTANTE: Desactivar en producción por razones de seguridad
-    DEBUG: bool = True
+    # Desactivado por defecto: con DEBUG el manejador global devuelve el texto
+    # de la excepción al cliente. docker-compose lo activa para desarrollo.
+    DEBUG: bool = False
 
     # Directorio base para adjuntos persistentes: documentos y uploads
     UPLOAD_DIR: str = "/tmp/corestream_storage"
