@@ -979,6 +979,21 @@ async def update_ticket(
     # WEB-08: ADMIN/TEAM_LEADER siempre; un DEVELOPER solo sobre sus propios tickets
     assert_can_manage_ticket(ticket, current_user)
 
+    # Un DEVELOPER edita los datos de su ticket, pero no lo reasigna, ni lo
+    # mueve de sprint, ni cambia su estado saltándose la máquina de estados
+    # (para eso están /start, /complete, /question y /redirect).
+    if not is_admin_or_leader(current_user):
+        sent = ticket_update.model_dump(exclude_unset=True)
+        restricted = [
+            field for field in ("assignee_id", "status", "sprint_id")
+            if field in sent and sent[field] != getattr(ticket, field)
+        ]
+        if restricted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para cambiar: " + ", ".join(restricted)
+            )
+
     # Validación del Sprint (planificación): si se envía uno, debe existir.
     if ticket_update.sprint_id is not None:
         sprint_check = await db.execute(

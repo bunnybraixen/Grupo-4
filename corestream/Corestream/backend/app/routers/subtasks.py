@@ -19,7 +19,11 @@ from app.database import get_db
 from app.models import Subtask, Ticket, TicketEvent, TicketEventType
 from app.schemas import SubtaskResponse, SubtaskCreate, SubtaskUpdate
 from app.services import ticket_state_machine
-from app.services.ticket_permissions import get_user_id, require_admin_or_leader
+from app.services.ticket_permissions import (
+    assert_can_manage_ticket,
+    get_user_id,
+    require_admin_or_leader,
+)
 from app.middleware.auth import get_current_user
 
 # Router para subtareas
@@ -142,13 +146,14 @@ async def update_subtask(
             detail=f"Subtarea con ID {subtask_id} no encontrada"
         )
 
-    try:
-        # Obtener ticket para registrar evento
-        ticket = await db.execute(
-            select(Ticket).where(Ticket.id == subtask.ticket_id)
-        )
-        ticket = ticket.scalar_one_or_none()
+    # Marcar/editar subtareas: gestión o el asignado del ticket
+    ticket = (await db.execute(
+        select(Ticket).where(Ticket.id == subtask.ticket_id)
+    )).scalar_one_or_none()
+    if ticket is not None:
+        assert_can_manage_ticket(ticket, current_user)
 
+    try:
         # Aplicar cambios a los campos proporcionados
         update_data = subtask_update.dict(exclude_unset=True)
         old_completion_status = subtask.is_completed
@@ -210,6 +215,9 @@ async def delete_subtask(
             detail=f"Subtarea con ID {subtask_id} no encontrada"
         )
 
+    # Igual que crear: borrar subtareas es planificación, no trabajo del dev
+    require_admin_or_leader(current_user)
+
     try:
         ticket_id = subtask.ticket_id
 
@@ -263,6 +271,24 @@ async def reorder_subtasks(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Lista de IDs de subtareas vacía"
         )
+
+    try:
+        subtask_uuids = [UUID(str(sid)) for sid in subtask_ids]
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="IDs de subtareas inválidos"
+        )
+
+    # Solo se reordenan subtareas de tickets que el usuario puede gestionar
+    tickets = (await db.execute(
+        select(Ticket)
+        .join(Subtask, Subtask.ticket_id == Ticket.id)
+        .where(Subtask.id.in_(subtask_uuids))
+        .distinct()
+    )).scalars().all()
+    for ticket in tickets:
+        assert_can_manage_ticket(ticket, current_user)
 
     try:
         # Obtener todas las subtareas en el nuevo orden
