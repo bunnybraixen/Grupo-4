@@ -39,6 +39,21 @@ export interface ProjectReportPayload {
 
 const scopeLines = (scope: ProjectReportScope): string[][] => [
   ['Proyecto', scope.projectName],
+  ['Desarrollador', scope.developerName],
+  ['Sprint', scope.sprintName],
+  ['Generado', scope.generatedAt]
+]
+
+const fileStamp = (): string => new Date().toISOString().split('T')[0]
+
+const downloadBlob = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── PDF (sin librerías) ─────────────────────────────────────────────────────
 
@@ -111,6 +126,12 @@ class SimplePdf {
       x = MARGIN + 4
       for (const cell of row) {
         this.current += `BT /F1 ${size} Tf 1 0 0 1 ${x} ${PAGE_H - this.y} Tm (${pdfEscape(cell)}) Tj ET\n`
+        x += 110
+      }
+      this.y += gap
+    }
+    this.y += 6
+  }
 
   save(filename: string): void {
     if (this.current) this.pages.push(this.current)
@@ -239,27 +260,4 @@ export function exportProjectReportPDF(payload: ProjectReportPayload): void {
   }
 
   doc.save('reporte')
-}
-
-        x += 110
-      }
-      this.y += gap
-    }
-    this.y += 6
-  }
-
-  ['Desarrollador', scope.developerName],
-  ['Sprint', scope.sprintName],
-  ['Generado', scope.generatedAt]
-]
-
-const fileStamp = (): string => new Date().toISOString().split('T')[0]
-
-const downloadBlob = (blob: Blob, filename: string): void => {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
 }

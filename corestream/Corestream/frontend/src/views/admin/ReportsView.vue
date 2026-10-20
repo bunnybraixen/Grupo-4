@@ -85,6 +85,10 @@
     <p v-if="isLoading" class="text-sm text-gray-500 dark:text-gray-400">Cargando reporte…</p>
     <p v-else-if="errorMessage" class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-500">
       {{ errorMessage }}
+    </p>
+    <p v-else-if="!summary" class="text-sm text-gray-500 dark:text-gray-400">
+      Selecciona un proyecto para ver el reporte consolidado.
+    </p>
 
     <template v-else>
       <!-- ========================== INDICADORES ========================== -->
@@ -156,6 +160,15 @@
             <tr v-for="row in bottleneckRows" :key="row[0]" class="border-t border-gray-100 dark:border-gray-800">
               <td class="py-1.5 text-gray-800 dark:text-gray-200">{{ row[0] }}</td>
               <td class="py-1.5 text-right text-gray-900 dark:text-white">{{ row[1] }}</td>
+              <td class="py-1.5 text-right text-gray-900 dark:text-white">{{ row[2] }}</td>
+              <td class="py-1.5 text-right text-gray-900 dark:text-white">{{ row[3] }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
+  </div>
+</template>
 
 <script setup lang="ts">
 /**
@@ -203,7 +216,12 @@ const STATUS_LABELS: Record<string, string> = {
   COMPLETED: 'Completado'
 }
 
-
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Baja',
+  MEDIUM: 'Media',
+  HIGH: 'Alta',
+  URGENT: 'Urgente'
+}
 // ── Datos computados para la vista y la exportación ─────────────────────────
 
 const indicators = computed(() => {
@@ -249,8 +267,12 @@ const bottleneckRows = computed<string[][]>(() =>
 const projectName = computed(
   () => projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? '—'
 )
+
 const developerName = computed(() => {
   if (!selectedDeveloperId.value) return 'Todo el equipo'
+  const developer = developers.value.find((item) => item.id === selectedDeveloperId.value)
+  return developer?.fullName || developer?.email || '—'
+})
 
 // ── Carga de datos ──────────────────────────────────────────────────────────
 
@@ -318,6 +340,9 @@ const loadSummary = async (projectId: string): Promise<void> => {
       errorMessage.value = error instanceof Error ? error.message : 'No se pudo cargar el reporte.'
     }
   } finally {
+    if (requestId === summaryRequestId) isLoading.value = false
+  }
+}
 
 // ── Exportación (mantiene los filtros en pantalla) ──────────────────────────
 
@@ -385,28 +410,8 @@ watch([selectedDeveloperId, selectedSprintId], () => {
 })
 
 onMounted(loadProjects)
-</script>
 
-    if (requestId === summaryRequestId) isLoading.value = false
-  }
-}
-
-  const developer = developers.value.find((item) => item.id === selectedDeveloperId.value)
-  return developer?.fullName || developer?.email || '—'
-})
-const sprintName = computed(() => {
-  if (!selectedSprintId.value) return 'Todos los sprints'
-  return sprints.value.find((sprint) => sprint.id === selectedSprintId.value)?.name ?? '—'
-})
-
-const PRIORITY_LABELS: Record<string, string> = {
-  LOW: 'Baja',
-  MEDIUM: 'Media',
-  HIGH: 'Alta',
-  URGENT: 'Urgente'
-}
-
-const normalizeList = <T>(response: unknown): T[] => {
+function normalizeList<T>(response: unknown): T[] {
   const payload = (response as { data?: unknown } | null)?.data ?? response
   const items = (payload as { items?: unknown } | null)?.items ?? payload
   return Array.isArray(items) ? items as T[] : []
@@ -414,18 +419,5 @@ const normalizeList = <T>(response: unknown): T[] => {
 
 const normalizeRole = (role?: string | null) =>
   String(role ?? '').trim().toUpperCase().replace('USERROLE.', '').replace('-', '_')
+</script>
 
-              <td class="py-1.5 text-right text-gray-900 dark:text-white">{{ row[2] }}</td>
-              <td class="py-1.5 text-right text-gray-900 dark:text-white">{{ row[3] }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-    </template>
-  </div>
-</template>
-
-    </p>
-    <p v-else-if="!summary" class="text-sm text-gray-500 dark:text-gray-400">
-      Selecciona un proyecto para ver el reporte consolidado.
-    </p>
