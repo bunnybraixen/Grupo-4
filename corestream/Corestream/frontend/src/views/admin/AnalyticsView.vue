@@ -7,9 +7,11 @@
       Métricas de proyecto y rendimiento del equipo
     </p>
     <MetricCards />
+    <TicketDistribution />
   </div>
 </template>
 
 <script setup lang="ts">
 import MetricCards from '@/components/analytics/MetricCards.vue'
+import TicketDistribution from '@/components/analytics/TicketDistribution.vue'
 </script>
