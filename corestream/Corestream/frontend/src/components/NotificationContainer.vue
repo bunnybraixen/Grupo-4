@@ -125,8 +125,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/services/api'
+import { REALTIME_EVENT } from '@/composables/useRealtimeNotifications'
 import type { Notification } from '@/types'
 
 const notifications = ref<Notification[]>([])
@@ -170,6 +171,13 @@ const formatDate = (date: string): string => {
 onMounted(async () => {
   await loadNotifications()
 })
+
+// Las notificaciones nuevas llegan por WebSocket: se recarga el contador
+const onRealtime = () => {
+  loadNotifications()
+}
+window.addEventListener(REALTIME_EVENT, onRealtime)
+onUnmounted(() => window.removeEventListener(REALTIME_EVENT, onRealtime))
 
 const markAsRead = async (
   notificationId: string

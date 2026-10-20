@@ -52,6 +52,8 @@ export default defineConfig({
       '/api': {
         target: BACKEND_TARGET,
         changeOrigin: true,
+        // /api/ws/notifications/... es un WebSocket
+        ws: true,
         secure: false
       },
 

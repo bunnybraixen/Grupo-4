@@ -598,6 +598,7 @@ import apiClient from '@/services/api'
 import TagChips from '@/components/shared/TagChips.vue'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import FileUpload from '@/components/FileUpload.vue'
+import { REALTIME_EVENT } from '@/composables/useRealtimeNotifications'
 import type { Subtask, Tag, Ticket, TicketHistoryEvent, User } from '@/types'
 
 // =====================================================================
@@ -869,7 +870,8 @@ const statusFilters = computed(() => [
   { value: 'in_progress' as const, label: 'En progreso' },
   { value: 'todo' as const, label: 'Por hacer' },
   { value: 'blocked' as const, label: 'Bloqueado' },
-  { value: 'completed' as const, label: 'Completados' },
+  { value: 'redirected' as const, label: 'Redirigidos' },
+  { value: 'done' as const, label: 'Completados' },
 ])
 
 const priorityFilters = computed(() => [
@@ -1164,5 +1166,18 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => window.clearInterval(clockInterval))
+// Tiempo real: si a este usuario le redirigen un ticket (o aceptan/rechazan
+// uno que redirigió), se recarga la lista sin esperar a recargar la página.
+const onRealtime = (event: Event) => {
+  const type = (event as CustomEvent<{ type?: string }>).detail?.type ?? ''
+  if (type.startsWith('TICKET_') || type.startsWith('REDIRECT_')) {
+    refresh()
+  }
+}
+window.addEventListener(REALTIME_EVENT, onRealtime)
+
+onUnmounted(() => {
+  window.clearInterval(clockInterval)
+  window.removeEventListener(REALTIME_EVENT, onRealtime)
+})
 </script>

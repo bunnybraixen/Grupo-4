@@ -14,6 +14,13 @@ import { ref, computed } from 'vue'
 import type { User, AuthTokens, UserRole } from '@/types'
 import { api, setAuthTokens, clearAuthTokens } from '@/services/api'
 
+/**
+ * Resumen de un error para la consola. Nunca se registra el objeto completo:
+ * un AxiosError incluye el body de la petición, es decir, la contraseña.
+ */
+const errorSummary = (err: unknown): string | number =>
+  (err as any)?.response?.status ?? (err instanceof Error ? err.message : String(err))
+
 export const useAuthStore = defineStore('auth', () => {
   // ========== ESTADO REACTIVO ==========
   
@@ -124,7 +131,7 @@ export const useAuthStore = defineStore('auth', () => {
         // El fetchMe() será llamado por el composable de autenticación
       }
     } catch (err) {
-      console.error('Error al inicializar autenticación desde localStorage:', err)
+      console.error('Error al inicializar autenticación desde localStorage:', errorSummary(err))
       clearSession()
     }
   }
@@ -165,7 +172,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al iniciar sesión'
       error.value = message
-      console.error('Error en login:', err)
+      console.error('Error en login:', errorSummary(err))
       clearSession()
       throw err
     } finally {
@@ -208,7 +215,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al registrarse'
       error.value = message
-      console.error('Error en register:', err)
+      console.error('Error en register:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false
@@ -232,7 +239,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       return userData
     } catch (err) {
-      console.error('Error al obtener datos del usuario:', err)
+      console.error('Error al obtener datos del usuario:', errorSummary(err))
       clearSession()
       throw err
     }
@@ -258,7 +265,7 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('refreshToken', newTokens.refreshToken)
       return newTokens
     } catch (err) {
-      console.error('Error al refrescar token:', err)
+      console.error('Error al refrescar token:', errorSummary(err))
       clearSession()
       throw err
     }
@@ -281,7 +288,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al actualizar perfil'
       error.value = message
-      console.error('Error en updateProfile:', err)
+      console.error('Error en updateProfile:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false
@@ -304,7 +311,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al cambiar contraseña'
       error.value = message
-      console.error('Error en changePassword:', err)
+      console.error('Error en changePassword:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false
@@ -313,23 +320,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * Cierra la sesión del usuario
-   * 
-   * Flujo:
-   * 1. Llama a api.auth.logout para invalidar sesión en servidor
-   * 2. Limpia todos los datos locales
-   * 3. Elimina tokens de localStorage
-   * 4. Redirige a página de login (manejado por router)
+   *
+   * Los JWT no tienen estado en el servidor (no existe /auth/logout), así
+   * que cerrar sesión es limpiar los tokens y los datos locales. La
+   * redirección al login la hace quien llama.
    */
   const logout = async (): Promise<void> => {
-    try {
-      // Intentar notificar al servidor
-      await api.auth.logout()
-    } catch (err) {
-      console.error('Error al notificar logout al servidor:', err)
-      // Continuar con limpieza local incluso si falla
-    } finally {
-      clearSession()
-    }
+    clearSession()
   }
 
   /**
@@ -361,7 +358,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al solicitar reset de contraseña'
       error.value = message
-      console.error('Error en requestPasswordReset:', err)
+      console.error('Error en requestPasswordReset:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false
@@ -384,7 +381,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al confirmar reset de contraseña'
       error.value = message
-      console.error('Error en confirmPasswordReset:', err)
+      console.error('Error en confirmPasswordReset:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false

@@ -362,66 +362,37 @@ const createApiClient = (): AxiosInstance => {
        * Si el error es 401 (Unauthorized) y no hemos intentado renovar ya
        * (para evitar loops infinitos)
        */
-      if (error.response?.status === 401 && !originalRequest._retry) {
+      // Un 401 de /auth/login (contraseña incorrecta) o del propio refresh
+      // no se reintenta: no hay sesión que renovar.
+      const isAuthEndpoint = /\/auth\/(login|refresh)/.test(originalRequest?.url ?? '')
+
+      if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
         /**
          * Marca que ya hemos intentado renovar este request
          */
         originalRequest._retry = true
 
-        /**
-         * Intenta renovar el token usando el refresh token
-         */
-        if (authState.refreshToken) {
-          try {
-            /**
-             * Solicitud especial para renovar el token
-             * Usa directamente axios (no la instancia con interceptores)
-             * para evitar recursión infinita.
-             *
-             * El backend espera `{ refresh_token }` y responde plano
-             * (`{ access_token, refresh_token, token_type }`).
-             */
-            const response = await axios.post('/api/auth/refresh', {
-              refresh_token: authState.refreshToken
-            })
+        if (!authState.refreshToken) {
+          endSession()
+          return Promise.reject(error)
+        }
 
-            const newTokens = normalizeTokens(response.data)
+        try {
+          const newTokens = await refreshTokensOnce()
 
-            if (newTokens.accessToken) {
-              /**
-               * Guarda los tokens normalizados (persiste en localStorage y
-               * actualiza el estado del interceptor).
-               */
-              setAuthTokens(newTokens)
-
-              /**
-               * Actualiza el header Authorization del request original
-               */
-              originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`
-
-              /**
-               * Reintenta el request original con el nuevo token
-               */
-              return instance(originalRequest)
-            }
-          } catch (refreshError) {
-            /**
-             * Si la renovación falla (refresh token expirado),
-             * limpia los tokens y rechaza la promesa
-             * El usuario será redirigido a login
-             */
-            authState.accessToken = null
-            authState.refreshToken = null
-
-            return Promise.reject(refreshError)
-          }
-        } else {
           /**
-           * No hay refresh token disponible
-           * Limpia tokens y rechaza
+           * Actualiza el header Authorization del request original y lo
+           * reintenta con el nuevo token
            */
-          authState.accessToken = null
-          authState.refreshToken = null
+          originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`
+          return instance(originalRequest)
+        } catch (refreshError) {
+          /**
+           * Refresh token expirado o inválido: se cierra la sesión por
+           * completo y se vuelve al login.
+           */
+          endSession()
+          return Promise.reject(refreshError)
         }
       }
 
@@ -433,6 +404,49 @@ const createApiClient = (): AxiosInstance => {
   )
 
   return instance
+}
+
+/**
+ * Renovación de tokens compartida: si varias peticiones reciben 401 a la vez,
+ * todas esperan la misma llamada a /auth/refresh en lugar de lanzar una cada
+ * una.
+ */
+let pendingRefresh: Promise<AuthTokens> | null = null
+
+const refreshTokensOnce = (): Promise<AuthTokens> => {
+  if (!pendingRefresh) {
+    pendingRefresh = (async () => {
+      /**
+       * Usa directamente axios (no la instancia con interceptores) para
+       * evitar recursión. El backend espera `{ refresh_token }` y responde
+       * plano (`{ access_token, refresh_token, token_type }`).
+       */
+      const response = await axios.post('/api/auth/refresh', {
+        refresh_token: authState.refreshToken
+      })
+      const newTokens = normalizeTokens(response.data)
+      if (!newTokens.accessToken) {
+        throw new Error('Respuesta de refresh sin access token')
+      }
+      setAuthTokens(newTokens)
+      return newTokens
+    })().finally(() => {
+      pendingRefresh = null
+    })
+  }
+  return pendingRefresh
+}
+
+/**
+ * Cierra la sesión local (tokens y datos de usuario) y vuelve al login.
+ * Se usa window.location en vez del router para no crear una dependencia
+ * circular entre el cliente HTTP y el router.
+ */
+const endSession = (): void => {
+  clearAuthTokens()
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login')
+  }
 }
 
 /**
@@ -567,15 +581,6 @@ export const api = {
         '/auth/me',
         data
       )
-      return response.data
-    },
-
-    /**
-     * Cierra sesión y invalida los tokens
-     * Debería llamarse antes de limpiar los tokens en el cliente
-     */
-    logout: async (): Promise<ApiResponse<void>> => {
-      const response = await apiClient.post<ApiResponse<void>>('/auth/logout')
       return response.data
     }
   },
@@ -1410,74 +1415,6 @@ export const api = {
 
   /**
    * ========================================
-   * MÓDULO DE SUBTAREAS
-   * ========================================
-   * 
-   * CRUD de subtareas dentro de tickets
-   */
-  subtasks: {
-    /**
-     * Crea una nueva subtarea
-     * 
-     * @param ticketId - ID del ticket padre
-     * @param data - Datos de la subtarea
-     * @returns Subtarea creada
-     */
-    create: async (ticketId: string, data: Omit<Subtask, 'id' | 'createdAt'>): Promise<ApiResponse<Subtask>> => {
-      const response = await apiClient.post<ApiResponse<Subtask>>(
-        `/tickets/${ticketId}/subtasks`,
-        data
-      )
-      return response.data
-    },
-
-    /**
-     * Actualiza una subtarea
-     * 
-     * @param ticketId - ID del ticket padre
-     * @param subtaskId - ID de la subtarea
-     * @param data - Campos a actualizar
-     * @returns Subtarea actualizada
-     */
-    update: async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<ApiResponse<Subtask>> => {
-      const response = await apiClient.put<ApiResponse<Subtask>>(
-        `/tickets/${ticketId}/subtasks/${subtaskId}`,
-        data
-      )
-      return response.data
-    },
-
-    /**
-     * Elimina una subtarea
-     * 
-     * @param ticketId - ID del ticket padre
-     * @param subtaskId - ID de la subtarea
-     */
-    delete: async (ticketId: string, subtaskId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/tickets/${ticketId}/subtasks/${subtaskId}`
-      )
-      return response.data
-    },
-
-    /**
-     * Reordena las subtareas de un ticket
-     * 
-     * @param ticketId - ID del ticket
-     * @param subtaskIds - Array de IDs en el nuevo orden
-     * @returns Subtareas reordenadas
-     */
-    reorder: async (ticketId: string, subtaskIds: string[]): Promise<ApiResponse<Subtask[]>> => {
-      const response = await apiClient.post<ApiResponse<Subtask[]>>(
-        `/tickets/${ticketId}/subtasks/reorder`,
-        { subtaskIds }
-      )
-      return response.data
-    }
-  },
-
-  /**
-   * ========================================
    * MÓDULO DE ANÁLISIS Y REPORTES
    * ========================================
    * 
@@ -2128,6 +2065,10 @@ export const clearAuthTokens = (): void => {
     localStorage.removeItem(AUTH_TOKENS_KEY)
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
+    // Datos del usuario que guardan LoginView/App.vue para el guard del router
+    for (const key of ['userRole', 'userId', 'userName', 'userEmail']) {
+      localStorage.removeItem(key)
+    }
   } catch {
     // Ignorado: no hay nada que limpiar si el almacenamiento no está disponible.
   }

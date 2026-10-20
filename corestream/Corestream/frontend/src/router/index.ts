@@ -14,6 +14,7 @@
 
 import { createRouter, createWebHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
 import type { UserRole } from '@/types'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * ========================================
@@ -418,7 +419,7 @@ router.beforeEach(
      */
     const token =
       localStorage.getItem('accessToken') || localStorage.getItem('authTokens')
-    const userRole = localStorage.getItem('userRole') as UserRole | null
+    let userRole = localStorage.getItem('userRole') as UserRole | null
 
     /**
      * Meta información de la ruta
@@ -456,20 +457,41 @@ router.beforeEach(
     }
 
     /**
-     * CASO 3: Ruta requiere un rol específico y usuario no lo tiene
+     * CASO 3: Ruta con roles pero sin rol conocido (primera carga, antes de
+     * que App.vue termine fetchMe): se consulta /auth/me en vez de dejar
+     * pasar sin comprobar.
+     */
+    if (requiredRoles && token && !userRole) {
+      try {
+        const me = await useAuthStore().fetchMe()
+        userRole = me.role as UserRole
+        localStorage.setItem('userRole', me.role)
+      } catch {
+        next({ name: 'Login', query: { redirect: to.path } })
+        return
+      }
+    }
+
+    /**
+     * CASO 4: Ruta requiere un rol específico y usuario no lo tiene
      */
     if (requiredRoles && userRole && !requiredRoles.includes(userRole)) {
       /**
-       * Redirige a la página de acceso denegado o al dashboard principal
+       * Redirige al dashboard que corresponde a su rol. Un rol que no encaja
+       * en ninguno vuelve al login (evita un bucle de redirecciones).
        */
-      next({
-        name: userRole === 'ADMIN' ? 'AdminLayout' : 'DeveloperLayout'
-      })
+      if (userRole === 'ADMIN') {
+        next({ name: 'AdminLayout' })
+      } else if (userRole === 'DEVELOPER' || userRole === 'GROUP_LEADER') {
+        next({ name: 'DeveloperLayout' })
+      } else {
+        next({ name: 'Login' })
+      }
       return
     }
 
     /**
-     * CASO 4: Actualiza el título de la página
+     * CASO 5: Actualiza el título de la página
      * Se toma del meta.title definido en cada ruta
      */
     const title = to.meta.title as string | undefined
