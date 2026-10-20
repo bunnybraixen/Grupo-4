@@ -64,6 +64,16 @@ class OperationalTicket(Base, BaseEntity):
     # Bloque de texto con los cambios que se hicieron para resolverlo.
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Usuario al que se redirige el ticket (NULL mientras no está asignado).
+    # Solo ADMIN/GROUP_LEADER pueden asignar; el DEVELOPER ve y resuelve
+    # únicamente los tickets que tiene asignados.
+    assignee_id: Mapped[PyUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     created_by_id: Mapped[PyUUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -77,6 +87,7 @@ class OperationalTicket(Base, BaseEntity):
 
     created_by = relationship("User", foreign_keys=[created_by_id])
     resolved_by = relationship("User", foreign_keys=[resolved_by_id])
+    assignee = relationship("User", foreign_keys=[assignee_id])
 
     @property
     def current_elapsed_seconds(self) -> int:

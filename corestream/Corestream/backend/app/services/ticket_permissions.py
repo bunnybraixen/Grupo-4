@@ -140,3 +140,66 @@ def claim_or_assert_assignee(ticket: Ticket, current_user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Este ticket ya está asignado a otro usuario",
         )
+
+
+# ---------------------------------------------------------------------------
+# Tickets operacionales de Soporte (/admin/support)
+# ---------------------------------------------------------------------------
+# ADMIN y GROUP_LEADER: crean, resuelven, redirigen (asignan) y ven TODOS los
+# tickets operacionales.
+# DEVELOPER: solo crea tickets y resuelve/consulta los que tiene ASIGNADOS
+# (assignee_id == su id). No puede redirigir ni ver el resto.
+
+
+def can_see_all_operational_tickets(user: User) -> bool:
+    """True si el usuario puede listar la totalidad de los tickets operacionales."""
+    return is_admin_or_leader(user)
+
+
+def can_assign_operational_tickets(user: User) -> bool:
+    """True si el usuario puede redirigir (asignar) tickets operacionales."""
+    return is_admin_or_leader(user)
+
+
+def assert_can_assign_operational_ticket(current_user: User) -> None:
+    """Redirigir/asignar un ticket operacional es exclusivo de ADMIN/GROUP_LEADER."""
+    if not can_assign_operational_tickets(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores o líderes de grupo pueden redirigir tickets",
+        )
+
+
+def assert_can_view_operational_ticket(ticket: Any, current_user: User) -> None:
+    """
+    Visibilidad de un ticket operacional concreto:
+    ADMIN/GROUP_LEADER ven todo; un DEVELOPER solo los que tiene asignados.
+    """
+    if can_see_all_operational_tickets(current_user):
+        return
+    user_id = get_user_id(current_user)
+    assignee_id = getattr(ticket, "assignee_id", None)
+    if assignee_id is not None and str(assignee_id) == str(user_id):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="No tienes permiso para ver este ticket",
+    )
+
+
+def assert_can_resolve_operational_ticket(ticket: Any, current_user: User) -> None:
+    """
+    Resolver un ticket operacional:
+    ADMIN/GROUP_LEADER pueden resolver cualquiera; un DEVELOPER solo los que
+    tiene asignados (no puede resolver tickets ajenos ni sin asignar).
+    """
+    if can_see_all_operational_tickets(current_user):
+        return
+    user_id = get_user_id(current_user)
+    assignee_id = getattr(ticket, "assignee_id", None)
+    if assignee_id is not None and str(assignee_id) == str(user_id):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Solo puedes resolver los tickets que tienes asignados",
+    )

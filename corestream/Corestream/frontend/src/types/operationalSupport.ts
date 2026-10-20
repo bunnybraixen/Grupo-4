@@ -27,5 +27,12 @@ export interface OperationalTicket {
   resolution_notes: string | null
   created_by: OperationalTicketUser | null
   resolved_by: OperationalTicketUser | null
+  /** Usuario al que se redirigió el ticket (null si está sin asignar) */
+  assignee: OperationalTicketUser | null
   created_at: string
+}
+
+/** Payload para redirigir (asignar) un ticket operacional. */
+export interface OperationalTicketAssign {
+  assignee_id: string | null
 }

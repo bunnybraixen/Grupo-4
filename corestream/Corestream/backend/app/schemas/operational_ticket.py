@@ -22,8 +22,14 @@ class OperationalTicketResolve(BaseModel):
     resolution_notes: str = Field(..., min_length=10)
 
 
+class OperationalTicketAssign(BaseModel):
+    """Redirección del ticket a un usuario (solo ADMIN/GROUP_LEADER)."""
+
+    assignee_id: Optional[UUID] = None
+
+
 class OperationalTicketUser(BaseModel):
-    """Autor o resolutor del ticket (resumen mínimo para la lista)."""
+    """Autor, asignado o resolutor del ticket (resumen mínimo para la lista)."""
 
     id: UUID
     full_name: str
@@ -42,6 +48,7 @@ class OperationalTicketResponse(BaseModel):
     resolution_notes: Optional[str] = None
     created_by: Optional[OperationalTicketUser] = None
     resolved_by: Optional[OperationalTicketUser] = None
+    assignee: Optional[OperationalTicketUser] = None
     created_at: datetime
 
     class Config:

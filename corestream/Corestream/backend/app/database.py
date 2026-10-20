@@ -1,5 +1,5 @@
+
 # Archivo de configuración de SQLAlchemy para operaciones de base de datos
-# Proporciona el motor async, sesiones y funciones de inyección de dependencias
 
 from typing import AsyncGenerator
 
@@ -12,67 +12,53 @@ from sqlalchemy.orm import declarative_base
 
 from app.config import get_settings
 
-# Obtener la URL de conexión de la configuración
 settings = get_settings()
 
-# Crear el motor SQLAlchemy asincrónico
-# El motor maneja la conexión a la base de datos con soporte para operaciones async/await
-# echo=True imprime las sentencias SQL en logs (desactivar en producción)
+# Asegurar que PostgreSQL use el controlador asíncrono asyncpg
+database_url = settings.DATABASE_URL
+
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace(
+        "postgres://", "postgresql+asyncpg://", 1
+    )
+elif database_url.startswith("postgresql://"):
+    database_url = database_url.replace(
+        "postgresql://", "postgresql+asyncpg://", 1
+    )
+elif database_url.startswith("postgresql+psycopg2://"):
+    database_url = database_url.replace(
+        "postgresql+psycopg2://", "postgresql+asyncpg://", 1
+    )
+
+# Crear el motor SQLAlchemy asíncrono
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    database_url,
     echo=settings.DEBUG,
-    future=True,
-    pool_size=20,  # Número de conexiones a mantener en el pool
-    max_overflow=10,  # Conexiones adicionales que se pueden crear cuando pool está lleno
+    pool_size=20,
+    max_overflow=10,
 )
 
-# Crear una fábrica de sesiones asincrónicas
-# AsyncSessionLocal se utiliza para crear sesiones para cada solicitud HTTP
+# Crear la fábrica de sesiones asíncronas
 async_session_maker = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False,  # No expira objetos después de un commit
-    autoflush=False,  # Control manual de flush para mejor rendimiento
+    expire_on_commit=False,
+    autoflush=False,
 )
 
-# Crear la clase base para todos los modelos ORM
-# Todos los modelos de la base de datos heredarán de esta clase
+# Clase base para los modelos ORM
 Base = declarative_base()
 
 
 def get_session_maker() -> async_sessionmaker:
-    """
-    WEB-08: devuelve la fábrica de sesiones asincrónicas.
-
-    Los scripts (p. ej. app/scripts/create_admin.py) la importan con este
-    nombre; antes no existía y el bootstrap del ADMIN fallaba con ImportError.
-    """
+    """Devuelve la fábrica de sesiones asíncronas."""
     return async_session_maker
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Generador asincrónico que proporciona sesiones de base de datos para inyección de dependencias.
-    
-    Esta función se utiliza como dependencia en endpoints FastAPI para proporcionar
-    una sesión de base de datos. Garantiza que la sesión se crea al principio de la
-    solicitud y se cierra correctamente al finalizar, incluso si ocurren errores.
-    
-    La sesión proporciona operaciones CRUD y transacciones para interactuar con
-    la base de datos PostgreSQL.
-    
-    Yields:
-        AsyncSession: Sesión de base de datos asincrónica para la solicitud actual
-        
-    Ejemplo en un endpoint:
-        @app.get("/users/{user_id}")
-        async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
-            user = await db.get(User, user_id)
-            return user
-    """
+    """Proporciona una sesión de base de datos por solicitud."""
     async with async_session_maker() as session:
         try:
             yield session
         finally:
-            # La sesión se cierra automáticamente al salir del contexto
             await session.close()

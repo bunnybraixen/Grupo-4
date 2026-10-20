@@ -217,7 +217,10 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/shared/SupportOperationsView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['ADMIN'],
+          // ADMIN y GROUP_LEADER gestionan (crean, resuelven, redirigen y ven)
+          // todos los tickets operacionales. El DEVELOPER usa /dev/support y
+          // solo opera sobre los tickets que tiene asignados.
+          requiredRoles: ['ADMIN', 'GROUP_LEADER', 'TEAM_LEADER'],
           title: 'Soporte - CoreStream Admin'
         }
       }

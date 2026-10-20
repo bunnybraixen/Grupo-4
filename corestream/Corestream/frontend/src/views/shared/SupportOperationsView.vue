@@ -68,6 +68,24 @@
       {{ store.error }}
     </p>
 
+    <!-- Alcance: Todos / Mis tickets (solo ADMIN y GROUP_LEADER pueden ver todos) -->
+    <div v-if="store.canManageAll" class="mb-4 flex items-center gap-2">
+      <span class="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
+        Alcance
+      </span>
+      <button
+        v-for="opt in scopeOptions"
+        :key="opt.id"
+        class="rounded-full border px-3 py-1 text-sm font-medium"
+        :class="store.scope === opt.id
+          ? 'border-blue-600 bg-blue-600 text-white'
+          : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'"
+        @click="handleScope(opt.id)"
+      >
+        {{ opt.label }}
+      </button>
+    </div>
+
     <!-- Categorías: Activos / Archivados -->
     <div class="mb-4 flex gap-2">
       <button
@@ -107,6 +125,13 @@
               Levantado por {{ ticket.created_by?.full_name ?? '—' }}
               · {{ formatDate(ticket.created_at) }}
             </p>
+            <!-- Asignado (redirección) -->
+            <p class="mt-1 text-xs text-[var(--text-muted)]">
+              Asignado a
+              <span class="font-medium text-[var(--text-secondary)]">
+                {{ ticket.assignee?.full_name ?? 'Sin asignar' }}
+              </span>
+            </p>
           </div>
           <div class="flex shrink-0 flex-col items-end gap-2">
             <!-- Cronómetro en vivo -->
@@ -117,8 +142,16 @@
               <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
               En curso
             </span>
+            <!-- Redirigir: solo ADMIN / GROUP_LEADER -->
             <button
-              v-if="canResolve"
+              v-if="store.canAssign"
+              class="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+              @click="openAssign(ticket)"
+            >
+              Redirigir
+            </button>
+            <button
+              v-if="canResolveTicket(ticket)"
               class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
               @click="openResolve(ticket)"
             >
@@ -209,6 +242,48 @@
         </div>
       </div>
     </div>
+
+    <!-- ===== MODAL: REDIRIGIR (ASIGNAR) TICKET ===== -->
+    <div
+      v-if="assigningTicket"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click.self="assigningTicket = null"
+    >
+      <div class="w-full max-w-lg rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-6">
+        <h2 class="mb-1 text-lg font-semibold">Redirigir ticket</h2>
+        <p class="mb-4 text-sm text-[var(--text-muted)]">
+          {{ assigningTicket.title }}
+        </p>
+
+        <label class="mb-1 block text-sm font-medium">Asignar a</label>
+        <select
+          v-model="assignTo"
+          class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none focus:border-blue-500"
+        >
+          <option value="">Sin asignar</option>
+          <option v-for="u in store.assignableUsers" :key="u.id" :value="u.id">
+            {{ u.full_name }} ({{ u.email }})
+          </option>
+        </select>
+        <p v-if="assignError" class="mt-2 text-sm text-red-500">{{ assignError }}</p>
+
+        <div class="mt-4 flex justify-end gap-3">
+          <button
+            class="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm"
+            @click="assigningTicket = null"
+          >
+            Cancelar
+          </button>
+          <button
+            class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            :disabled="assignLoading"
+            @click="handleAssign"
+          >
+            {{ assignLoading ? 'Guardando...' : 'Redirigir' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -236,8 +311,27 @@ const resolutionNotes = ref('')
 const resolveLoading = ref(false)
 const resolveError = ref('')
 
-/** Solo Dev Leader y Admin pueden resolver (el backend también lo exige) */
-const canResolve = computed(() => authStore.isAdmin || authStore.isTeamLeader)
+/** Redirección (asignación) — solo ADMIN / GROUP_LEADER */
+const assigningTicket = ref<OperationalTicket | null>(null)
+const assignTo = ref<string>('')
+const assignLoading = ref(false)
+const assignError = ref('')
+
+/**
+ * ADMIN y GROUP_LEADER resuelven cualquier ticket; un DEVELOPER solo puede
+ * resolver los tickets que tiene asignados (el backend exige lo mismo).
+ */
+const canManageAll = computed(() => authStore.isAdmin || authStore.isTeamLeader)
+
+function canResolveTicket(ticket: OperationalTicket): boolean {
+  if (canManageAll.value) return true
+  return !!ticket.assignee && ticket.assignee.id === authStore.user?.id
+}
+
+const scopeOptions = computed(() => [
+  { id: 'all' as const, label: 'Todos' },
+  { id: 'mine' as const, label: 'Mis tickets' },
+])
 
 const tabs = computed(() => [
   { id: 'open' as const, label: 'Activos', count: store.openTickets.length },
@@ -273,6 +367,35 @@ function openResolve(ticket: OperationalTicket) {
   resolvingTicket.value = ticket
   resolutionNotes.value = ''
   resolveError.value = ''
+}
+
+/** Abre el selector de redirección y carga los usuarios asignables. */
+async function openAssign(ticket: OperationalTicket) {
+  assigningTicket.value = ticket
+  assignTo.value = ticket.assignee?.id ?? ''
+  assignError.value = ''
+  await store.fetchAssignableUsers()
+}
+
+async function handleAssign() {
+  if (!assigningTicket.value || assignLoading.value) return
+
+  assignLoading.value = true
+  assignError.value = ''
+  try {
+    await store.assign(assigningTicket.value.id, assignTo.value || null)
+    assigningTicket.value = null
+  } catch (err: any) {
+    assignError.value = err?.response?.data?.detail ?? 'No se pudo redirigir el ticket'
+  } finally {
+    assignLoading.value = false
+  }
+}
+
+/** Cambia el alcance de la lista ('all' | 'mine'). */
+async function handleScope(next: 'all' | 'mine') {
+  if (store.scope === next) return
+  await store.setScope(next)
 }
 
 async function handleResolve() {

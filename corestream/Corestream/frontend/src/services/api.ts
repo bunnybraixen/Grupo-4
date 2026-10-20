@@ -2082,9 +2082,12 @@ export const api = {
    */
   operationalSupport: {
     /** Listado completo; `status` ('OPEN' | 'RESOLVED') filtra los archivados */
-    list: async (status?: string): Promise<any[]> => {
+    list: async (status?: string, mine?: boolean): Promise<any[]> => {
+      const params: Record<string, unknown> = {}
+      if (status) params.status_filter = status
+      if (mine) params.mine = true
       const response = await apiClient.get('/operational-support/', {
-        params: status ? { status_filter: status } : undefined
+        params: Object.keys(params).length ? params : undefined
       })
       return response.data
     },
@@ -2104,11 +2107,32 @@ export const api = {
       return response.data
     },
 
-    /** Resuelve y archiva el ticket (solo ADMIN/GROUP_LEADER en el backend) */
+    /**
+     * Resuelve y archiva el ticket.
+     * En el backend: ADMIN/GROUP_LEADER resuelven cualquiera; un DEVELOPER
+     * solo los tickets que tiene asignados.
+     */
     resolve: async (ticketId: string, resolutionNotes: string): Promise<any> => {
       const response = await apiClient.post(`/operational-support/${ticketId}/resolve`, {
         resolution_notes: resolutionNotes
       })
+      return response.data
+    },
+
+    /**
+     * Redirige (asigna) el ticket a un usuario — solo ADMIN/GROUP_LEADER.
+     * `assignee_id: null` deja el ticket sin asignar.
+     */
+    assign: async (ticketId: string, assigneeId: string | null): Promise<any> => {
+      const response = await apiClient.post(`/operational-support/${ticketId}/assign`, {
+        assignee_id: assigneeId
+      })
+      return response.data
+    },
+
+    /** Usuarios a los que se puede redirigir un ticket (solo ADMIN/GROUP_LEADER) */
+    assignableUsers: async (): Promise<any[]> => {
+      const response = await apiClient.get('/operational-support/assignable-users')
       return response.data
     }
   }

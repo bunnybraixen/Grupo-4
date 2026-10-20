@@ -10,12 +10,28 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from '@/services/api'
-import type { OperationalTicket } from '@/types/operationalSupport'
+import { useAuthStore } from '@/stores/auth'
+import type { OperationalTicket, OperationalTicketUser } from '@/types/operationalSupport'
 
 export const useSupportOperationsStore = defineStore('supportOperations', () => {
   const tickets = ref<OperationalTicket[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+
+  /** Filtro de alcance: 'all' (solo privileged) | 'mine' */
+  const scope = ref<'all' | 'mine'>('all')
+  /** Usuarios a los que se puede redirigir un ticket (solo privileged) */
+  const assignableUsers = ref<OperationalTicketUser[]>([])
+
+  const authStore = useAuthStore()
+
+  /** ADMIN y GROUP_LEADER gestionan (crean, resuelven, redirigen) todos los tickets. */
+  const canManageAll = computed(
+    () => authStore.isAdmin || authStore.isTeamLeader
+  )
+
+  /** Solo privileged puede redirigir/asignar tickets. */
+  const canAssign = computed(() => canManageAll.value)
 
   const openTickets = computed(() =>
     tickets.value.filter(t => t.status === 'OPEN')
@@ -28,12 +44,18 @@ export const useSupportOperationsStore = defineStore('supportOperations', () => 
     isLoading.value = true
     error.value = null
     try {
-      tickets.value = await api.operationalSupport.list()
+      tickets.value = await api.operationalSupport.list(undefined, scope.value === 'mine')
     } catch (err: any) {
       error.value = err?.response?.data?.detail ?? err?.message ?? 'Error al cargar los tickets de soporte'
     } finally {
       isLoading.value = false
     }
+  }
+
+  /** Cambia el alcance ('all' | 'mine') y recarga. */
+  async function setScope(next: 'all' | 'mine') {
+    scope.value = next
+    await fetchAll()
   }
 
   async function create(data: { title: string; problem: string }) {
@@ -47,6 +69,25 @@ export const useSupportOperationsStore = defineStore('supportOperations', () => 
     const idx = tickets.value.findIndex(t => t.id === ticketId)
     if (idx !== -1) tickets.value[idx] = updated
     return updated
+  }
+
+  /** Redirige (asigna) el ticket a un usuario; `null` lo deja sin asignar. */
+  async function assign(ticketId: string, assigneeId: string | null) {
+    const updated = await api.operationalSupport.assign(ticketId, assigneeId)
+    const idx = tickets.value.findIndex(t => t.id === ticketId)
+    if (idx !== -1) tickets.value[idx] = updated
+    return updated
+  }
+
+  /** Carga los usuarios asignables (solo privileged). */
+  async function fetchAssignableUsers() {
+    if (!canAssign.value) return []
+    try {
+      assignableUsers.value = await api.operationalSupport.assignableUsers()
+    } catch {
+      assignableUsers.value = []
+    }
+    return assignableUsers.value
   }
 
   /**
@@ -73,11 +114,18 @@ export const useSupportOperationsStore = defineStore('supportOperations', () => 
     tickets,
     isLoading,
     error,
+    scope,
+    assignableUsers,
+    canManageAll,
+    canAssign,
     openTickets,
     archivedTickets,
     fetchAll,
+    setScope,
     create,
     resolve,
+    assign,
+    fetchAssignableUsers,
     elapsedAt,
     formatElapsed,
   }
