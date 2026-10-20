@@ -1,161 +1,78 @@
 <template>
-  <!-- 
-    COMPONENTE: MetricCards
-    DESCRIPCIÓN: Muestra cuatro tarjetas de métricas resumidas principales del sistema:
-    1. Total de Tickets - cantidad total con cambio semanal
-    2. Completados - tickets resueltos con indicador verde
-    3. Bloqueados - tickets bloqueados con etiqueta crítica en naranja
-    4. Tiempo Promedio - tiempo promedio en horas con indicador de tendencia
-    
-    CARACTERÍSTICAS:
-    - Cada tarjeta contiene icono, valor, etiqueta y indicador de tendencia
-    - Flechas direccionales que muestran si la métrica subió o bajó
-    - Códigos de color para estados: verde (bueno), naranja (crítico), gris (neutral)
-    - Responsive grid que se adapta a diferentes tamaños de pantalla
-    - Animación suave de carga con efecto skeleton
-  -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-    <!-- TARJETA 1: Total de Tickets -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-blue-500">
-      <div class="flex justify-between items-start">
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <article
+      v-for="metric in metrics"
+      :key="metric.key"
+      role="button"
+      tabindex="0"
+      class="relative rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
+      @click="emit('selectGroup', metric.group)"
+      @keydown.enter="emit('selectGroup', metric.group)"
+      @keydown.space.prevent="emit('selectGroup', metric.group)"
+    >
+      <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.totalTickets') }}</p>
-          <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ summary?.total_tickets ?? 0 }}</p>
+          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ metric.label }}</p>
+          <p class="mt-2 text-3xl font-bold" :class="metric.color">{{ metric.value }}</p>
+          <p v-if="metric.key === 'completed'" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Faltan {{ Math.max(0, summary.total_tickets - summary.completed_tickets) }} por completar
+          </p>
+          <p v-else-if="metric.key === 'blocked'" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {{ summary.blocked_percentage }}% del total
+          </p>
+          <p v-else-if="metric.key === 'overdue'" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Con fecha límite pasada
+          </p>
+          <p v-else-if="metric.key === 'redirected'" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {{ summary.redirection_events_count ?? 0 }} eventos de redirección
+          </p>
         </div>
-        <!-- Icono de tickets -->
-        <div class="bg-blue-100 dark:bg-blue-900 rounded-lg p-3">
-          <svg class="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 1 1 0 000 2h10a1 1 0 000-2 2 2 0 00-2 2v10a2 2 0 002 2 1 1 0 100 2h-2a2 2 0 002-2v-10a2 2 0 00-2-2H6a2 2 0 00-2 2v10a1 1 0 11-2 0V5z" clip-rule="evenodd" />
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- TARJETA 2: Completados (Verde) -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-green-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.completed') }}</p>
-          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ summary?.completed_tickets ?? 0 }}</p>
-          <div class="flex items-center mt-3 gap-1">
-            <span class="text-green-500 flex items-center gap-1">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414-1.414L13.586 7H12z" clip-rule="evenodd" />
-              </svg>
-              {{ summary?.completion_percentage ?? 0 }}%
-            </span>
-            <span class="text-gray-500 text-xs">{{}}</span>
+        <div
+          v-if="metric.key === 'completed'"
+          class="grid h-14 w-14 shrink-0 place-items-center rounded-full"
+          :style="{ background: `conic-gradient(#22c55e ${summary.completion_percentage}%, #e2e8f0 0)` }"
+          :aria-label="`${summary.completion_percentage}% completado`"
+        >
+          <div class="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-bold text-emerald-700 dark:bg-slate-800 dark:text-emerald-300">
+            {{ Math.round(summary.completion_percentage) }}%
           </div>
         </div>
-        <!-- Icono de checkmark -->
-        <div class="bg-green-100 dark:bg-green-900 rounded-lg p-3">
-          <svg class="w-6 h-6 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-          </svg>
-        </div>
       </div>
-    </div>
-
-    <!-- TARJETA 3: Bloqueados (Naranja, CRÍTICO) -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-orange-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.blocked') }}</p>
-          <p class="text-3xl font-bold text-orange-600 dark:text-orange-400 mt-2">{{ summary?.blocked_tickets ?? 0 }}</p>
-          <div class="flex items-center mt-3 gap-2">
-            <span class="text-orange-500 text-xs font-semibold">
-              {{ summary?.blocked_percentage ?? 0 }}% del total
-            </span>
-          </div>
-        </div>
-        <!-- Icono de bloqueo -->
-        <div class="bg-orange-100 dark:bg-orange-900 rounded-lg p-3">
-          <svg class="w-6 h-6 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- TARJETA 4: Tiempo Promedio (Horas) -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-purple-500">
-      <div class="flex justify-between items-start">
-        <div>
-          <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.avgTime') }}</p>
-          <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.avg_time_hours ?? summary?.avg_time ?? 0 }}h</p>
-        </div>
-        <!-- Icono de reloj -->
-        <div class="bg-purple-100 dark:bg-purple-900 rounded-lg p-3">
-          <svg class="w-6 h-6 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00-.293.707l-.707.707a1 1 0 101.414 1.414L9 9.414V6z" clip-rule="evenodd" />
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- TARJETA 5: Pendientes -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-blue-500">
-      <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">Pendientes</p>
-      <p class="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-2">{{ summary?.pending_tickets ?? 0 }}</p>
-      <p class="text-gray-500 text-xs mt-3">Tickets sin completar</p>
-    </div>
-
-    <!-- TARJETA 6: Vencidos -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border-l-4 border-red-500">
-      <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">Vencidos</p>
-      <p class="text-3xl font-bold text-red-600 dark:text-red-400 mt-2">{{ summary?.overdue_tickets ?? 0 }}</p>
-      <p class="text-gray-500 text-xs mt-3">Con fecha límite pasada</p>
-    </div>
+      <button
+        type="button"
+        class="absolute bottom-4 right-4 grid h-8 w-8 place-items-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-700 dark:hover:text-blue-300"
+        :aria-label="`Abrir tickets ${metric.builderLabel} en Builder`"
+        :title="`Abrir tickets ${metric.builderLabel} en Builder`"
+        @click.stop="emit('openBuilder', metric.status, metric.key === 'overdue')"
+      >
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M7 17 17 7M8 7h9v9" />
+        </svg>
+      </button>
+    </article>
   </div>
 </template>
 
 <script setup lang="ts">
-/**
- * MetricCards: tarjetas con las métricas del resumen de una aplicación.
- * Muestra el resumen del proyecto seleccionado en la vista de analytics.
- */
-
 import { computed } from 'vue'
 import type { ApplicationSummary } from '@/types'
 
-const props = defineProps<{ summary: ApplicationSummary | null }>()
+type MetricGroup = 'all' | 'completed' | 'pending' | 'overdue' | 'blocked' | 'redirected'
+
+const props = defineProps<{ summary: ApplicationSummary }>()
+const emit = defineEmits<{
+  selectGroup: [group: MetricGroup]
+  openBuilder: [status: string, overdue: boolean]
+}>()
+
 const summary = computed(() => props.summary)
+const metrics = computed(() => [
+  { key: 'total', label: 'Tickets totales', value: summary.value.total_tickets, group: 'all' as MetricGroup, status: 'all', builderLabel: 'del proyecto', color: 'text-slate-900 dark:text-white' },
+  { key: 'completed', label: 'Completados', value: summary.value.completed_tickets, group: 'completed' as MetricGroup, status: 'DONE', builderLabel: 'completados', color: 'text-emerald-600 dark:text-emerald-400' },
+  { key: 'pending', label: 'Pendientes', value: summary.value.pending_tickets, group: 'pending' as MetricGroup, status: 'PENDING', builderLabel: 'pendientes', color: 'text-blue-600 dark:text-blue-400' },
+  { key: 'overdue', label: 'Vencidos', value: summary.value.overdue_tickets, group: 'overdue' as MetricGroup, status: 'PENDING', builderLabel: 'vencidos', color: 'text-red-600 dark:text-red-400' },
+  { key: 'blocked', label: 'Bloqueados', value: summary.value.blocked_tickets, group: 'blocked' as MetricGroup, status: 'BLOCKED', builderLabel: 'bloqueados', color: 'text-orange-600 dark:text-orange-400' },
+  { key: 'redirected', label: 'Redireccionados', value: summary.value.redirected_tickets ?? 0, group: 'redirected' as MetricGroup, status: 'REDIRECTED', builderLabel: 'redireccionados', color: 'text-amber-600 dark:text-amber-400' },
+  { key: 'avgTime', label: 'Tiempo promedio', value: `${summary.value.avg_time_hours ?? 0} h`, group: 'all' as MetricGroup, status: 'all', builderLabel: 'del proyecto', color: 'text-violet-600 dark:text-violet-400' },
+])
 </script>
-
-<style scoped>
-/* 
-  ESTILOS PERSONALIZADOS:
-  - Animaciones de carga
-  - Transiciones suaves
-  - Estados hover
-  - Efecto skeleton para carga
-*/
-
-/* Animación de entrada suave de las tarjetas */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Aplicar animación a las tarjetas */
-:deep(.grid > div) {
-  animation: slideIn 0.3s ease-out forwards;
-}
-
-/* Efecto pulse en tiempo de carga */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-</style>

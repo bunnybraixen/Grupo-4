@@ -433,7 +433,7 @@
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-medium text-[var(--text-muted)]">Estado:</span>
           <button
-            v-for="status in ['all', 'TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED', 'DONE']"
+            v-for="status in ['all', 'PENDING', 'TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED', 'DONE']"
             :key="status"
             type="button"
             @click="ticketStatusFilter = status as any"
@@ -448,6 +448,18 @@
           </button>
           <button v-if="ticketStatusFilter !== 'all'" type="button" @click="ticketStatusFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">Quitar</button>
         </div>
+
+        <button
+          type="button"
+          :aria-pressed="ticketOverdueFilter"
+          @click="ticketOverdueFilter = !ticketOverdueFilter"
+          :class="[
+            'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+            ticketOverdueFilter ? 'bg-red-500 text-white' : 'border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-red-400'
+          ]"
+        >
+          Solo vencidos
+        </button>
 
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-xs font-medium text-[var(--text-muted)]">Prioridad:</span>
@@ -1148,6 +1160,7 @@
  * Creación de aplicaciones -> épicas -> tickets y avance básico de estado.
  */
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
@@ -1169,6 +1182,7 @@ const epicsStore = useEpicsStore()
 const ticketsStore = useTicketsStore()
 const authStore = useAuthStore()
 const teamsStore = useTeamsStore()
+const route = useRoute()
 const availableTags = ref<Tag[]>([])
 const newTagName = ref('')
 const tagError = ref('')
@@ -1237,10 +1251,11 @@ const ticketError = ref('')
 
 /** Texto de la consulta/búsqueda de tickets (título o estado) */
 const searchQuery = ref('')
-const ticketStatusFilter = ref<'all' | 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'>('all')
+const ticketStatusFilter = ref<'all' | 'PENDING' | 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'REDIRECTED' | 'DONE'>('all')
 const ticketPriorityFilter = ref<'all' | Priority>('all')
 const ticketAssigneeFilter = ref('')
 const ticketSprintFilter = ref('')
+const ticketOverdueFilter = ref(false)
 const ticketSortBy = ref<'default' | 'status' | 'priority' | 'title' | 'progress'>('default')
 const selectedAppSprints = ref<Sprint[]>([])
 const builderGlobalSearchQuery = ref('')
@@ -1918,11 +1933,13 @@ const visibleTickets = (epicId: string): Ticket[] => {
   const filtered = list.filter((t) => {
     const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
     const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
-    const matchesStatus = ticketStatusFilter.value === 'all' || t.status === ticketStatusFilter.value
+    const matchesStatus = ticketStatusFilter.value === 'all'
+      || (ticketStatusFilter.value === 'PENDING' ? t.status !== 'DONE' && t.status !== 'COMPLETED' : t.status === ticketStatusFilter.value)
     const matchesPriority = ticketPriorityFilter.value === 'all' || t.priority === ticketPriorityFilter.value
     const matchesAssignee = !ticketAssigneeFilter.value || t.assigneeId === ticketAssigneeFilter.value
     const matchesSprint = !ticketSprintFilter.value || t.sprintId === ticketSprintFilter.value
-    return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint
+    const matchesOverdue = !ticketOverdueFilter.value || Boolean(t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== 'DONE' && t.status !== 'COMPLETED')
+    return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint && matchesOverdue
   })
   if (ticketSortBy.value === 'priority') {
     const priorityOrder: Record<string, number> = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
@@ -2483,7 +2500,7 @@ const displayWorkTime = (ticket: Ticket): string => displayLiveDuration(ticket, 
 const displayBlockedTime = (ticket: Ticket): string => displayLiveDuration(ticket, 'blocked')
 
 const statusLabel = (status: string): string =>
-  ({ TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Hecho' })[status] ?? status
+  ({ PENDING: 'Pendientes', TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Hecho' })[status] ?? status
 
 const priorityLabel = (priority: string): string =>
   ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' })[priority] ?? priority
@@ -2512,10 +2529,18 @@ onMounted(async () => {
     await loadTags()
     await applicationsStore.fetchAll()
     await loadAllApplicationsProgress()
-    const firstActiveApp = activeApplications.value[0]
-    if (firstActiveApp) {
-      selectedAppId.value = firstActiveApp.id
-      await Promise.all([fetchEpics(), loadUsers(), loadSprintsForApplication(firstActiveApp.id)])
+    const requestedAppId = typeof route.query.applicationId === 'string' ? route.query.applicationId : ''
+    const targetApp = activeApplications.value.find((app) => app.id === requestedAppId) ?? activeApplications.value[0]
+    if (targetApp) {
+      await selectApplication(targetApp.id)
+      const requestedStatus = typeof route.query.status === 'string' ? route.query.status : 'all'
+      if (['all', 'PENDING', 'TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED', 'DONE'].includes(requestedStatus)) {
+        ticketStatusFilter.value = requestedStatus as typeof ticketStatusFilter.value
+      }
+      ticketAssigneeFilter.value = typeof route.query.assigneeId === 'string' ? route.query.assigneeId : ''
+      const requestedSprintId = typeof route.query.sprintId === 'string' ? route.query.sprintId : ''
+      ticketSprintFilter.value = selectedAppSprints.value.some((sprint) => sprint.id === requestedSprintId) ? requestedSprintId : ''
+      ticketOverdueFilter.value = route.query.overdue === 'true'
     }
   } catch (err) {
     console.error('Error cargando datos del builder:', err)

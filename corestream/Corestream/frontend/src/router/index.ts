@@ -125,7 +125,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/BuilderView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['ADMIN'],
+          requiredRoles: ['ADMIN', 'GROUP_LEADER', 'TEAM_LEADER'],
           title: 'Constructor - CoreStream Admin'
         }
       },

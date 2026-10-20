@@ -1081,6 +1081,25 @@ export interface ApplicationSummary {
   blocked_percentage: number
   pending_tickets: number
   overdue_tickets: number
+  redirected_tickets?: number
+  redirection_events_count?: number
+  redirection_events?: Array<{
+    ticket_id: string
+    ticket_title: string
+    from_user_id?: string | null
+    to_user_id?: string | null
+    detail: Record<string, unknown>
+    created_at?: string | null
+  }>
+  overdue_by_status?: Record<string, number>
+  by_group_status?: Record<string, Record<string, number>>
+  by_group_priority?: Record<string, Record<string, number>>
+  bottlenecks?: Array<{
+    status: string
+    ticket_count: number
+    average_hours: number
+    max_hours: number
+  }>
   by_status: Record<string, number>
   by_priority: Record<string, number>
 }

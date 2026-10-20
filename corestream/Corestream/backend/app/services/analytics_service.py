@@ -552,9 +552,16 @@ from uuid import UUID as _UUID  # noqa: E402
 from app.models import Epic as _Epic  # noqa: E402
 from app.models import Ticket as _Ticket  # noqa: E402
 from app.models import TicketStatus as _TicketStatus  # noqa: E402
+from app.models import TicketEvent as _TicketEvent  # noqa: E402
+from app.models import TicketEventType as _TicketEventType  # noqa: E402
 
 
-async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
+async def get_ticket_metrics(
+    db: AsyncSession,
+    app_id: _UUID,
+    assignee_id: Optional[_UUID] = None,
+    sprint_id: Optional[_UUID] = None,
+) -> dict:
     """
     Calcula las métricas de tickets de una aplicación con consultas GROUP BY.
 
@@ -566,6 +573,10 @@ async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
         .join(_Epic, _Epic.id == _Ticket.epic_id)
         .where(_Epic.application_id == app_id)
     )
+    if assignee_id is not None:
+        base = base.where(_Ticket.assignee_id == assignee_id)
+    if sprint_id is not None:
+        base = base.where(_Ticket.sprint_id == sprint_id)
     base_ids = base.with_only_columns(_Ticket.id).subquery()
 
     # Cantidad por estado
@@ -600,6 +611,153 @@ async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
     )
     overdue = overdue_row.scalar() or 0
 
+    overdue_status_rows = await db.execute(
+        select(_Ticket.status, func.count(_Ticket.id)).where(
+            _Ticket.id.in_(select(base_ids.c.id)),
+            _Ticket.due_date.is_not(None),
+            _Ticket.due_date < datetime.utcnow(),
+            _Ticket.status != _TicketStatus.DONE,
+        ).group_by(_Ticket.status)
+    )
+    overdue_by_status = {
+        getattr(status, "value", str(status)): count
+        for status, count in overdue_status_rows.all()
+    }
+
+    ticket_rows = await db.execute(
+        select(_Ticket.id, _Ticket.title, _Ticket.status, _Ticket.created_at).where(
+            _Ticket.id.in_(select(base_ids.c.id))
+        )
+    )
+    tickets = {
+        ticket_id: {
+            "title": title,
+            "status": getattr(status, "value", str(status)),
+            "created_at": created_at,
+        }
+        for ticket_id, title, status, created_at in ticket_rows.all()
+    }
+
+    redirect_event_count_row = await db.execute(
+        select(func.count(_TicketEvent.id)).where(
+            _TicketEvent.ticket_id.in_(select(base_ids.c.id)),
+            _TicketEvent.event_type == _TicketEventType.REDIRECTED,
+        )
+    )
+    redirect_event_rows = await db.execute(
+        select(
+            _TicketEvent.ticket_id,
+            _TicketEvent.from_user_id,
+            _TicketEvent.to_user_id,
+            _TicketEvent.detail,
+            _TicketEvent.created_at,
+        )
+        .where(
+            _TicketEvent.ticket_id.in_(select(base_ids.c.id)),
+            _TicketEvent.event_type == _TicketEventType.REDIRECTED,
+        )
+        .order_by(_TicketEvent.created_at.desc())
+        .limit(10)
+    )
+    redirection_events = [
+        {
+            "ticket_id": str(ticket_id),
+            "ticket_title": tickets.get(ticket_id, {}).get("title", "Ticket"),
+            "from_user_id": str(from_user_id) if from_user_id else None,
+            "to_user_id": str(to_user_id) if to_user_id else None,
+            "detail": detail or {},
+            "created_at": created_at.isoformat() if created_at else None,
+        }
+        for ticket_id, from_user_id, to_user_id, detail, created_at in redirect_event_rows.all()
+    ]
+
+    status_events = await db.execute(
+        select(
+            _TicketEvent.ticket_id,
+            _TicketEvent.event_type,
+            _TicketEvent.detail,
+            _TicketEvent.created_at,
+        )
+        .where(
+            _TicketEvent.ticket_id.in_(select(base_ids.c.id)),
+            _TicketEvent.event_type.in_(
+                [_TicketEventType.STATUS_CHANGED, _TicketEventType.REDIRECTED, _TicketEventType.COMPLETED]
+            ),
+        )
+        .order_by(_TicketEvent.created_at.asc())
+    )
+    entered_status_at = {ticket_id: info["created_at"] for ticket_id, info in tickets.items()}
+    event_status = {
+        _TicketEventType.REDIRECTED: "REDIRECTED",
+        _TicketEventType.COMPLETED: "DONE",
+    }
+    for ticket_id, event_type, detail, created_at in status_events.all():
+        current = tickets.get(ticket_id)
+        if not current:
+            continue
+        target_status = (detail or {}).get("to_status") or event_status.get(event_type)
+        if target_status and str(target_status).upper() == current["status"].upper():
+            entered_status_at[ticket_id] = created_at
+
+    from datetime import timezone
+
+    now = datetime.now(timezone.utc)
+    dwell_by_status: dict[str, list[float]] = {}
+    for ticket_id, info in tickets.items():
+        if info["status"] in {"DONE", "COMPLETED"}:
+            continue
+        entered_at = entered_status_at.get(ticket_id)
+        if not entered_at:
+            continue
+        current_time = now.replace(tzinfo=None) if entered_at.tzinfo is None else now
+        hours = max(0.0, (current_time - entered_at).total_seconds() / 3600)
+        dwell_by_status.setdefault(info["status"], []).append(hours)
+    bottlenecks = [
+        {
+            "status": status,
+            "ticket_count": by_status.get(status, 0),
+            "average_hours": round(sum(hours) / len(hours), 1),
+            "max_hours": round(max(hours), 1),
+        }
+        for status, hours in dwell_by_status.items()
+    ]
+    bottlenecks.sort(key=lambda item: item["average_hours"], reverse=True)
+
+    by_group_priority: dict[str, dict[str, int]] = {}
+    status_groups = {
+        "completed": [_Ticket.status == _TicketStatus.DONE],
+        "pending": [_Ticket.status != _TicketStatus.DONE],
+        "blocked": [_Ticket.status == _TicketStatus.BLOCKED],
+        "redirected": [_Ticket.status == _TicketStatus.REDIRECTED],
+        "overdue": [
+            _Ticket.due_date.is_not(None),
+            _Ticket.due_date < datetime.utcnow(),
+            _Ticket.status != _TicketStatus.DONE,
+        ],
+    }
+    by_group_status: dict[str, dict[str, int]] = {}
+    for group, conditions in status_groups.items():
+        rows = await db.execute(
+            select(_Ticket.status, func.count(_Ticket.id))
+            .where(_Ticket.id.in_(select(base_ids.c.id)), *conditions)
+            .group_by(_Ticket.status)
+        )
+        by_group_status[group] = {
+            getattr(status, "value", str(status)): count
+            for status, count in rows.all()
+        }
+
+    for group, conditions in status_groups.items():
+        rows = await db.execute(
+            select(_Ticket.priority, func.count(_Ticket.id))
+            .where(_Ticket.id.in_(select(base_ids.c.id)), *conditions)
+            .group_by(_Ticket.priority)
+        )
+        by_group_priority[group] = {
+            getattr(priority, "value", str(priority)): count
+            for priority, count in rows.all()
+        }
+
     average_time_row = await db.execute(
         select(func.avg(_Ticket.time_spent_seconds)).where(
             _Ticket.id.in_(select(base_ids.c.id)),
@@ -622,6 +780,13 @@ async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
         "blocked_tickets": blocked,
         "pending_tickets": pending,
         "overdue_tickets": overdue,
+        "redirected_tickets": by_status.get("REDIRECTED", 0),
+        "redirection_events_count": redirect_event_count_row.scalar() or 0,
+        "redirection_events": redirection_events,
+        "overdue_by_status": overdue_by_status,
+        "by_group_status": by_group_status,
+        "by_group_priority": by_group_priority,
+        "bottlenecks": bottlenecks,
         "avg_time_hours": average_time_hours,
         "completion_percentage": pct(done),
         "blocked_percentage": pct(blocked),

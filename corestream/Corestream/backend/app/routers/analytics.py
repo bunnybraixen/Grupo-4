@@ -36,6 +36,8 @@ router = APIRouter(prefix="/analytics", tags=["Analíticas"])
 )
 async def get_application_summary(
     app_id: UUID,
+    assignee_id: Optional[UUID] = Query(None, description="Filtrar por desarrollador asignado"),
+    sprint_id: Optional[UUID] = Query(None, description="Filtrar por Sprint"),
     current_user = Depends(require_role([UserRole.ADMIN, UserRole.GROUP_LEADER])),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -65,7 +67,9 @@ async def get_application_summary(
         )
 
     # Métricas de tickets (estado, prioridad, vencidos) con consultas GROUP BY
-    metrics = await analytics_service.get_ticket_metrics(db, app_id)
+    metrics = await analytics_service.get_ticket_metrics(
+        db, app_id, assignee_id=assignee_id, sprint_id=sprint_id
+    )
 
     # Contar épicas
     epics = await db.execute(
@@ -88,6 +92,13 @@ async def get_application_summary(
         "blocked_percentage": metrics["blocked_percentage"],
         "pending_tickets": metrics["pending_tickets"],
         "overdue_tickets": metrics["overdue_tickets"],
+        "redirected_tickets": metrics["redirected_tickets"],
+        "redirection_events_count": metrics["redirection_events_count"],
+        "redirection_events": metrics["redirection_events"],
+        "overdue_by_status": metrics["overdue_by_status"],
+        "by_group_status": metrics["by_group_status"],
+        "by_group_priority": metrics["by_group_priority"],
+        "bottlenecks": metrics["bottlenecks"],
         "avg_time_hours": metrics["avg_time_hours"],
         "by_status": metrics["by_status"],
         "by_priority": metrics["by_priority"],
