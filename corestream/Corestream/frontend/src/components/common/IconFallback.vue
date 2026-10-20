@@ -24,14 +24,12 @@ export const Icon = defineComponent({
     icon: {
       type: String,
       default: ''
-    },
-    class: {
-      type: String,
-      default: ''
     }
   },
+  // `class` no se declara como prop: Vue la hereda al <span> raíz (fallthrough)
+  // y así acepta string, array u objeto como cualquier componente.
   setup(props) {
-    return () => h('span', { class: [props.class, 'inline-flex items-center justify-center'] }, getIconSymbol(props.icon))
+    return () => h('span', { class: 'inline-flex items-center justify-center' }, getIconSymbol(props.icon))
   }
 })
 

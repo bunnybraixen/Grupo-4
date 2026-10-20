@@ -156,12 +156,24 @@ export const useIncidentsStore = defineStore('incidents', () => {
     selectedIncident.value = incident
   }
 
-  const updateStatus = async (incidentId: string, newStatus: IncidentStatus) => {
-    const updated = normalizeIncident(await api.incidents.update(incidentId, { status: newStatus }))
+  /**
+   * Actualización parcial de un incidente (PUT /incidents/{id}).
+   * Antes `update` era un alias de `updateStatus(id, status)` y las vistas le
+   * pasaban `{ status }`, así que se enviaba `{ status: { status } }` y el
+   * backend respondía 422: cambiar el estado desde el panel no funcionaba.
+   */
+  const update = async (incidentId: string, changes: { status?: IncidentStatus }) => {
+    const updated = normalizeIncident(await api.incidents.update(incidentId, changes))
     const mineIndex = myIncidents.value.findIndex((item) => item.id === incidentId)
     if (mineIndex >= 0) myIncidents.value[mineIndex] = updated
+    const allIndex = incidents.value.findIndex((item) => item.id === incidentId)
+    if (allIndex >= 0) incidents.value[allIndex] = updated
+    applyFilters()
     return updated
   }
+
+  const updateStatus = async (incidentId: string, newStatus: IncidentStatus) =>
+    update(incidentId, { status: newStatus })
 
   const start = async (incidentId: string) => normalizeIncident(await api.incidents.start(incidentId))
   const review = async (incidentId: string) => normalizeIncident(await api.incidents.review(incidentId))
@@ -208,7 +220,7 @@ export const useIncidentsStore = defineStore('incidents', () => {
     review,
     reopen,
     resolve,
-    update: updateStatus,
+    update,
     addComment,
     reorderIncidents
   }

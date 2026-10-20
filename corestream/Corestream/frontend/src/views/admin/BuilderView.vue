@@ -1369,7 +1369,7 @@ const getAppProgress = (appId: string) => {
   for (const epic of epicsList) {
     const tickets = epicTickets.value[epic.id] ?? []
     const epicTotal = tickets.length
-    const epicCompleted = tickets.filter((t) => t.status === 'DONE' || t.status === 'COMPLETED').length
+    const epicCompleted = tickets.filter((t) => t.status === 'DONE').length
 
     totalTickets += epicTotal
     completedTickets += epicCompleted
@@ -1397,7 +1397,7 @@ const getAppProgress = (appId: string) => {
 const getEpicProgress = (epicId: string) => {
   const tickets = epicTickets.value[epicId] ?? []
   const total = tickets.length
-  const completed = tickets.filter((ticket) => ticket.status === 'DONE' || ticket.status === 'COMPLETED').length
+  const completed = tickets.filter((ticket) => ticket.status === 'DONE').length
   const remaining = Math.max(total - completed, 0)
   const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
 
@@ -1937,11 +1937,11 @@ const visibleTickets = (epicId: string): Ticket[] => {
     const matchesQuery = !q || (t.title ?? '').toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q) || statusLabel(t.status).toLowerCase().includes(q)
     const matchesTags = tagFilterIds.value.length === 0 || tagFilterIds.value.some((id) => t.tags?.some((tag) => tag.id === id))
     const matchesStatus = ticketStatusFilter.value === 'all'
-      || (ticketStatusFilter.value === 'PENDING' ? t.status !== 'DONE' && t.status !== 'COMPLETED' : t.status === ticketStatusFilter.value)
+      || (ticketStatusFilter.value === 'PENDING' ? t.status !== 'DONE' : t.status === ticketStatusFilter.value)
     const matchesPriority = ticketPriorityFilter.value === 'all' || t.priority === ticketPriorityFilter.value
     const matchesAssignee = !ticketAssigneeFilter.value || t.assigneeId === ticketAssigneeFilter.value
     const matchesSprint = !ticketSprintFilter.value || t.sprintId === ticketSprintFilter.value
-    const matchesOverdue = !ticketOverdueFilter.value || Boolean(t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== 'DONE' && t.status !== 'COMPLETED')
+    const matchesOverdue = !ticketOverdueFilter.value || Boolean(t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== 'DONE')
     const matchesTicket = !ticketIdFilter.value || t.id === ticketIdFilter.value
     return matchesQuery && matchesTags && matchesStatus && matchesPriority && matchesAssignee && matchesSprint && matchesOverdue && matchesTicket
   })

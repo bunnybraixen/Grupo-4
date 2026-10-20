@@ -9,7 +9,7 @@ export type OperationalTicketStatus = 'OPEN' | 'RESOLVED'
 
 export interface OperationalTicketUser {
   id: string
-  fullName: string
+  full_name: string
   email: string
 }
 

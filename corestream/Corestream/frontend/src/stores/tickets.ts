@@ -19,7 +19,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { TicketStatus, TicketPriority } from '@/types'
-import type { Ticket } from '@/types'
+import type {
+  Ticket,
+  Subtask,
+  TicketCreatePayload,
+  TicketFilters as TicketQueryFilters
+} from '@/types'
 import { api } from '@/services/api'
 
 /**
@@ -30,7 +35,8 @@ import { api } from '@/services/api'
  */
 type StatusFilter = 'all' | 'todo' | 'in_progress' | 'blocked' | 'redirected' | 'done'
 type DateFilter = 'all' | 'overdue' | 'today' | 'week' | 'later'
-type PriorityFilter = 'all' | TicketPriority
+// Acepta el miembro del enum o su valor de texto ('HIGH'), como usan los filtros de la vista
+type PriorityFilter = 'all' | `${TicketPriority}`
 
 type TicketSortBy = 'default' | 'createdAt' | 'dueDate' | 'priority' | 'status' | 'title' | 'progress'
 type TicketSortOrder = 'asc' | 'desc'
@@ -379,7 +385,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * 
    * @returns Promise<Ticket[]>
    */
-  const fetchMyWorkbench = async (filters?: { search?: string; status?: string[]; priority?: string[]; assigneeIds?: string[]; tagIds?: string[]; sortBy?: string; sortOrder?: 'asc' | 'desc' }): Promise<Ticket[]> => {
+  const fetchMyWorkbench = async (filters?: TicketQueryFilters): Promise<Ticket[]> => {
     isLoading.value = true
     error.value = null
 
@@ -403,19 +409,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * @param data - Datos del ticket {epicId, title, description?, priority?, dueDate?}
    * @returns Promise<Ticket>
    */
-  const create = async (data: {
-    epicId: string
-    title: string
-    description?: string
-    /** Prioridad: LOW, MEDIUM, HIGH o URGENT (WEB-08) */
-    priority?: TicketPriority
-    /** Estado inicial; el backend usa TODO por defecto (WEB-08) */
-    status?: TicketStatus
-    dueDate?: string
-    /** Enlace opcional al Pull Request asociado (WEB-08) */
-    prLink?: string
-    assignedTo?: string
-  }): Promise<Ticket> => {
+  const create = async (data: TicketCreatePayload): Promise<Ticket> => {
     isLoading.value = true
     error.value = null
 
@@ -789,7 +783,7 @@ export const useTicketsStore = defineStore('tickets', () => {
    * @returns Promise<Ticket>
    * @throws Error si la razón es muy corta
    */
-  const createSubtask = async (ticketId: string, title: string): Promise<Ticket['subtasks'][number]> => {
+  const createSubtask = async (ticketId: string, title: string): Promise<Subtask> => {
     isLoading.value = true
     error.value = null
 
@@ -810,7 +804,7 @@ export const useTicketsStore = defineStore('tickets', () => {
     }
   }
 
-  const updateSubtask = async (ticketId: string, subtaskId: string, data: Partial<Ticket['subtasks'][number]>): Promise<Ticket['subtasks'][number]> => {
+  const updateSubtask = async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<Subtask> => {
     isLoading.value = true
     error.value = null
 

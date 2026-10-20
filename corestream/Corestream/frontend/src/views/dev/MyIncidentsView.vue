@@ -395,8 +395,9 @@ const resolvedIncidents = computed(() => {
     .filter((i) => i.status === StatusEnum.RESOLVED || i.status === StatusEnum.CLOSED)
     .sort((a, b) => {
       // Ordenar por fecha de resolución, más recientes primero
-      const dateA = a.resolvedAt || a.updatedAt
-      const dateB = b.resolvedAt || b.updatedAt
+      // Sin fechas se ordena al final (epoch), igual que antes con `new Date(null)`
+      const dateA = a.resolvedAt || a.updatedAt || 0
+      const dateB = b.resolvedAt || b.updatedAt || 0
       return new Date(dateB).getTime() - new Date(dateA).getTime()
     })
 })

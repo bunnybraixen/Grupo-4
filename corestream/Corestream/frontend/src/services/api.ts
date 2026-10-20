@@ -15,26 +15,25 @@ import axios, { AxiosInstance, AxiosError, AxiosResponse } from 'axios'
 import { UserRole } from '@/types'
 import type {
   User,
+  UserProfileUpdate,
   Application,
+  ApplicationCreatePayload,
+  ApplicationSummary,
   Epic,
+  EpicCreatePayload,
   Ticket,
+  TicketCreatePayload,
   TicketComment,
   Subtask,
-  TicketStatus,
-  TicketPriority,
   Notification,
-  Document,
-  AnalyticsSummary,
+  DocumentRecord,
   AuthTokens,
   ApiResponse,
-  AuthResponse,
   LoginRequest,
   RegisterRequest,
   TicketFilters,
   PaginatedResponse,
   UserPerformance,
-  HeatmapData,
-  BurndownData,
   Tag,
   TicketHistoryEvent
 } from '@/types'
@@ -506,12 +505,19 @@ export const api = {
      * @param data - Datos del nuevo usuario (email, password, nombre, rol)
      * @returns Respuesta con usuario creado y tokens de autenticación
      */
-    register: async (data: RegisterRequest): Promise<{ tokens?: AuthTokens; user: User }> => {
+    register: async (data: RegisterRequest): Promise<{ user: User }> => {
       /**
+       * /auth no pasa por el adaptador camelCase -> snake_case, así que el
+       * payload se envía ya en snake_case (UserCreate del backend).
        * El backend devuelve el usuario creado (snake_case plano) y NO inicia
        * sesión, así que aquí solo se normaliza el usuario.
        */
-      const response = await apiClient.post('/auth/register', data)
+      const response = await apiClient.post('/auth/register', {
+        email: data.email,
+        password: data.password,
+        full_name: data.fullName,
+        specialty: data.specialty
+      })
       return { user: normalizeUser(response.data) }
     },
 
@@ -570,18 +576,23 @@ export const api = {
     /**
      * Actualiza los datos del usuario autenticado
      * 
-     * @param data - Campos a actualizar (nombre, especialidad, avatar, etc.)
+     * @param data - Campos a actualizar (nombre, especialidad, avatar)
      * @returns Usuario actualizado
-     * 
+     *
      * @example
      * await api.auth.updateMe({ fullName: 'Nuevo Nombre', specialty: 'Backend' })
      */
-    updateMe: async (data: Partial<User>): Promise<ApiResponse<User>> => {
-      const response = await apiClient.put<ApiResponse<User>>(
-        '/auth/me',
-        data
-      )
-      return response.data
+    updateMe: async (data: UserProfileUpdate): Promise<User> => {
+      /**
+       * El backend (UserSelfUpdate) espera snake_case y /auth no pasa por el
+       * adaptador de claves; responde el usuario plano en snake_case.
+       */
+      const response = await apiClient.put('/auth/me', {
+        full_name: data.fullName,
+        specialty: data.specialty,
+        avatar_url: data.avatarUrl
+      })
+      return normalizeUser(response.data)
     }
   },
 
@@ -763,8 +774,9 @@ export const api = {
     list: async (filters?: {
       page?: number
       limit?: number
-    }): Promise<ApiResponse<PaginatedResponse<Application>>> => {
-      const response = await apiClient.get<ApiResponse<PaginatedResponse<Application>>>(
+    }): Promise<Application[]> => {
+      // El backend responde la lista plana (List[ApplicationResponse])
+      const response = await apiClient.get<Application[]>(
         '/applications/',
         { params: filters }
       )
@@ -785,8 +797,8 @@ export const api = {
      *   icon: 'star'
      * })
      */
-    create: async (data: Omit<Application, 'id' | 'createdAt' | 'updatedAt' | 'ticketCount' | 'epicCount' | 'pendingCount' | 'delayedCount'>): Promise<ApiResponse<Application>> => {
-      const response = await apiClient.post<ApiResponse<Application>>(
+    create: async (data: ApplicationCreatePayload): Promise<Application> => {
+      const response = await apiClient.post<Application>(
         '/applications/',
         data
       )
@@ -795,12 +807,12 @@ export const api = {
 
     /**
      * Obtiene detalles de una aplicación específica
-     * 
+     *
      * @param appId - ID de la aplicación
      * @returns Aplicación con todos sus detalles
      */
-    getById: async (appId: string): Promise<ApiResponse<Application>> => {
-      const response = await apiClient.get<ApiResponse<Application>>(
+    getById: async (appId: string): Promise<Application> => {
+      const response = await apiClient.get<Application>(
         `/applications/${appId}`
       )
       return response.data
@@ -808,13 +820,13 @@ export const api = {
 
     /**
      * Actualiza una aplicación existente
-     * 
+     *
      * @param appId - ID de la aplicación
      * @param data - Campos a actualizar
      * @returns Aplicación actualizada
      */
-    update: async (appId: string, data: Partial<Application>): Promise<ApiResponse<Application>> => {
-      const response = await apiClient.put<ApiResponse<Application>>(
+    update: async (appId: string, data: Partial<Application>): Promise<Application> => {
+      const response = await apiClient.put<Application>(
         `/applications/${appId}`,
         data
       )
@@ -823,14 +835,11 @@ export const api = {
 
     /**
      * Elimina una aplicación
-     * 
+     *
      * @param appId - ID de la aplicación
      */
-    delete: async (appId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/applications/${appId}`
-      )
-      return response.data
+    delete: async (appId: string): Promise<void> => {
+      await apiClient.delete(`/applications/${appId}`)
     }
   },
 
@@ -849,12 +858,8 @@ export const api = {
     listByApplication: async (appId: string, filters?: {
       page?: number
       limit?: number
-    }): Promise<ApiResponse<PaginatedResponse<Epic>>> => {
-      const listFn = typeof api.epics?.list === 'function' ? api.epics.list : null
-      if (!listFn) {
-        throw new Error('La API de épicas no tiene el método list disponible')
-      }
-      return listFn(appId, filters)
+    }): Promise<Epic[]> => {
+      return api.epics.list(appId, filters)
     },
 
     /**
@@ -870,8 +875,9 @@ export const api = {
     list: async (appId: string, filters?: {
       page?: number
       limit?: number
-    }): Promise<ApiResponse<PaginatedResponse<Epic>>> => {
-      const response = await apiClient.get<ApiResponse<PaginatedResponse<Epic>>>(
+    }): Promise<Epic[]> => {
+      // El backend responde la lista plana (List[EpicResponse])
+      const response = await apiClient.get<Epic[]>(
         `/epics/by-app/${appId}`,
         { params: filters }
       )
@@ -880,13 +886,13 @@ export const api = {
 
     /**
      * Crea una nueva épica
-     * 
+     *
      * @param appId - ID de la aplicación
      * @param data - Datos de la nueva épica
      * @returns Épica creada
      */
-    create: async (appId: string, data: Omit<Epic, 'id' | 'createdAt' | 'updatedAt' | 'applicationId' | 'progress' | 'totalTickets' | 'completedTickets'>): Promise<ApiResponse<Epic>> => {
-      const response = await apiClient.post<ApiResponse<Epic>>(
+    create: async (appId: string, data: EpicCreatePayload): Promise<Epic> => {
+      const response = await apiClient.post<Epic>(
         '/epics/',
         { ...data, applicationId: appId }
       )
@@ -895,13 +901,12 @@ export const api = {
 
     /**
      * Obtiene detalles de una épica específica
-     * 
-     * @param appId - ID de la aplicación
+     *
      * @param epicId - ID de la épica
      * @returns Épica con sus tareas asociadas
      */
-    getById: async (appId: string, epicId: string): Promise<ApiResponse<Epic>> => {
-      const response = await apiClient.get<ApiResponse<Epic>>(
+    getById: async (epicId: string): Promise<Epic> => {
+      const response = await apiClient.get<Epic>(
         `/epics/${epicId}`
       )
       return response.data
@@ -909,13 +914,13 @@ export const api = {
 
     /**
      * Actualiza una épica existente
-     * 
+     *
      * @param epicId - ID de la épica
      * @param data - Campos a actualizar
      * @returns Épica actualizada
      */
-    update: async (epicId: string, data: Partial<Epic>): Promise<ApiResponse<Epic>> => {
-      const response = await apiClient.put<ApiResponse<Epic>>(
+    update: async (epicId: string, data: Partial<Epic>): Promise<Epic> => {
+      const response = await apiClient.put<Epic>(
         `/epics/${epicId}`,
         data
       )
@@ -924,22 +929,19 @@ export const api = {
 
     /**
      * Elimina una épica
-     * 
+     *
      * @param epicId - ID de la épica
      */
-    delete: async (epicId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/epics/${epicId}`
-      )
-      return response.data
+    delete: async (epicId: string): Promise<void> => {
+      await apiClient.delete(`/epics/${epicId}`)
     },
 
     /**
      * Reordena una épica dentro de la aplicación
      * Se utiliza con drag & drop
      */
-    reorder: async (data: { epicId: string; newIndex: number }): Promise<ApiResponse<Epic>> => {
-      const response = await apiClient.patch<ApiResponse<Epic>>(
+    reorder: async (data: { epicId: string; newIndex: number }): Promise<Epic> => {
+      const response = await apiClient.patch<Epic>(
         `/epics/${data.epicId}/reorder`,
         { new_index: data.newIndex }
       )
@@ -968,41 +970,38 @@ export const api = {
      *   assigneeId: 'user-456'
      * })
      */
-    createSubtask: async (ticketId: string, title: string): Promise<ApiResponse<Subtask>> => {
-      const response = await apiClient.post<ApiResponse<Subtask>>(
+    createSubtask: async (ticketId: string, title: string): Promise<Subtask> => {
+      const response = await apiClient.post<Subtask>(
         '/subtasks/',
         { ticket_id: ticketId, title }
       )
       return response.data
     },
 
-    updateSubtask: async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<ApiResponse<Subtask>> => {
+    updateSubtask: async (ticketId: string, subtaskId: string, data: Partial<Subtask>): Promise<Subtask> => {
       const payload: Record<string, any> = {}
       if ('title' in data && data.title !== undefined) payload.title = data.title
       if ('isCompleted' in data && data.isCompleted !== undefined) payload.is_completed = data.isCompleted
-      const response = await apiClient.put<ApiResponse<Subtask>>(
+      const response = await apiClient.put<Subtask>(
         `/subtasks/${subtaskId}`,
         payload
       )
       return response.data
     },
 
-    deleteSubtask: async (_ticketId: string, subtaskId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/subtasks/${subtaskId}`
-      )
-      return response.data
+    deleteSubtask: async (_ticketId: string, subtaskId: string): Promise<void> => {
+      await apiClient.delete(`/subtasks/${subtaskId}`)
     },
 
-    reorderSubtasks: async (_ticketId: string, subtaskIds: string[]): Promise<ApiResponse<Subtask[]>> => {
-      const response = await apiClient.patch<ApiResponse<Subtask[]>>(
+    reorderSubtasks: async (_ticketId: string, subtaskIds: string[]): Promise<Subtask[]> => {
+      const response = await apiClient.patch<Subtask[]>(
         '/subtasks/reorder',
         { subtask_ids: subtaskIds }
       )
       return response.data
     },
 
-    list: async (filters?: TicketFilters): Promise<ApiResponse<PaginatedResponse<Ticket>>> => {
+    list: async (filters?: TicketFilters): Promise<Ticket[]> => {
       /**
        * WEB-08: la barra final es OBLIGATORIA.
        *
@@ -1014,7 +1013,7 @@ export const api = {
        * navegador no puede resolver `backend`, así que la petición falla con
        * "DNS Resolution System / Transferred 0 B".
        */
-      const response = await apiClient.get<ApiResponse<PaginatedResponse<Ticket>>>(
+      const response = await apiClient.get<Ticket[]>(
         '/tickets/',
         { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
@@ -1027,7 +1026,7 @@ export const api = {
      * @param data - Datos del nuevo ticket
      * @returns Ticket creado
      */
-    create: async (data: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'createdById'>): Promise<ApiResponse<Ticket>> => {
+    create: async (data: TicketCreatePayload): Promise<Ticket> => {
       /**
        * La barra final es OBLIGATORIA (mismo motivo que en `list`).
        *
@@ -1037,7 +1036,7 @@ export const api = {
        * falla. Épicas (`'/epics/'`) y aplicaciones (`'/applications/'`) ya
        * llamaban con barra final, por eso ellas sí funcionaban.
        */
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+      const response = await apiClient.post<Ticket>(
         '/tickets/',
         data
       )
@@ -1050,8 +1049,8 @@ export const api = {
      * @param ticketId - ID del ticket
      * @returns Ticket con detalles completos (subtareas, eventos, etc.)
      */
-    getById: async (ticketId: string): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.get<ApiResponse<Ticket>>(
+    getById: async (ticketId: string): Promise<Ticket> => {
+      const response = await apiClient.get<Ticket>(
         `/tickets/${ticketId}`
       )
       return response.data
@@ -1120,8 +1119,8 @@ export const api = {
      * @param data - Campos a actualizar
      * @returns Ticket actualizado
      */
-    update: async (ticketId: string, data: Partial<Ticket>): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.put<ApiResponse<Ticket>>(
+    update: async (ticketId: string, data: Partial<Ticket>): Promise<Ticket> => {
+      const response = await apiClient.put<Ticket>(
         `/tickets/${ticketId}`,
         data
       )
@@ -1133,11 +1132,8 @@ export const api = {
      * 
      * @param ticketId - ID del ticket
      */
-    delete: async (ticketId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/tickets/${ticketId}`
-      )
-      return response.data
+    delete: async (ticketId: string): Promise<void> => {
+      await apiClient.delete(`/tickets/${ticketId}`)
     },
 
     /**
@@ -1149,8 +1145,8 @@ export const api = {
      * @param newOrderIndex - Nuevo índice de orden
      * @returns Ticket actualizado
      */
-    move: async (ticketId: string, newEpicId: string): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.patch<ApiResponse<Ticket>>(
+    move: async (ticketId: string, newEpicId: string): Promise<Ticket> => {
+      const response = await apiClient.patch<Ticket>(
         `/tickets/${ticketId}/move`,
         { epic_id: newEpicId }
       )
@@ -1160,7 +1156,7 @@ export const api = {
     /**
      * Mueve un ticket a otra épica (recibe objeto, usado por el store)
      */
-    moveToEpic: async (data: { ticketId: string; newEpicId: string }): Promise<ApiResponse<Ticket>> => {
+    moveToEpic: async (data: { ticketId: string; newEpicId: string }): Promise<Ticket> => {
       return api.tickets.move(data.ticketId, data.newEpicId)
     },
 
@@ -1170,8 +1166,8 @@ export const api = {
      * @param ticketId - ID del ticket
      * @returns Ticket actualizado
      */
-    complete: async (ticketId: string, prLink: string): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    complete: async (ticketId: string, prLink: string): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/complete`,
         { pr_link: prLink }
       )
@@ -1185,8 +1181,8 @@ export const api = {
      * @param question - Texto de la pregunta
      * @returns Evento de pregunta creado
      */
-    question: async (ticketId: string, question: string): Promise<ApiResponse<any>> => {
-      const response = await apiClient.post<ApiResponse<any>>(
+    question: async (ticketId: string, question: string): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/question`,
         { question_text: question }
       )
@@ -1201,8 +1197,8 @@ export const api = {
      * @param answer - Respuesta a la pregunta
      * @returns Evento de resolución
      */
-    resolveQuestion: async (ticketId: string, resolution: string = 'Pregunta resuelta'): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    resolveQuestion: async (ticketId: string, resolution: string = 'Pregunta resuelta'): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/resolve-question`,
         { resolution }
       )
@@ -1220,8 +1216,8 @@ export const api = {
     redirect: async (
       ticketId: string,
       data: { toUserId?: string; targetUserId?: string; reason: string }
-    ): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    ): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/redirect`,
         {
           target_user_id: data.targetUserId ?? data.toUserId,
@@ -1237,8 +1233,8 @@ export const api = {
      * @param ticketId - ID del ticket
      * @returns Ticket actualizado
      */
-    start: async (ticketId: string): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    start: async (ticketId: string): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/start`
       )
       return response.data
@@ -1250,8 +1246,8 @@ export const api = {
      * 
      * @returns Array de tickets asignados al usuario actual
      */
-    getMyWorkbench: async (filters?: TicketFilters): Promise<ApiResponse<Ticket[]>> => {
-      const response = await apiClient.get<ApiResponse<Ticket[]>>(
+    getMyWorkbench: async (filters?: TicketFilters): Promise<Ticket[]> => {
+      const response = await apiClient.get<Ticket[]>(
         '/tickets/my-workbench',
         { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
@@ -1268,8 +1264,8 @@ export const api = {
     listByEpic: async (
       epicId: string,
       filters?: TicketFilters
-    ): Promise<ApiResponse<Ticket[]>> => {
-      const response = await apiClient.get<ApiResponse<Ticket[]>>(
+    ): Promise<Ticket[]> => {
+      const response = await apiClient.get<Ticket[]>(
         `/tickets/by-epic/${epicId}`,
         { params: filters, paramsSerializer: REPEATED_ARRAY_PARAMS }
       )
@@ -1279,7 +1275,7 @@ export const api = {
     /**
      * Banco de trabajo del usuario actual (alias de getMyWorkbench)
      */
-    listMyWorkbench: async (filters?: TicketFilters): Promise<ApiResponse<Ticket[]>> => {
+    listMyWorkbench: async (filters?: TicketFilters): Promise<Ticket[]> => {
       return api.tickets.getMyWorkbench(filters)
     },
 
@@ -1294,7 +1290,7 @@ export const api = {
      * Cambia el estado de un ticket a IN_PROGRESS.
      * El resto de transiciones tiene endpoint propio (complete, question, redirect...)
      */
-    updateStatus: async (ticketId: string, newStatus: string): Promise<ApiResponse<Ticket>> => {
+    updateStatus: async (ticketId: string, newStatus: string): Promise<Ticket> => {
       if (newStatus === 'IN_PROGRESS') {
         return api.tickets.start(ticketId)
       }
@@ -1306,8 +1302,8 @@ export const api = {
     /**
      * Plantea una pregunta bloqueante (alias de question, usado por el store)
      */
-    raiseQuestion: async (ticketId: string, questionText: string): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.post<ApiResponse<Ticket>>(
+    raiseQuestion: async (ticketId: string, questionText: string): Promise<Ticket> => {
+      const response = await apiClient.post<Ticket>(
         `/tickets/${ticketId}/question`,
         { question_text: questionText }
       )
@@ -1322,8 +1318,8 @@ export const api = {
      * @param tagIds - IDs de las etiquetas que quedarán asignadas
      * @returns Ticket actualizado con sus etiquetas
      */
-    updateTags: async (ticketId: string, tagIds: string[]): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.put<ApiResponse<Ticket>>(
+    updateTags: async (ticketId: string, tagIds: string[]): Promise<Ticket> => {
+      const response = await apiClient.put<Ticket>(
         `/tickets/${ticketId}/tags`,
         { tag_ids: tagIds }
       )
@@ -1341,8 +1337,8 @@ export const api = {
      * @param newIndex - Posición destino dentro de la épica
      * @returns Ticket con su nueva posición
      */
-    reorder: async (ticketId: string, newIndex: number): Promise<ApiResponse<Ticket>> => {
-      const response = await apiClient.patch<ApiResponse<Ticket>>(
+    reorder: async (ticketId: string, newIndex: number): Promise<Ticket> => {
+      const response = await apiClient.patch<Ticket>(
         `/tickets/${ticketId}/reorder`,
         { new_index: newIndex }
       )
@@ -1427,86 +1423,13 @@ export const api = {
      * 
      * @param appId - ID (UUID) de la aplicación
      * @returns Resumen de analítica
+     *
+     * Es el único endpoint de analítica del backend; performance, heatmap,
+     * burndown y export CSV se eliminaron (siempre respondían 500).
      */
-    
     getSummary: async (appId: string): Promise<ApplicationSummary> => {
       const response = await apiClient.get<ApplicationSummary>(
         `/analytics/summary/${appId}`
-      )
-      return response.data
-    },
-    /**
-     * Obtiene datos de rendimiento de usuarios
-     * 
-     * @param filters - Filtros opcionales
-     * @returns Array de rendimiento por usuario
-     */
-    getPerformance: async (filters?: {
-      userId?: string
-      startDate?: string
-      endDate?: string
-    }): Promise<ApiResponse<UserPerformance[]>> => {
-      const response = await apiClient.get<ApiResponse<UserPerformance[]>>(
-        '/analytics/performance',
-        { params: filters }
-      )
-      return response.data
-    },
-
-    /**
-     * Obtiene datos del mapa de calor (heatmap)
-     * Muestra actividad de desarrolladores en el tiempo
-     * 
-     * @param filters - Filtros opcionales
-     * @returns Array de datos de mapa de calor
-     */
-    getHeatmap: async (filters?: {
-      startDate?: string
-      endDate?: string
-    }): Promise<ApiResponse<HeatmapData[]>> => {
-      const response = await apiClient.get<ApiResponse<HeatmapData[]>>(
-        '/analytics/heatmap',
-        { params: filters }
-      )
-      return response.data
-    },
-
-    /**
-     * Obtiene datos del gráfico de quemado (burndown)
-     * Muestra progreso de trabajo a lo largo del tiempo
-     * 
-     * @param applicationId - ID de la aplicación
-     * @param filters - Filtros opcionales (rango de fechas)
-     * @returns Datos de burndown
-     */
-    getBurndown: async (applicationId: string, filters?: {
-      startDate?: string
-      endDate?: string
-    }): Promise<ApiResponse<BurndownData>> => {
-      const response = await apiClient.get<ApiResponse<BurndownData>>(
-        `/analytics/burndown/${applicationId}`,
-        { params: filters }
-      )
-      return response.data
-    },
-
-    /**
-     * Exporta datos de analítica a CSV
-     * 
-     * @param filters - Filtros para qué datos exportar
-     * @returns Blob con contenido CSV
-     */
-    exportCsv: async (filters?: {
-      applicationId?: string
-      startDate?: string
-      endDate?: string
-    }): Promise<Blob> => {
-      const response = await apiClient.get<Blob>(
-        '/analytics/export/csv',
-        {
-          params: filters,
-          responseType: 'blob'
-        }
       )
       return response.data
     }
@@ -1529,8 +1452,9 @@ export const api = {
     list: async (filters?: {
       ticketId?: string
       epicId?: string
-    }): Promise<ApiResponse<Document[]>> => {
-      const response = await apiClient.get<ApiResponse<Document[]>>(
+    }): Promise<DocumentRecord[]> => {
+      // /documents no pasa por el adaptador de claves: llega snake_case plano
+      const response = await apiClient.get<DocumentRecord[]>(
         '/documents/',
         { params: filters }
       )
@@ -1548,14 +1472,14 @@ export const api = {
       ticketId?: string
       epicId?: string
       docType?: string
-    }): Promise<ApiResponse<Document>> => {
+    }): Promise<DocumentRecord> => {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('ticketId', data.ticketId || '')
       formData.append('epicId', data.epicId || '')
       formData.append('docType', data.docType || 'OTHER')
 
-      const response = await apiClient.post<ApiResponse<Document>>(
+      const response = await apiClient.post<DocumentRecord>(
         '/documents/',
         formData,
         {
@@ -1592,27 +1516,8 @@ export const api = {
      * 
      * @param documentId - ID del documento
      */
-    delete: async (documentId: string): Promise<ApiResponse<void>> => {
-      const response = await apiClient.delete<ApiResponse<void>>(
-        `/documents/${documentId}`
-      )
-      return response.data
-    },
-
-    /**
-     * Traduce un documento a otro idioma
-     * Usa IA/servicio de traducción del backend
-     * 
-     * @param documentId - ID del documento
-     * @param targetLanguage - Idioma destino (es, en, fr, etc.)
-     * @returns Documento traducido
-     */
-    translate: async (documentId: string, targetLanguage: string): Promise<ApiResponse<Document>> => {
-      const response = await apiClient.post<ApiResponse<Document>>(
-        `/documents/${documentId}/translate`,
-        { targetLanguage }
-      )
-      return response.data
+    delete: async (documentId: string): Promise<void> => {
+      await apiClient.delete(`/documents/${documentId}`)
     }
   },
 

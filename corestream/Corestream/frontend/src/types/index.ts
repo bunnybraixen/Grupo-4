@@ -95,138 +95,6 @@ export enum TicketPriority {
 }
 
 /**
- * Tipos de eventos que pueden ocurrir en una tarea
- * Se registran para auditoría y análisis del flujo de trabajo
- */
-export enum EventType {
-  /**
-   * Tarea fue creada
-   */
-  CREATED = 'CREATED',
-
-  /**
-   * Estado de la tarea cambió
-   */
-  STATUS_CHANGED = 'STATUS_CHANGED',
-
-  /**
-   * Prioridad de la tarea cambió
-   */
-  PRIORITY_CHANGED = 'PRIORITY_CHANGED',
-
-  /**
-   * Asignación de la tarea cambió
-   */
-  ASSIGNMENT_CHANGED = 'ASSIGNMENT_CHANGED',
-
-  /**
-   * Se añadió un comentario o pregunta a la tarea
-   */
-  COMMENT_ADDED = 'COMMENT_ADDED',
-
-  /**
-   * Se resolvió una pregunta o comentario
-   */
-  QUESTION_RESOLVED = 'QUESTION_RESOLVED',
-
-  /**
-   * Se creó una subtarea
-   */
-  SUBTASK_CREATED = 'SUBTASK_CREATED',
-
-  /**
-   * Se completó una subtarea
-   */
-  SUBTASK_COMPLETED = 'SUBTASK_COMPLETED',
-
-  /**
-   * Se enlazó un pull request a la tarea
-   */
-  PR_LINKED = 'PR_LINKED',
-
-  /**
-   * Se registró tiempo en la tarea
-   */
-  TIME_LOGGED = 'TIME_LOGGED',
-
-  /**
-   * La tarea fue bloqueada
-   */
-  BLOCKED = 'BLOCKED',
-
-  /**
-   * El bloqueo de la tarea fue resuelto
-   */
-  UNBLOCKED = 'UNBLOCKED'
-}
-
-/**
- * Tipos de notificaciones del sistema
- * Categoriza las notificaciones por tipo de evento
- */
-export enum NotificationType {
-  /**
-   * Notificación sobre cambios en asignación de tareas
-   */
-  ASSIGNMENT = 'ASSIGNMENT',
-
-  /**
-   * Notificación sobre cambio de estado
-   */
-  STATUS_CHANGE = 'STATUS_CHANGE',
-
-  /**
-   * Notificación de comentario o pregunta
-   */
-  COMMENT = 'COMMENT',
-
-  /**
-   * Notificación de tarea bloqueada
-   */
-  BLOCKED = 'BLOCKED',
-
-  /**
-   * Notificación general del sistema
-   */
-  SYSTEM = 'SYSTEM'
-}
-
-/**
- * Tipos de documentos que se pueden cargar
- */
-export enum DocumentType {
-  /**
-   * Especificación de requisitos o diseño
-   */
-  SPECIFICATION = 'SPECIFICATION',
-
-  /**
-   * Documento de prueba o QA
-   */
-  TEST_CASE = 'TEST_CASE',
-
-  /**
-   * Captura de pantalla o imagen de referencia
-   */
-  SCREENSHOT = 'SCREENSHOT',
-
-  /**
-   * Archivo de código fuente
-   */
-  SOURCE_CODE = 'SOURCE_CODE',
-
-  /**
-   * Documento de configuración
-   */
-  CONFIG = 'CONFIG',
-
-  /**
-   * Otro tipo de documento
-   */
-  OTHER = 'OTHER'
-}
-
-/**
  * ENTIDADES DE USUARIO
  * ====================
  */
@@ -281,6 +149,16 @@ export interface User {
    * Timestamp de la última actualización
    */
   updatedAt?: string
+}
+
+/**
+ * Campos que un usuario puede cambiar de su propio perfil (PUT /auth/me).
+ * El backend (UserSelfUpdate) no acepta rol, correo ni contraseña.
+ */
+export interface UserProfileUpdate {
+  fullName?: string
+  specialty?: string
+  avatarUrl?: string
 }
 
 /**
@@ -407,6 +285,16 @@ export interface Application {
 }
 
 /**
+ * Payload para crear una aplicación (ApplicationCreate del backend)
+ */
+export interface ApplicationCreatePayload {
+  name: string
+  description?: string
+  color?: string
+  icon?: string
+}
+
+/**
  * Representa una épica (conjunto de tareas relacionadas) dentro de una aplicación
  * Las épicas agrupan tareas que contribuyen a un objetivo común
  */
@@ -476,6 +364,15 @@ export interface Epic {
    * Timestamp de última actualización
    */
   updatedAt?: string
+}
+
+/**
+ * Payload para crear una épica; `applicationId` lo añade `api.epics.create`
+ */
+export interface EpicCreatePayload {
+  title: string
+  description?: string
+  dueDate?: string
 }
 
 /**
@@ -621,6 +518,25 @@ export interface Ticket {
   sla?: import('./sprint').TicketSlaStatus
 }
 
+/**
+ * Payload para crear un ticket (TicketCreate del backend). Se envía en
+ * camelCase: el interceptor de `apiClient` lo convierte a snake_case.
+ * `priority`/`status` aceptan el miembro del enum o su valor de texto
+ * ('HIGH', 'TODO'...), que es lo que usan los formularios.
+ */
+export interface TicketCreatePayload {
+  epicId: string
+  title: string
+  description?: string
+  assigneeId?: string
+  priority?: `${TicketPriority}`
+  status?: `${TicketStatus}`
+  dueDate?: string
+  prLink?: string
+  sprintId?: string
+  storyPoints?: number
+}
+
 export interface Tag {
   id: string
   name: string
@@ -714,43 +630,6 @@ export interface Subtask {
  */
 
 /**
- * Registra un evento que ocurrió en una tarea
- * Se utiliza para auditoría y análisis del flujo de trabajo
- */
-export interface TicketEvent {
-  /**
-   * Identificador único del evento
-   */
-  id: string
-
-  /**
-   * ID del ticket en el que ocurrió el evento
-   */
-  ticketId: string
-
-  /**
-   * ID del usuario que causó el evento
-   */
-  userId: string
-
-  /**
-   * Tipo de evento que ocurrió
-   */
-  eventType: EventType
-
-  /**
-   * Detalles adicionales del evento
-   * Puede contener valores antes/después, comentarios, etc.
-   */
-  detail?: string
-
-  /**
-   * Timestamp de cuando ocurrió el evento
-   */
-  createdAt: string
-}
-
-/**
  * WEB-11: tipos de evento del historial de tickets tal como los devuelve la
  * API (coinciden con `TicketEventType` de app/models/ticket_event.py).
  */
@@ -808,260 +687,35 @@ export interface TicketHistoryEvent {
 }
 
 /**
- * ENTIDADES DE NOTIFICACIONES
- * ===========================
- */
-
-/**
- * Representa una notificación para un usuario
- * Se utiliza para mantener informados a los usuarios sobre cambios relevantes
- */
-export interface Notification {
-  /**
-   * Identificador único de la notificación
-   */
-  id: string
-
-  /**
-   * ID del usuario destinatario de la notificación
-   */
-  userId: string
-
-  /**
-   * Título breve de la notificación
-   */
-  title: string
-
-  /**
-   * Mensaje detallado de la notificación
-   */
-  message: string
-
-  /**
-   * Tipo de notificación
-   */
-  type: NotificationType
-
-  /**
-   * Indica si el usuario ya ha leído la notificación
-   */
-  isRead: boolean
-
-  /**
-   * ID del ticket relacionado (si aplica)
-   */
-  ticketId?: string
-
-  /**
-   * Timestamp de creación de la notificación
-   */
-  createdAt: string
-
-  /**
-   * Timestamp de cuando se marcó como leída
-   */
-  readAt?: string
-}
-
-/**
  * ENTIDADES DE DOCUMENTOS
  * =======================
  */
 
 /**
- * Representa un archivo/documento cargado en el sistema
- * Puede estar asociado a una épica o a un ticket
+ * Documento adjunto tal como lo devuelve `/api/documents/` (DocumentResponse).
+ * Esa ruta no pasa por el adaptador de claves, así que llega en snake_case.
  */
-export interface Document {
-  /**
-   * Identificador único del documento
-   */
+export interface DocumentRecord {
   id: string
-
-  /**
-   * Nombre original del archivo
-   */
   filename: string
-
-  /**
-   * Ruta de almacenamiento del archivo en el servidor
-   */
-  filePath: string
-
-  /**
-   * Tamaño del archivo en bytes
-   */
-  fileSize: number
-
-  /**
-   * Tipo MIME del archivo (application/pdf, image/png, etc.)
-   */
-  mimeType: string
-
-  /**
-   * ID de la épica asociada (si aplica)
-   */
-  epicId?: string
-
-  /**
-   * ID del ticket asociado (si aplica)
-   */
-  ticketId?: string
-
-  /**
-   * ID del usuario que cargó el documento
-   */
-  uploadedById: string
-
-  /**
-   * Categoría/tipo de documento
-   */
-  docType: DocumentType
-
-  /**
-   * Timestamp de creación
-   */
-  createdAt: string
-
-  /**
-   * Timestamp de última actualización
-   */
-  updatedAt?: string
+  file_size: number
+  mime_type: string
+  doc_type: string
+  epic_id?: string | null
+  ticket_id?: string | null
+  uploaded_by_id?: string | null
+  uploaded_by?: {
+    id: string
+    full_name?: string | null
+    email?: string | null
+  } | null
+  created_at: string
 }
 
 /**
  * ENTIDADES DE ANÁLISIS Y REPORTES
  * ================================
  */
-
-/**
- * Datos de un punto en el gráfico de quemado (Burndown)
- * Representa el progreso de trabajo a lo largo del tiempo
- */
-export interface BurndownPoint {
-  /**
-   * Fecha del punto de datos
-   */
-  date: string
-
-  /**
-   * Número de tareas pendientes en esa fecha
-   */
-  remaining: number
-
-  /**
-   * Número de tareas completadas hasta esa fecha
-   */
-  completed: number
-}
-
-/**
- * Datos de gráfico de quemado completo
- * Muestra la tendencia de progreso a lo largo de un período
- */
-export interface BurndownData {
-  /**
-   * Nombre del período (sprint, épica, etc.)
-   */
-  name: string
-
-  /**
-   * Array de puntos de datos
-   */
-  points: BurndownPoint[]
-
-  /**
-   * Línea de tendencia ideal
-   */
-  idealLine: BurndownPoint[]
-
-  /**
-   * Fecha de inicio del período
-   */
-  startDate: string
-
-  /**
-   * Fecha de fin del período
-   */
-  endDate: string
-}
-
-/**
- * Datos para un gráfico de mapa de calor
- * Muestra la actividad de los desarrolladores a lo largo del tiempo
- */
-export interface HeatmapData {
-  /**
-   * Nombre del usuario
-   */
-  name: string
-
-  /**
-   * Array de valores de actividad por día/semana
-   */
-  values: number[]
-
-  /**
-   * Fechas correspondientes a cada valor
-   */
-  dates: string[]
-}
-
-/**
- * Resumen de análitica general
- * Proporciona métricas de alto nivel sobre el proyecto
- */
-export interface AnalyticsSummary {
-  /**
-   * Número total de tareas completadas
-   */
-  totalCompleted: number
-
-  /**
-   * Número de tareas actualmente en progreso
-   */
-  totalActive: number
-
-  /**
-   * Número de tareas pendientes
-   */
-  totalPending: number
-
-  /**
-   * Número de tareas bloqueadas
-   */
-  totalBlocked: number
-
-  /**
-   * Porcentaje de tareas completadas a tiempo
-   */
-  onTimePercentage: number
-
-  /**
-   * Velocidad promedio del equipo (tareas por semana)
-   */
-  teamVelocity: number
-
-  /**
-   * Lista de rendimiento de cada miembro del equipo
-   */
-  teamPerformance: UserPerformance[]
-
-  /**
-   * Datos de gráfico de quemado
-   */
-  burndownData: BurndownData
-
-  /**
-   * Datos de mapa de calor de actividad
-   */
-  heatmapData: HeatmapData[]
-
-  /**
-   * Fecha de cálculo del resumen
-   */
-  generatedAt: string
-}
 
 /**
  * Resumen de salud de una aplicación (respuesta de GET /api/analytics/summary/{app_id}).
@@ -1199,7 +853,9 @@ export interface LoginRequest {
 }
 
 /**
- * Datos de registro de nuevo usuario
+ * Datos de registro de nuevo usuario (UserCreate del backend).
+ * El backend siempre registra con rol DEVELOPER; el rol se cambia después
+ * con `api.users.changeRole`.
  */
 export interface RegisterRequest extends LoginRequest {
   /**
@@ -1208,24 +864,9 @@ export interface RegisterRequest extends LoginRequest {
   fullName: string
 
   /**
-   * Rol que se desea para el nuevo usuario
+   * Especialidad técnica (opcional)
    */
-  role: UserRole
-}
-
-/**
- * Respuesta de autenticación exitosa
- */
-export interface AuthResponse {
-  /**
-   * Información del usuario autenticado
-   */
-  user: User
-
-  /**
-   * Tokens de acceso
-   */
-  tokens: AuthTokens
+  specialty?: string
 }
 
 /**
@@ -1238,9 +879,14 @@ export interface TicketFilters {
   epicId?: string
 
   /**
-   * ID de la aplicación para filtrar
+   * ID del Sprint para filtrar
    */
-  applicationId?: string
+  sprintId?: string
+
+  /**
+   * Búsqueda libre por título o descripción
+   */
+  search?: string
 
   /**
    * Estado(s) para filtrar
@@ -1258,14 +904,9 @@ export interface TicketFilters {
   assigneeId?: string
 
   /**
-   * Filtrar tareas asignadas al usuario actual
+   * IDs de varios asignados para filtrar
    */
-  myTickets?: boolean
-
-  /**
-   * Filtrar tareas retrasadas
-   */
-  delayed?: boolean
+  assigneeIds?: string[]
 
   /**
    * Filtrar por una o más etiquetas reutilizables (NEW-03).
@@ -1274,9 +915,9 @@ export interface TicketFilters {
   tagIds?: string[]
 
   /**
-   * Número de página (para paginación)
+   * Número de items a saltar (paginación)
    */
-  page?: number
+  skip?: number
 
   /**
    * Número de items por página
@@ -1284,9 +925,9 @@ export interface TicketFilters {
   limit?: number
 
   /**
-   * Campo para ordenar resultados
+   * Campo para ordenar resultados (valor tal cual lo espera el backend)
    */
-  sortBy?: 'createdAt' | 'dueDate' | 'priority' | 'status'
+  sortBy?: 'created_at' | 'updated_at' | 'due_date' | 'priority' | 'status' | 'title'
 
   /**
    * Dirección de ordenamiento (asc o desc)

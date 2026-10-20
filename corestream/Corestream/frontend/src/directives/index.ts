@@ -1,1 +1,0 @@
-export { vCan } from './permissions'

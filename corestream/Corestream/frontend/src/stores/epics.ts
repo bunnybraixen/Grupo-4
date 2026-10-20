@@ -12,7 +12,8 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Epic, Ticket } from '@/types'
+import { TicketStatus } from '@/types'
+import type { Epic, EpicCreatePayload, Ticket } from '@/types'
 import { api } from '@/services/api'
 
 interface EpicWithProgress extends Epic {
@@ -86,9 +87,8 @@ export const useEpicsStore = defineStore('epics', () => {
       // Obtener tickets asociados a este épico
       const epicTickets = associatedTickets.value.get(epic.id) || []
       const totalTickets = epicTickets.length
-      const completedTickets = epicTickets.filter(t => 
-        t.status === 'COMPLETED' || t.status === 'CLOSED'
-      ).length
+      // El backend marca los tickets terminados como DONE (no existe COMPLETED/CLOSED)
+      const completedTickets = epicTickets.filter(t => t.status === TicketStatus.DONE).length
 
       const progress = totalTickets === 0 ? 0 : Math.round((completedTickets / totalTickets) * 100)
 
@@ -121,9 +121,7 @@ export const useEpicsStore = defineStore('epics', () => {
   const overallEpicsProgress = computed((): number => {
     const allTickets = Array.from(associatedTickets.value.values()).flat()
     const totalTickets = allTickets.length
-    const completedTickets = allTickets.filter(t => 
-      t.status === 'COMPLETED' || t.status === 'CLOSED'
-    ).length
+    const completedTickets = allTickets.filter(t => t.status === TicketStatus.DONE).length
 
     if (totalTickets === 0) return 0
     return Math.round((completedTickets / totalTickets) * 100)
@@ -142,8 +140,7 @@ export const useEpicsStore = defineStore('epics', () => {
     error.value = null
 
     try {
-      const data = await api.epics.listByApplication(appId)
-      epics.value = Array.isArray(data) ? data : (data?.items ?? [])
+      epics.value = await api.epics.listByApplication(appId)
       collapsedEpics.value.clear()
       return epics.value
     } catch (err) {
@@ -162,12 +159,7 @@ export const useEpicsStore = defineStore('epics', () => {
    * @param data - Datos del épico {appId, name, description?, color?, icon?}
    * @returns Promise<Epic>
    */
-  const create = async (data: {
-    applicationId: string
-    title: string
-    description?: string
-    dueDate?: string
-  }): Promise<Epic> => {
+  const create = async (data: EpicCreatePayload & { applicationId: string }): Promise<Epic> => {
     isLoading.value = true
     error.value = null
 

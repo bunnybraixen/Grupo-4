@@ -110,7 +110,9 @@
 // =====================================================================
 
 import { computed } from 'vue'
-import { Icon } from '@iconify/vue'
+// @iconify/vue no está instalado: vite.config.ts lo resolvía con un alias a
+// este mismo componente, pero TypeScript no veía ese alias.
+import { Icon } from '@/components/common/IconFallback.vue'
 
 // =====================================================================
 // DEFINICIÓN DE TIPOS

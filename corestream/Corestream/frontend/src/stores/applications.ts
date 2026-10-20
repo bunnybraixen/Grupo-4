@@ -11,7 +11,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Application } from '@/types'
+import type { Application, ApplicationCreatePayload } from '@/types'
 import { api } from '@/services/api'
 
 export const useApplicationsStore = defineStore('applications', () => {
@@ -55,49 +55,6 @@ export const useApplicationsStore = defineStore('applications', () => {
     )
   })
 
-  /**
-   * Retorna aplicaciones ordenadas por tickets pendientes (descendente)
-   * Útil para visualizar qué apps tienen más trabajo
-   */
-  const sortedByPending = computed((): Application[] => {
-    return [...applications.value].sort((a, b) => {
-      const pendingA = (a.totalTickets || 0) - (a.completedTickets || 0)
-      const pendingB = (b.totalTickets || 0) - (b.completedTickets || 0)
-      return pendingB - pendingA
-    })
-  })
-
-  /**
-   * Retorna aplicaciones ordenadas por tickets atrasados (descendente)
-   * Prioriza apps con más tickets vencidos
-   */
-  const sortedByDelayed = computed((): Application[] => {
-    return [...applications.value].sort((a, b) => {
-      const delayedA = a.delayedTickets || 0
-      const delayedB = b.delayedTickets || 0
-      return delayedB - delayedA
-    })
-  })
-
-  /**
-   * Calcula el progreso general de todas las aplicaciones
-   * Porcentaje de tickets completados sobre el total
-   */
-  const overallProgress = computed((): number => {
-    const totalTickets = applications.value.reduce((sum, app) => sum + (app.totalTickets || 0), 0)
-    const completedTickets = applications.value.reduce((sum, app) => sum + (app.completedTickets || 0), 0)
-    
-    if (totalTickets === 0) return 0
-    return Math.round((completedTickets / totalTickets) * 100)
-  })
-
-  /**
-   * Retorna el número total de tickets atrasados en todas las apps
-   */
-  const totalDelayedTickets = computed((): number => {
-    return applications.value.reduce((sum, app) => sum + (app.delayedTickets || 0), 0)
-  })
-
   // ========== ACCIONES ==========
 
   /**
@@ -130,12 +87,7 @@ export const useApplicationsStore = defineStore('applications', () => {
    * @param data - Datos de la aplicación {name, description?, icon?, color?}
    * @returns Promise<Application> - Aplicación creada
    */
-  const create = async (data: {
-    name: string
-    description?: string
-    icon?: string
-    color?: string
-  }): Promise<Application> => {
+  const create = async (data: ApplicationCreatePayload): Promise<Application> => {
     isLoading.value = true
     error.value = null
 
@@ -277,7 +229,7 @@ export const useApplicationsStore = defineStore('applications', () => {
    */
   const refreshApplication = async (id: string): Promise<Application> => {
     try {
-      const updated = await api.applications.get(id)
+      const updated = await api.applications.getById(id)
       
       const index = applications.value.findIndex(app => app.id === id)
       if (index !== -1) {
@@ -313,10 +265,6 @@ export const useApplicationsStore = defineStore('applications', () => {
     // Getters
     selectedAppId,
     sortedByName,
-    sortedByPending,
-    sortedByDelayed,
-    overallProgress,
-    totalDelayedTickets,
     // Acciones
     fetchAll,
     create,

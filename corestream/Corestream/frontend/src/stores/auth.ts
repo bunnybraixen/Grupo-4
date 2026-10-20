@@ -99,15 +99,6 @@ export const useAuthStore = defineStore('auth', () => {
    */
   const userEmail = computed(() => user.value?.email ?? '')
 
-  /**
-   * Comprueba si el access token está próximo a expirar (menos de 5 minutos)
-   */
-  const isTokenExpiringSoon = computed(() => {
-    if (!tokens.value?.expiresAt) return false
-    const expiringTime = tokens.value.expiresAt - 5 * 60 * 1000
-    return Date.now() > expiringTime
-  })
-
   // ========== ACCIONES ==========
 
   /**
@@ -119,7 +110,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const storedTokens = localStorage.getItem('authTokens')
       if (storedTokens) {
-        tokens.value = JSON.parse(storedTokens)
+        const parsed: AuthTokens = JSON.parse(storedTokens)
+        tokens.value = parsed
         isAuthenticated.value = true
         /**
          * Rehidrata el estado del cliente HTTP (Authorization: Bearer) a
@@ -127,7 +119,7 @@ export const useAuthStore = defineStore('auth', () => {
          * la página el interceptor no enviaba el token y la API respondía
          * 403 "Not authenticated".
          */
-        setAuthTokens(tokens.value)
+        setAuthTokens(parsed)
         // El fetchMe() será llamado por el composable de autenticación
       }
     } catch (err) {
@@ -174,48 +166,6 @@ export const useAuthStore = defineStore('auth', () => {
       error.value = message
       console.error('Error en login:', errorSummary(err))
       clearSession()
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * Registra un nuevo usuario en el sistema
-   * 
-   * @param data - Datos de registro {email, password, fullName, departament?}
-   * @returns Promise<User> - Usuario creado
-   * 
-   * Nota: Generalmente no autentica automáticamente, requiere login posterior
-   */
-  const register = async (data: {
-    email: string
-    password: string
-    fullName: string
-    department?: string
-  }): Promise<User> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const response = await api.auth.register(data)
-      
-      // Opcionalmente autoautenticar
-      if (response.tokens) {
-        tokens.value = response.tokens
-        setAuthTokens(response.tokens)
-        localStorage.setItem('authTokens', JSON.stringify(response.tokens))
-        localStorage.setItem('accessToken', response.tokens.accessToken)
-        localStorage.setItem('refreshToken', response.tokens.refreshToken)
-        isAuthenticated.value = true
-        await fetchMe()
-      }
-
-      return response.user
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al registrarse'
-      error.value = message
-      console.error('Error en register:', errorSummary(err))
       throw err
     } finally {
       isLoading.value = false
@@ -272,53 +222,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Actualiza el perfil del usuario autenticado
-   * 
-   * @param data - Datos a actualizar {fullName?, email?, phone?, avatar?}
-   * @returns Promise<User> - Usuario actualizado
-   */
-  const updateProfile = async (data: Partial<User>): Promise<User> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const updated = await api.auth.updateProfile(data)
-      user.value = updated
-      return updated
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al actualizar perfil'
-      error.value = message
-      console.error('Error en updateProfile:', errorSummary(err))
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * Cambia la contraseña del usuario autenticado
-   * 
-   * @param oldPassword - Contraseña actual
-   * @param newPassword - Nueva contraseña
-   * @returns Promise<void>
-   */
-  const changePassword = async (oldPassword: string, newPassword: string): Promise<void> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      await api.auth.changePassword({ oldPassword, newPassword })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al cambiar contraseña'
-      error.value = message
-      console.error('Error en changePassword:', errorSummary(err))
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
    * Cierra la sesión del usuario
    *
    * Los JWT no tienen estado en el servidor (no existe /auth/logout), así
@@ -343,51 +246,6 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('authTokens')
   }
 
-  /**
-   * Solicita reset de contraseña por email
-   * 
-   * @param email - Email del usuario
-   * @returns Promise<void>
-   */
-  const requestPasswordReset = async (email: string): Promise<void> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      await api.auth.requestPasswordReset({ email })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al solicitar reset de contraseña'
-      error.value = message
-      console.error('Error en requestPasswordReset:', errorSummary(err))
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  /**
-   * Confirma el reset de contraseña con token
-   * 
-   * @param token - Token recibido en email
-   * @param newPassword - Nueva contraseña
-   * @returns Promise<void>
-   */
-  const confirmPasswordReset = async (token: string, newPassword: string): Promise<void> => {
-    isLoading.value = true
-    error.value = null
-
-    try {
-      await api.auth.confirmPasswordReset({ token, newPassword })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al confirmar reset de contraseña'
-      error.value = message
-      console.error('Error en confirmPasswordReset:', errorSummary(err))
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
   return {
     // Estado
     user,
@@ -403,18 +261,12 @@ export const useAuthStore = defineStore('auth', () => {
     userRole,
     fullName,
     userEmail,
-    isTokenExpiringSoon,
     // Acciones
     initialize,
     login,
-    register,
     fetchMe,
     refreshToken,
-    updateProfile,
-    changePassword,
     logout,
     clearSession,
-    requestPasswordReset,
-    confirmPasswordReset,
   }
 })

@@ -41,9 +41,9 @@ const props = defineProps<{
 const summary = computed(() => props.summary)
 const groupFilter = computed(() => props.groupFilter ?? 'all')
 const groupLabel = computed(() => ({
-  completed: 'completados', pending: 'pendientes', overdue: 'vencidos',
+  all: '', completed: 'completados', pending: 'pendientes', overdue: 'vencidos',
   blocked: 'bloqueados', redirected: 'redireccionados',
-}[groupFilter.value] ?? ''))
+}[groupFilter.value]))
 
 const statusLabels: Record<string, string> = {
   TODO: 'Por hacer',

@@ -386,7 +386,7 @@ const loadUsers = async () => {
 
 const getUserNameByEmail = (email: string): string => {
   const found = availableUsers.value.find((u) => u.email.toLowerCase() === email.toLowerCase())
-  return found?.fullName || found?.full_name || email
+  return found?.fullName || email
 }
 
 // ── Modal equipo ───────────────────────────────────────────────────
@@ -479,8 +479,8 @@ const createUser = async () => {
     const created = await api.auth.register({
       email: email.trim().toLowerCase(),
       password,
-      full_name: fullName.trim() || email.split('@')[0]
-    } as any)
+      fullName: fullName.trim() || email.split('@')[0]
+    })
     // Cambiar rol si no es DEVELOPER (el backend registra como DEVELOPER por defecto)
     if (role !== 'DEVELOPER' && created?.user?.id) {
       try {

@@ -169,18 +169,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { api } from '@/services/api'
 import { useDialogStore } from '@/stores/dialog'
-
-interface ApiDocument {
-  id: string
-  filename: string
-  file_size: number
-  mime_type: string
-  doc_type: string
-  epic_id?: string | null
-  ticket_id?: string | null
-  uploaded_by_id?: string | null
-  created_at: string
-}
+import type { DocumentRecord as ApiDocument } from '@/types'
 
 const props = defineProps<{
   epicId?: string
@@ -238,14 +227,12 @@ const uploadFile = async (file: File) => {
   try {
     const uploadItem = uploadingFiles.value.find((f) => f.id === uploadId)
 
-    const result = await api.documents.upload(file, {
+    // El backend responde el documento creado plano (DocumentResponse)
+    const doc = await api.documents.upload(file, {
       epicId:   props.epicId,
       ticketId: props.ticketId,
       docType:  getDocType(file.name),
     })
-
-    // Unwrap ApiResponse<Document> → ApiDocument (mismo patrón que loadFiles() abajo)
-    const doc = ((result as any)?.data ?? result) as ApiDocument
 
     if (uploadItem) uploadItem.progress = 100
     uploadedFiles.value.unshift(doc)
@@ -267,9 +254,8 @@ const loadFiles = async () => {
     if (props.epicId) filters.epicId = props.epicId
     if (props.ticketId) filters.ticketId = props.ticketId
 
-    const res = await api.documents.list(filters)
-    // Backend returns array directly; the store pattern handles both wrapped/unwrapped
-    const docs = (res as unknown as { data?: ApiDocument[] })?.data ?? (res as unknown as ApiDocument[])
+    // El backend devuelve la lista plana de documentos
+    const docs = await api.documents.list(filters)
     uploadedFiles.value = Array.isArray(docs) ? docs : []
   } catch (error) {
     console.error('Error al cargar documentos:', error)

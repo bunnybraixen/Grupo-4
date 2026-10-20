@@ -589,7 +589,7 @@ const getAppProgress = (appId: string) => {
   for (const epic of epicsList) {
     const tickets = epicTicketsMap.value[epic.id] ?? []
     const epicTotal = tickets.length
-    const epicCompleted = tickets.filter((t) => t.status === 'DONE' || t.status === 'COMPLETED').length
+    const epicCompleted = tickets.filter((t) => t.status === 'DONE').length
 
     totalTickets += epicTotal
     completedTickets += epicCompleted
@@ -616,7 +616,7 @@ const getAppProgress = (appId: string) => {
 const getEpicProgress = (epicId: string) => {
   const tickets = epicTicketsMap.value[epicId] ?? []
   const total = tickets.length
-  const completed = tickets.filter((t) => t.status === 'DONE' || t.status === 'COMPLETED').length
+  const completed = tickets.filter((t) => t.status === 'DONE').length
   const remaining = Math.max(total - completed, 0)
   const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
 

@@ -168,7 +168,12 @@ const initializeDarkMode = (): void => {
  * Escucha cambios en la preferencia de tema del sistema
  * Cuando el usuario cambia su preferencia OS, la aplicación se adapta
  */
-const setupDarkModeListener = (): void => {
+/**
+ * Función para quitar el listener del tema del sistema (se asigna en onMounted)
+ */
+let removeDarkModeListener: (() => void) | null = null
+
+const setupDarkModeListener = (): (() => void) => {
   /**
    * Crea un listener para cambios en preferencia de tema del sistema
    */
@@ -227,7 +232,7 @@ onMounted(async () => {
   /**
    * Configura listener para cambios en preferencia del sistema
    */
-  setupDarkModeListener()
+  removeDarkModeListener = setupDarkModeListener()
 
   /**
    * Inicializa la aplicación (autenticación, usuario, preferencias)
@@ -246,9 +251,9 @@ onMounted(async () => {
  */
 onUnmounted(() => {
   /**
-   * El listener del tema se limpia automáticamente al desmontar
-   * (Vue maneja la limpieza de efectos secundarios en Composition API)
+   * El listener de matchMedia no lo limpia Vue: se quita explícitamente
    */
+  removeDarkModeListener?.()
 })
 </script>
 
