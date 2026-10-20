@@ -26,8 +26,8 @@ services:
       # Contraseña para el usuario
       POSTGRES_PASSWORD: corestream
     ports:
-      # Puerto expuesto para conexiones externas
-      - "5432:5432"
+      # Solo accesible desde esta máquina (no publicar la BD en la red)
+      - "127.0.0.1:5432:5432"
     volumes:
       # Persistencia de datos entre reinicios del contenedor
       - postgres-data:/var/lib/postgresql/data
@@ -55,7 +55,7 @@ services:
     container_name: corestream-redis
     ports:
       # Puerto para conexiones al cache
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - corestream-network
     # Comando para persistencia (AOF - Append Only File)
@@ -83,10 +83,13 @@ services:
       # Ubicación del Dockerfile para construir la imagen
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # pytest/aiosqlite para correr los tests dentro del contenedor
+        INSTALL_DEV_DEPS: "true"
     container_name: corestream-backend
     ports:
       # Puerto de la API REST
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         # Espera a que PostgreSQL esté listo antes de iniciar
@@ -99,10 +102,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://corestream:corestream@postgres:5432/corestream
       # URL de conexión a Redis desde el contenedor backend
       REDIS_URL: redis://redis:6379
-      # Modo de desarrollo habilitado
-      DEBUG: "true"
-      # Clave secreta para firmar JWT tokens
-      SECRET_KEY: "your-secret-key-change-in-production"
+      # Modo de desarrollo (sobrescribible desde el .env de la raíz)
+      DEBUG: ${DEBUG:-true}
+      # Clave secreta para firmar JWT tokens. Se toma del .env de la raíz;
+      # el valor por defecto solo sirve para desarrollo local.
+      SECRET_KEY: ${SECRET_KEY:-clave-de-desarrollo-no-usar-en-produccion-0000000000}
     volumes:
       # Montaje de código fuente para desarrollo con hot-reload
       - ./backend:/app
@@ -135,7 +139,7 @@ services:
     container_name: corestream-frontend
     ports:
       # Puerto del servidor de desarrollo Vite
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     depends_on:
       # El frontend depende del backend estar disponible
       - backend

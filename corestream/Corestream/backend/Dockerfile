@@ -26,12 +26,18 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # INSTALACIÓN DE DEPENDENCIAS
 # ===================================================================
 
-# Copiar archivo de requisitos de Python
-COPY requirements.txt .
+# Copiar archivos de requisitos de Python
+COPY requirements.txt requirements-dev.txt ./
 
 # Instalar dependencias de producción
 # --no-cache-dir reduce el tamaño de la imagen
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Dependencias de desarrollo (pytest, aiosqlite, ruff...) solo si se piden:
+# docker-compose las activa con INSTALL_DEV_DEPS=true para poder correr los
+# tests dentro del contenedor.
+ARG INSTALL_DEV_DEPS=false
+RUN if [ "$INSTALL_DEV_DEPS" = "true" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
 
 # ===================================================================
 # COPIA DEL CÓDIGO FUENTE

@@ -10,8 +10,9 @@ __pycache__/
 *$py.class
 *.so
 
-# Entornos virtuales
+# Entornos virtuales y secretos (.env.example sí se versiona)
 .env
+*.env
 .venv/
 venv/
 env/
