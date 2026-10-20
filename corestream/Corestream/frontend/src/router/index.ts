@@ -147,6 +147,21 @@ const routes: RouteRecordRaw[] = [
 
       {
         /**
+         * Vista de reportes generales del proyecto (WEB-06)
+         * Consulta consolidada del estado operacional + exportación PDF/Excel
+         */
+        path: 'reports',
+        name: 'AdminReports',
+        component: () => import('@/views/admin/ReportsView.vue'),
+        meta: {
+          requiresAuth: true,
+          requiredRoles: ['ADMIN', 'GROUP_LEADER', 'TEAM_LEADER'],
+          title: 'Reportes - CoreStream Admin'
+        }
+      },
+
+      {
+        /**
          * Vista de documentación de código
          * Gestión de especificaciones, documentos técnicos
          */
