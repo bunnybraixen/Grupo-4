@@ -1071,6 +1071,8 @@ export interface ApplicationSummary {
   application_id: string
   total_tickets: number
   completed_tickets: number
+  avg_time_hours?: number
+  avg_time?: number
   in_progress_tickets: number
   todo_tickets: number
   total_epics: number

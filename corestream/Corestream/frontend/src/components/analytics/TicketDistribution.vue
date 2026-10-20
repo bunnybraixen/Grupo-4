@@ -30,12 +30,12 @@ import {
   Tooltip,
   Legend
 } from 'chart.js'
-import { useAnalyticsStore } from '@/stores/analytics'
+import type { ApplicationSummary } from '@/types'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
-const analyticsStore = useAnalyticsStore()
-const summary = computed(() => analyticsStore.summary)
+const props = defineProps<{ summary: ApplicationSummary | null }>()
+const summary = computed(() => props.summary)
 
 const statusLabels: Record<string, string> = {
   TODO: 'Por hacer',

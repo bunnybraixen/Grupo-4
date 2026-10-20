@@ -81,7 +81,7 @@ const routes: RouteRecordRaw[] = [
    * RUTAS DE ADMINISTRACIÓN
    * ========================================
    * 
-   * Todas las subrutas bajo /admin requieren rol ADMIN
+  * Las subrutas de /admin definen los roles permitidos individualmente.
    * Utilizan un layout común para el panel de administración
    */
   {
@@ -132,15 +132,15 @@ const routes: RouteRecordRaw[] = [
 
       {
         /**
-         * Vista de analítica para administradores
-         * Estadísticas globales del sistema, rendimiento del equipo
+         * Vista de analítica para administradores y líderes de equipo
+         * Métricas de los proyectos disponibles para el usuario
          */
         path: 'analytics',
         name: 'AdminAnalytics',
         component: () => import('@/views/admin/AnalyticsView.vue'),
         meta: {
           requiresAuth: true,
-          requiredRoles: ['ADMIN'],
+          requiredRoles: ['ADMIN', 'GROUP_LEADER', 'TEAM_LEADER'],
           title: 'Analítica - CoreStream Admin'
         }
       },

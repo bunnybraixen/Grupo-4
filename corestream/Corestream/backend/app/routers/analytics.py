@@ -88,6 +88,7 @@ async def get_application_summary(
         "blocked_percentage": metrics["blocked_percentage"],
         "pending_tickets": metrics["pending_tickets"],
         "overdue_tickets": metrics["overdue_tickets"],
+        "avg_time_hours": metrics["avg_time_hours"],
         "by_status": metrics["by_status"],
         "by_priority": metrics["by_priority"],
     }

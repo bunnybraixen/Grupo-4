@@ -600,6 +600,14 @@ async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
     )
     overdue = overdue_row.scalar() or 0
 
+    average_time_row = await db.execute(
+        select(func.avg(_Ticket.time_spent_seconds)).where(
+            _Ticket.id.in_(select(base_ids.c.id)),
+            _Ticket.time_spent_seconds > 0,
+        )
+    )
+    average_time_hours = round(float(average_time_row.scalar() or 0) / 3600, 2)
+
     total = sum(by_status.values())
     done = by_status["DONE"]
     blocked = by_status["BLOCKED"]
@@ -614,6 +622,7 @@ async def get_ticket_metrics(db: AsyncSession, app_id: _UUID) -> dict:
         "blocked_tickets": blocked,
         "pending_tickets": pending,
         "overdue_tickets": overdue,
+        "avg_time_hours": average_time_hours,
         "completion_percentage": pct(done),
         "blocked_percentage": pct(blocked),
         "by_status": by_status,

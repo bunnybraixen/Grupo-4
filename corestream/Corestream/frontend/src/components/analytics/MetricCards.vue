@@ -83,7 +83,7 @@
       <div class="flex justify-between items-start">
         <div>
           <p class="text-gray-600 dark:text-gray-400 text-sm font-medium">{{ $t('analytics.avgTime') }}</p>
-          <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.avg_time ?? 0 }}h</p>
+          <p class="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-2">{{ summary?.avg_time_hours ?? summary?.avg_time ?? 0 }}h</p>
         </div>
         <!-- Icono de reloj -->
         <div class="bg-purple-100 dark:bg-purple-900 rounded-lg p-3">
@@ -113,39 +113,14 @@
 <script setup lang="ts">
 /**
  * MetricCards: tarjetas con las métricas del resumen de una aplicación.
- * Carga el resumen real desde GET /api/analytics/summary/{app_id}.
+ * Muestra el resumen del proyecto seleccionado en la vista de analytics.
  */
 
-import { ref, computed, onMounted } from 'vue'
-import { useAnalyticsStore } from '@/stores/analytics'
-import { useApplicationsStore } from '@/stores/applications'
-import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
+import type { ApplicationSummary } from '@/types'
 
-const analyticsStore = useAnalyticsStore()
-const applicationsStore = useApplicationsStore()
-const { t } = useI18n()
-
-const isLoading = ref(false)
-
-const summary = computed(() => analyticsStore.summary)
-
-onMounted(async () => {
-  isLoading.value = true
-  try {
-    if (applicationsStore.applications.length === 0) {
-      await applicationsStore.fetchAll()
-    }
-    const appId =
-      applicationsStore.selectedAppId ?? applicationsStore.applications[0]?.id
-    if (appId) {
-      await analyticsStore.fetchSummary(appId)
-    }
-  } catch (error) {
-    console.error('Error al cargar métricas:', error)
-  } finally {
-    isLoading.value = false
-  }
-})
+const props = defineProps<{ summary: ApplicationSummary | null }>()
+const summary = computed(() => props.summary)
 </script>
 
 <style scoped>
