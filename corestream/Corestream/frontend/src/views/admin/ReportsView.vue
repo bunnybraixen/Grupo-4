@@ -274,6 +274,11 @@ const developerName = computed(() => {
   return developer?.fullName || developer?.email || '—'
 })
 
+const sprintName = computed(() => {
+  if (!selectedSprintId.value) return 'Todos los sprints'
+  return sprints.value.find((sprint) => sprint.id === selectedSprintId.value)?.name ?? '—'
+})
+
 // ── Carga de datos ──────────────────────────────────────────────────────────
 
 const loadProjects = async (): Promise<void> => {
