@@ -9,14 +9,16 @@ Permiten:
 - Cada subtarea puede tener su propio progreso
 """
 
+import logging
+
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List
 
 from app.database import get_db
-from app.models import Subtask, Ticket, TicketEvent, TicketEventType
+from app.models import Subtask, Ticket, TicketEventType
 from app.schemas import SubtaskResponse, SubtaskCreate, SubtaskUpdate
 from app.services import ticket_state_machine
 from app.services.ticket_permissions import (
@@ -25,6 +27,8 @@ from app.services.ticket_permissions import (
     require_admin_or_leader,
 )
 from app.middleware.auth import get_current_user
+
+logger = logging.getLogger("corestream.subtasks")
 
 # Router para subtareas
 router = APIRouter(prefix="/subtasks", tags=["Subtareas"])
@@ -100,11 +104,14 @@ async def create_subtask(
 
         return SubtaskResponse.from_orm(new_subtask)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al crear subtarea")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al crear subtarea: {str(e)}"
+            detail="Error al crear subtarea"
         )
 
 
@@ -174,11 +181,14 @@ async def update_subtask(
 
         return SubtaskResponse.from_orm(subtask)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al actualizar subtarea")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar subtarea: {str(e)}"
+            detail="Error al actualizar subtarea"
         )
 
 
@@ -228,14 +238,17 @@ async def delete_subtask(
         # Registrar evento en el ticket
         await ticket_state_machine.log_ticket_event(
             db, ticket_id, TicketEventType.SUBTASK_DELETED,
-            get_user_id(current_user), f"Subtarea eliminada"
+            get_user_id(current_user), "Subtarea eliminada"
         )
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al eliminar subtarea")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar subtarea: {str(e)}"
+            detail="Error al eliminar subtarea"
         )
 
 
@@ -320,9 +333,12 @@ async def reorder_subtasks(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al reordenar subtareas")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al reordenar subtareas: {str(e)}"
+            detail="Error al reordenar subtareas"
         )

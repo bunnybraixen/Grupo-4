@@ -10,7 +10,6 @@ Fecha: 2026
 """
 
 from typing import Optional, List
-from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status

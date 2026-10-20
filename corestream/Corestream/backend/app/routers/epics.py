@@ -8,17 +8,21 @@ Gestiona el ciclo de vida de épicas:
 - Épicas contienen tickets que son los elementos de trabajo reales
 """
 
+import logging
+
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List
 
 from app.database import get_db
-from app.models import Epic, Application, Ticket, TicketStatus
+from app.models import Epic, Application
 from app.schemas import EpicResponse, EpicCreate, EpicUpdate
 from app.middleware.auth import get_current_user
 from app.services.ticket_permissions import require_admin_or_leader
+
+logger = logging.getLogger("corestream.epics")
 
 # Router para épicas
 router = APIRouter(prefix="/epics", tags=["Épicas"])
@@ -126,11 +130,14 @@ async def create_epic(
 
         return EpicResponse.from_orm(new_epic)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al crear épica")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al crear épica: {str(e)}"
+            detail="Error al crear épica"
         )
 
 
@@ -226,11 +233,14 @@ async def update_epic(
 
         return EpicResponse.from_orm(epic)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al actualizar épica")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar épica: {str(e)}"
+            detail="Error al actualizar épica"
         )
 
 
@@ -273,11 +283,14 @@ async def delete_epic(
         await db.delete(epic)
         await db.commit()
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al eliminar épica")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar épica: {str(e)}"
+            detail="Error al eliminar épica"
         )
 
 
@@ -361,9 +374,12 @@ async def reorder_epic(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al reordenar épica")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al reordenar épica: {str(e)}"
+            detail="Error al reordenar épica"
         )

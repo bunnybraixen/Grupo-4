@@ -20,7 +20,6 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models import OperationalTicket, OperationalTicketStatus, User
-from app.models.user import UserRole
 from app.schemas.operational_ticket import (
     OperationalTicketCreate,
     OperationalTicketResolve,

@@ -7,6 +7,8 @@ Proporciona endpoints para:
 - Obtener estadísticas y métricas de usuarios individuales
 """
 
+import logging
+
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +17,10 @@ from typing import List
 
 from app.database import get_db
 from app.models import User, UserRole, Ticket, TicketEvent
-from app.schemas import UserResponse, UserCreate, UserUpdate
+from app.schemas import UserResponse, UserUpdate
 from app.middleware.auth import get_current_user, require_role
+
+logger = logging.getLogger("corestream.users")
 
 # Router con prefijo y etiqueta para la documentación
 router = APIRouter(prefix="/users", tags=["Usuarios"])
@@ -141,11 +145,14 @@ async def update_user(
 
         return UserResponse.from_orm(user)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al actualizar usuario")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar usuario: {str(e)}"
+            detail="Error al actualizar usuario"
         )
 
 
@@ -195,11 +202,14 @@ async def delete_user(
         await db.delete(user)
         await db.commit()
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al eliminar usuario")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar usuario: {str(e)}"
+            detail="Error al eliminar usuario"
         )
 
 
@@ -239,11 +249,14 @@ async def promote_user(
 
         return UserResponse.from_orm(user)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al promover usuario")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al promover usuario: {str(e)}"
+            detail="Error al promover usuario"
         )
 
 
@@ -272,11 +285,14 @@ async def change_role(
             user.role = UserRole(new_role)
             await db.commit()
             await db.refresh(user)
-        except Exception as e:
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Rol inválido")
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Rol inválido: {str(e)}"
+                detail="Rol inválido"
             )
     return UserResponse.from_orm(user)
 
@@ -317,11 +333,14 @@ async def demote_user(
 
         return UserResponse.from_orm(user)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al degradar usuario")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al degradar usuario: {str(e)}"
+            detail="Error al degradar usuario"
         )
 
 

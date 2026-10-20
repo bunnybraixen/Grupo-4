@@ -10,7 +10,6 @@ Canales Redis:
 - notifications:admin: Notificaciones administrativas globales
 """
 
-from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -21,7 +20,6 @@ from fastapi import HTTPException, status
 from app.models import Notification, User, Ticket
 
 import json
-import redis
 
 # Importar modelos desde el paquete de modelos
 # from app.models import Notification
@@ -293,7 +291,7 @@ class NotificationService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al obtener notificaciones"
@@ -388,7 +386,7 @@ class NotificationService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -455,7 +453,7 @@ class NotificationService:
                 # 'message': f'Se marcaron {updated_count} notificaciones como leídas'
             }
             
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -501,7 +499,7 @@ class NotificationService:
             
             return 0  # unread_count or 0
             
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al obtener conteo de notificaciones no leídas"
@@ -565,7 +563,7 @@ class NotificationService:
             
             return True
             
-        except Exception as e:
+        except Exception:
             # Log error pero no lanza excepción (pub/sub best-effort)
             # logger.error(f"Error sending realtime notification: {str(e)}")
             return False

@@ -9,7 +9,6 @@ proporciona manejo robusto de errores y validaciones.
 
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
 import re
@@ -185,7 +184,7 @@ class AuthService:
                 # 'role': user.role,
                 # 'active': user.active
             }
-        except Exception as e:
+        except Exception:
             # Registrar el error sin exponer detalles internos al cliente
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -315,7 +314,7 @@ class AuthService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -379,7 +378,7 @@ class AuthService:
                 # 'created_at': user.created_at.isoformat(),
                 # 'application_id': str(user.application_id)
             }
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al buscar usuario por email"
@@ -447,7 +446,7 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="ID de usuario inválido"
             )
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al buscar usuario por ID"
@@ -540,7 +539,7 @@ class AuthService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

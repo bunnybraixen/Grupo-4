@@ -215,7 +215,7 @@ def verify_token(token: str) -> TokenPayload:
         
         return token_data
         
-    except JWTError as e:
+    except JWTError:
         # Capturar errores específicos de JWT (expiración, firma inválida, etc.)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

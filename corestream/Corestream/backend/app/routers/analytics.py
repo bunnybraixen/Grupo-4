@@ -9,21 +9,25 @@ Proporciona endpoints para análisis y visualización de datos:
 - Exportación de datos en CSV
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime
 import csv
 import io
 
 from app.database import get_db
-from app.models import Application, Ticket, User, TicketEvent, Epic, TicketStatus
+from app.models import Application, Epic
 from app.services import analytics_service
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import require_role
 from app.models import UserRole
+
+logger = logging.getLogger("corestream.analytics")
 
 # Router para analíticas
 router = APIRouter(prefix="/analytics", tags=["Analíticas"])
@@ -334,8 +338,11 @@ async def export_performance_csv(
             headers={"Content-Disposition": f"attachment; filename=performance_{app_id}.csv"}
         )
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al exportar CSV")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al exportar CSV: {str(e)}"
+            detail="Error al exportar CSV"
         )

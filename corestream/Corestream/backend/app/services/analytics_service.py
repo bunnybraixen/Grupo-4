@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func
 from fastapi import HTTPException, status
 
 # Importar modelos desde el paquete de modelos
@@ -107,10 +107,6 @@ class AnalyticsService:
                     detail="La fecha inicial debe ser menor o igual a la fecha final"
                 )
             
-            # Asegurar que las fechas cubren día completo
-            # date_to se ajusta a fin del día para inclusividad
-            date_to_end = date_to.replace(hour=23, minute=59, second=59)
-            
             # Construir queries SQL para agregaciones
             # NOTA: Estos son pseudocódigos, la implementación real depende del ORM
             
@@ -160,7 +156,7 @@ class AnalyticsService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al calcular métricas de desempeño de usuarios"
@@ -220,15 +216,6 @@ class AnalyticsService:
         """
         try:
             # Mapeo de números de día a nombres
-            day_names = {
-                0: 'Lunes',
-                1: 'Martes',
-                2: 'Miércoles',
-                3: 'Jueves',
-                4: 'Viernes',
-                5: 'Sábado',
-                6: 'Domingo'
-            }
             
             # Validar rango de fechas
             if date_from > date_to:
@@ -259,7 +246,7 @@ class AnalyticsService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al generar datos de heatmap"
@@ -406,7 +393,7 @@ class AnalyticsService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al calcular datos de burndown"
@@ -503,7 +490,6 @@ class AnalyticsService:
         try:
             # Calcular período (últimos 30 días por defecto)
             date_to = datetime.utcnow()
-            date_from = date_to - timedelta(days=30)
             
             # Query para obtener métricas consolidadas
             # SELECT 
@@ -537,7 +523,7 @@ class AnalyticsService:
             
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al generar resumen de proyecto"

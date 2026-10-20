@@ -7,16 +7,20 @@ Maneja operaciones CRUD para aplicaciones del sistema:
 - Requiere permisos de ADMIN para crear, actualizar y eliminar
 """
 
+import logging
+
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from typing import List
 
 from app.database import get_db
-from app.models import Application, UserRole, Epic, Ticket, TicketStatus
+from app.models import Application, UserRole
 from app.schemas import ApplicationResponse, ApplicationCreate, ApplicationUpdate
 from app.middleware.auth import get_current_user, require_role
+
+logger = logging.getLogger("corestream.applications")
 
 # Router para endpoints de aplicaciones
 router = APIRouter(prefix="/applications", tags=["Aplicaciones"])
@@ -116,11 +120,14 @@ async def create_application(
 
         return ApplicationResponse.from_orm(new_app)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al crear aplicación")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al crear aplicación: {str(e)}"
+            detail="Error al crear aplicación"
         )
 
 
@@ -226,11 +233,14 @@ async def update_application(
 
         return ApplicationResponse.from_orm(application)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al actualizar aplicación")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar aplicación: {str(e)}"
+            detail="Error al actualizar aplicación"
         )
 
 
@@ -272,9 +282,12 @@ async def delete_application(
         await db.delete(application)
         await db.commit()
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al eliminar aplicación")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar aplicación: {str(e)}"
+            detail="Error al eliminar aplicación"
         )

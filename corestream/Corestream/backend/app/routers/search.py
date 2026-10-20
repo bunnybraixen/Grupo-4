@@ -11,7 +11,6 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models import Application, Document, Epic, Team, Ticket, User
 from app.models.incident import Incident
-from app.models.user import UserRole
 
 router = APIRouter(prefix="/search", tags=["Search"])
 

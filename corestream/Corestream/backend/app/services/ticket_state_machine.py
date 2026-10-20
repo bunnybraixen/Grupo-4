@@ -14,15 +14,14 @@ Diagrama de transiciones de estado:
                      +----> DONE <----+
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from fastapi import HTTPException, status
 import json
 
 from app.models.ticket_event import TicketEvent, TicketEventType
-from app.models import Ticket, TicketStatus
+from app.models import TicketStatus
 from app.services.ticket_permissions import get_user_id
 from app.services.transition_audit import TransitionAuditService
 from uuid import UUID
@@ -479,7 +478,7 @@ class TicketStateMachine:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -628,7 +627,7 @@ class TicketStateMachine:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -758,7 +757,7 @@ class TicketStateMachine:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -870,7 +869,7 @@ class TicketStateMachine:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1024,7 +1023,7 @@ class TicketStateMachine:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

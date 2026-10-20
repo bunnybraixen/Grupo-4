@@ -12,6 +12,8 @@ Maneja el sistema de notificaciones para usuarios:
   * Menciones de otros usuarios
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -19,12 +21,14 @@ from typing import List
 from uuid import UUID
 from app.services.ticket_permissions import get_user_id
 from app.database import get_db
-from app.models import Notification, User, NotificationType
+from app.models import Notification, User
 from app.schemas import (
     NotificationResponse,
     NotificationMarkRead,
 )
 from app.middleware.auth import get_current_user
+
+logger = logging.getLogger("corestream.notifications")
 
 # Router para notificaciones
 router = APIRouter(prefix="/notifications", tags=["Notificaciones"])
@@ -149,12 +153,15 @@ async def mark_notifications_as_read(
             "total_requested": len(ids)
         }
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al marcar notificaciones")
         await db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al marcar notificaciones: {str(e)}"
+            detail="Error al marcar notificaciones"
         )
 
 
@@ -205,9 +212,12 @@ async def mark_all_notifications_as_read(
             "marked_as_read": count,
         }
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al marcar todas las notificaciones")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al marcar todas las notificaciones: {str(e)}"
+            detail="Error al marcar todas las notificaciones"
         )

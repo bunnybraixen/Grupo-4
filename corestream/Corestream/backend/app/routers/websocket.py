@@ -12,7 +12,7 @@ El cliente se conecta a /ws/notifications/{user_id} y recibe eventos
 cada vez que hay actividad relevante para ese usuario.
 """
 
-from fastapi import APIRouter, WebSocketDisconnect, HTTPException, status, WebSocket, Depends
+from fastapi import APIRouter, WebSocketDisconnect, status, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import asyncio
@@ -23,7 +23,6 @@ import logging
 
 from app.database import get_db
 from app.models import User
-from app.middleware.auth import get_current_user
 
 # Configurar logging para WebSocket
 logger = logging.getLogger(__name__)

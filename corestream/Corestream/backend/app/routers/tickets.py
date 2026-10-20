@@ -14,6 +14,8 @@ Cada operación de cambio de estado utiliza la máquina de estados (ticket_state
 para garantizar transiciones válidas y consistencia de datos.
 """
 
+import logging
+
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +35,6 @@ from app.models import (
     TicketStatus,
     TicketEvent,
     TicketEventType,
-    Subtask,
     TicketComment,
     Tag,
 )
@@ -62,6 +63,8 @@ from app.services.ticket_permissions import (
     require_non_admin,
 )
 from app.middleware.auth import get_current_user
+
+logger = logging.getLogger("corestream.tickets")
 
 # Router para tickets con prefijo y etiqueta
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -390,7 +393,6 @@ async def get_epic_tickets(
         HTTPException: Si la épica no existe (404)
     """
     # Verificar que la épica existe
-    from app.models import Epic
     epic_check = await db.execute(
         select(Epic).where(Epic.id == epic_id)
     )
@@ -548,7 +550,6 @@ async def create_ticket(
         HTTPException: Si la épica no existe (404) o hay error en creación (400)
     """
     # Verificar que la épica existe
-    from app.models import Epic
     epic_check = await db.execute(
         select(Epic).where(Epic.id == ticket_data.epic_id)
     )
@@ -622,11 +623,14 @@ async def create_ticket(
         created_ticket = await _load_ticket(db, new_ticket.id)
         return TicketResponse.from_orm(created_ticket)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al crear ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al crear ticket: {str(e)}"
+            detail="Error al crear ticket"
         )
 
 
@@ -750,12 +754,15 @@ async def create_ticket_comment(
 
         return TicketCommentResponse.from_orm(created_comment)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al crear comentario")
         await db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al crear comentario: {str(e)}",
+            detail="Error al crear comentario",
         )
 
 
@@ -1066,11 +1073,14 @@ async def update_ticket(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al actualizar ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al actualizar ticket: {str(e)}"
+            detail="Error al actualizar ticket"
         )
 
 
@@ -1121,11 +1131,14 @@ async def delete_ticket(
         await db.delete(ticket)
         await db.commit()
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al eliminar ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al eliminar ticket: {str(e)}"
+            detail="Error al eliminar ticket"
         )
 
 
@@ -1173,7 +1186,6 @@ async def move_ticket_to_epic(
     new_epic_id = move_data.get("epic_id")
 
     # Verificar que la nueva épica existe
-    from app.models import Epic
     epic_check = await db.execute(
         select(Epic).where(Epic.id == new_epic_id)
     )
@@ -1208,11 +1220,14 @@ async def move_ticket_to_epic(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al mover ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al mover ticket: {str(e)}"
+            detail="Error al mover ticket"
         )
 
 
@@ -1308,11 +1323,14 @@ async def reorder_ticket(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al reordenar ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al reordenar ticket: {str(e)}"
+            detail="Error al reordenar ticket"
         )
 
 
@@ -1360,7 +1378,6 @@ async def start_ticket_work(
     if not is_admin_or_leader(current_user):
         require_non_admin(current_user)
         claim_or_assert_assignee(ticket, current_user)
-    actor_id = get_user_id(current_user)
 
     # Validar que el ticket está en estado TODO
     if ticket.status != TicketStatus.TODO:
@@ -1392,11 +1409,14 @@ async def start_ticket_work(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al iniciar ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al iniciar ticket: {str(e)}"
+            detail="Error al iniciar ticket"
         )
 
 
@@ -1445,7 +1465,6 @@ async def complete_ticket(
     if not is_admin_or_leader(current_user):
         require_non_admin(current_user)
         assert_is_current_assignee(ticket, current_user)
-    actor_id = get_user_id(current_user)
 
     if ticket.status != TicketStatus.IN_PROGRESS:
         raise HTTPException(
@@ -1484,11 +1503,14 @@ async def complete_ticket(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al completar ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al completar ticket: {str(e)}"
+            detail="Error al completar ticket"
         )
 
 
@@ -1569,11 +1591,14 @@ async def raise_ticket_question(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al plantear pregunta")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al plantear pregunta: {str(e)}"
+            detail="Error al plantear pregunta"
         )
 
 
@@ -1647,11 +1672,14 @@ async def resolve_ticket_question(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al resolver pregunta")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al resolver pregunta: {str(e)}"
+            detail="Error al resolver pregunta"
         )
 
 
@@ -1700,9 +1728,12 @@ async def block_ticket_as_admin(
         await db.commit()
         await db.refresh(ticket)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("Error al bloquear ticket")
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al bloquear ticket: {exc}") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Error al bloquear ticket") from exc
 
 
 @router.post(
@@ -1826,11 +1857,14 @@ async def redirect_ticket(
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al redirigir ticket")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error al redirigir ticket: {str(e)}"
+            detail="Error al redirigir ticket"
         )
 
 
@@ -1862,9 +1896,12 @@ async def accept_redirected_ticket(
         await db.commit()
         await db.refresh(ticket)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("Error al aceptar ticket")
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aceptar ticket: {exc}") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Error al aceptar ticket") from exc
 
 
 @router.post("/{ticket_id}/reject-redirect", response_model=TicketResponse)
@@ -1915,9 +1952,12 @@ async def reject_redirected_ticket(
         await db.commit()
         await db.refresh(ticket)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("Error al rechazar la redirección")
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al rechazar la redirección: {exc}") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Error al rechazar la redirección") from exc
 
 
 @router.get("/redirect-candidates/list")

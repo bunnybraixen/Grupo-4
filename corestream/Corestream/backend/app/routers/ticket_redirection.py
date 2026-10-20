@@ -7,6 +7,8 @@ Proporciona endpoints para:
 - Gestionar la lógica de traspaso de responsabilidad
 """
 
+import logging
+
 from typing import List, Optional
 from uuid import UUID
 
@@ -19,6 +21,8 @@ from app.middleware.auth import get_current_user
 from app.models import User
 from app.schemas import TeamMemberResponse, TicketRedirectionRequest, TicketRedirectionResponse
 from app.services.ticket_redirection import TicketRedirectionService
+
+logger = logging.getLogger("corestream.ticket_redirection")
 
 router = APIRouter(prefix="/api/tickets", tags=["Ticket Redirection"])
 
@@ -90,10 +94,13 @@ async def redirect_ticket(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error en la redirección del ticket")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en la redirección del ticket: {str(e)}"
+            detail="Error en la redirección del ticket"
         )
 
 
@@ -129,8 +136,11 @@ async def get_team_members(
             if member.id != current_user.id  # Excluir al usuario actual
         ]
         
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error obteniendo miembros del equipo")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error obteniendo miembros del equipo: {str(e)}"
+            detail="Error obteniendo miembros del equipo"
         )

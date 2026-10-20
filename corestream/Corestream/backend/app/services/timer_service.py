@@ -13,11 +13,8 @@ Tipos de timers:
 """
 
 from datetime import datetime
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from fastapi import HTTPException, status
-import json
 
 # Importar modelos desde el paquete de modelos
 # from app.models import Ticket, TicketEvent
@@ -123,7 +120,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -228,7 +225,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -325,7 +322,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -419,7 +416,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -559,7 +556,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -663,7 +660,7 @@ class TimerService:
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

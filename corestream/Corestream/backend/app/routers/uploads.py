@@ -3,12 +3,16 @@ Router para manejo de carga y descarga de archivos (código y documentación).
 Endpoints para upload, download, listado y eliminación de archivos.
 """
 
+import logging
+
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.middleware import get_current_user
 from app.services.file_service import FileService
+
+logger = logging.getLogger("corestream.uploads")
 
 router = APIRouter(
     prefix="/api/uploads",
@@ -57,10 +61,13 @@ async def upload_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error al cargar archivo")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al cargar archivo: {str(e)}",
+            detail="Error al cargar archivo",
         )
 
 

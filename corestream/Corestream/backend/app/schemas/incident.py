@@ -11,7 +11,6 @@ Fecha: 2026
 
 from datetime import datetime, date
 from typing import Optional, List, Dict
-from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
