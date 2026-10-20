@@ -63,6 +63,7 @@ from app.services.ticket_permissions import (
     require_non_admin,
 )
 from app.middleware.auth import get_current_user
+from app.redis_client import publish_message
 
 logger = logging.getLogger("corestream.tickets")
 
@@ -90,6 +91,49 @@ def _stop_blocked_timer(ticket: Ticket, now: datetime) -> None:
         ticket.blocked_time_seconds, ticket.blocked_timer_started_at, now
     )
     ticket.blocked_timer_started_at = None
+
+
+# Estados desde los que se puede redirigir un ticket
+_REDIRECTABLE_STATUSES = {TicketStatus.TODO, TicketStatus.IN_PROGRESS, TicketStatus.BLOCKED}
+
+
+async def _last_redirect_event(db: AsyncSession, ticket_id: UUID) -> TicketEvent | None:
+    """Último evento REDIRECTED del ticket (id como desempate de created_at)."""
+    return (await db.execute(
+        select(TicketEvent)
+        .where(TicketEvent.ticket_id == ticket_id, TicketEvent.event_type == TicketEventType.REDIRECTED)
+        .order_by(TicketEvent.created_at.desc(), TicketEvent.id.desc())
+        .limit(1)
+    )).scalars().first()
+
+
+def _status_before_redirect(redirect_event: TicketEvent | None) -> TicketStatus:
+    """Estado que tenía el ticket antes de redirigirse (TODO si no se sabe)."""
+    previous = ((redirect_event.detail or {}) if redirect_event else {}).get("from_status")
+    try:
+        status_value = TicketStatus(previous)
+    except ValueError:
+        return TicketStatus.TODO
+    return status_value if status_value in _REDIRECTABLE_STATUSES else TicketStatus.TODO
+
+
+def _restart_timers(ticket: Ticket, now: datetime) -> None:
+    """Arranca el timer que corresponde al estado actual del ticket."""
+    ticket.timer_started_at = now if ticket.status == TicketStatus.IN_PROGRESS else None
+    ticket.blocked_timer_started_at = now if ticket.status == TicketStatus.BLOCKED else None
+
+
+async def _push_realtime(user_id: UUID, payload: dict) -> None:
+    """
+    Publica una notificación en el canal WebSocket del usuario. Es best-effort:
+    la notificación ya quedó guardada en BD, así que un fallo de Redis no debe
+    romper la petición.
+    """
+    try:
+        await publish_message(f"notifications:{user_id}", payload)
+    except Exception:
+        logger.warning("No se pudo publicar la notificación en tiempo real", exc_info=True)
+
 
 def extract_mentions(content: str) -> list[str]:
     """
@@ -1804,6 +1848,14 @@ async def redirect_ticket(
     if target_uuid == ticket.assignee_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selecciona un responsable distinto al actual")
 
+    # Un ticket terminado no se redirige (al aceptarlo se reabría), y uno ya
+    # REDIRECTED debe aceptarse o rechazarse antes de volver a moverlo.
+    if ticket.status not in _REDIRECTABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede redirigir un ticket en estado {ticket.status.value}",
+        )
+
     # Verificar que el usuario destino existe
     user_check = await db.execute(
         select(User).where(User.id == target_uuid, User.is_active.is_(True))
@@ -1854,6 +1906,13 @@ async def redirect_ticket(
         await db.commit()
         await db.refresh(ticket)
 
+        await _push_realtime(target_uuid, {
+            "type": "TICKET_REDIRECTED",
+            "ticket_id": str(ticket_id),
+            "title": "Ticket redirigido a ti",
+            "message": f"{ticket.title}: {reason}",
+        })
+
         # Recargar con relaciones antes de serializar (evita el 500 por lazy-load)
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
 
@@ -1883,18 +1942,38 @@ async def accept_redirected_ticket(
     if str(ticket.assignee_id) != get_user_id(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo el nuevo responsable puede aceptar el ticket")
 
+    # Al aceptar, el ticket vuelve al estado que tenía antes de redirigirse:
+    # uno en TODO no arranca el timer y uno BLOCKED conserva su pregunta abierta.
+    redirect_event = await _last_redirect_event(db, ticket_id)
     now = datetime.now(timezone.utc)
-    ticket.status = TicketStatus.IN_PROGRESS
-    ticket.timer_started_at = now
+    ticket.status = _status_before_redirect(redirect_event)
+    _restart_timers(ticket, now)
     db.add(TicketEvent(
         ticket_id=ticket_id,
         user_id=UUID(get_user_id(current_user)),
         event_type=TicketEventType.STATUS_CHANGED,
-        detail={"from_status": "REDIRECTED", "to_status": "IN_PROGRESS", "action": "ACCEPT_REDIRECT", "recorded_at": now.isoformat()},
+        detail={"from_status": "REDIRECTED", "to_status": ticket.status.value, "action": "ACCEPT_REDIRECT", "recorded_at": now.isoformat()},
     ))
+    previous_assignee = redirect_event.from_user_id if redirect_event else None
+    if previous_assignee:
+        db.add(Notification(
+            user_id=previous_assignee,
+            title="Redirección aceptada",
+            message=f"{ticket.title}: el nuevo responsable aceptó el ticket",
+            type=NotificationType.REDIRECT,
+            ticket_id=ticket_id,
+            is_read=False,
+        ))
     try:
         await db.commit()
         await db.refresh(ticket)
+        if previous_assignee:
+            await _push_realtime(previous_assignee, {
+                "type": "REDIRECT_ACCEPTED",
+                "ticket_id": str(ticket_id),
+                "title": "Redirección aceptada",
+                "message": ticket.title,
+            })
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
     except HTTPException:
         raise
@@ -1919,24 +1998,22 @@ async def reject_redirected_ticket(
     if str(ticket.assignee_id) != get_user_id(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo el nuevo responsable puede rechazar el ticket")
 
-    redirect_event = (await db.execute(
-        select(TicketEvent)
-        .where(TicketEvent.ticket_id == ticket_id, TicketEvent.event_type == TicketEventType.REDIRECTED)
-        .order_by(TicketEvent.created_at.desc())
-        .limit(1)
-    )).scalars().first()
+    redirect_event = await _last_redirect_event(db, ticket_id)
     if not redirect_event or not redirect_event.from_user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se encontró el responsable anterior")
 
     now = datetime.now(timezone.utc)
-    previous_status = (redirect_event.detail or {}).get("from_status", "IN_PROGRESS")
-    try:
-        ticket.status = TicketStatus(previous_status)
-    except ValueError:
-        ticket.status = TicketStatus.IN_PROGRESS
+    ticket.status = _status_before_redirect(redirect_event)
     ticket.assignee_id = redirect_event.from_user_id
-    ticket.timer_started_at = now if ticket.status == TicketStatus.IN_PROGRESS else None
-    ticket.blocked_timer_started_at = now if ticket.status == TicketStatus.BLOCKED else None
+    _restart_timers(ticket, now)
+    db.add(Notification(
+        user_id=redirect_event.from_user_id,
+        title="Redirección rechazada",
+        message=f"{ticket.title}: el ticket volvió a ti",
+        type=NotificationType.REDIRECT,
+        ticket_id=ticket_id,
+        is_read=False,
+    ))
     db.add(TicketEvent(
         ticket_id=ticket_id,
         user_id=UUID(get_user_id(current_user)),
@@ -1951,6 +2028,12 @@ async def reject_redirected_ticket(
     try:
         await db.commit()
         await db.refresh(ticket)
+        await _push_realtime(redirect_event.from_user_id, {
+            "type": "REDIRECT_REJECTED",
+            "ticket_id": str(ticket_id),
+            "title": "Redirección rechazada",
+            "message": ticket.title,
+        })
         return TicketResponse.from_orm(await _load_ticket(db, ticket_id))
     except HTTPException:
         raise
