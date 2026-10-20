@@ -2,7 +2,7 @@
 # Archivo de configuración de SQLAlchemy para operaciones de base de datos
 
 from typing import AsyncGenerator
-
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     create_async_engine,
@@ -15,19 +15,18 @@ from app.config import get_settings
 settings = get_settings()
 
 # Asegurar que PostgreSQL use el controlador asíncrono asyncpg
-database_url = settings.DATABASE_URL
 
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace(
-        "postgres://", "postgresql+asyncpg://", 1
-    )
-elif database_url.startswith("postgresql://"):
-    database_url = database_url.replace(
-        "postgresql://", "postgresql+asyncpg://", 1
-    )
-elif database_url.startswith("postgresql+psycopg2://"):
-    database_url = database_url.replace(
-        "postgresql+psycopg2://", "postgresql+asyncpg://", 1
+# Normalizar la URL para utilizar el controlador asíncrono
+database_url = make_url(settings.DATABASE_URL)
+
+if database_url.drivername in (
+    "postgres",
+    "postgresql",
+    "postgresql+psycopg2",
+    "postgresql+psycopg",
+):
+    database_url = database_url.set(
+        drivername="postgresql+asyncpg"
     )
 
 # Crear el motor SQLAlchemy asíncrono
@@ -37,6 +36,7 @@ engine = create_async_engine(
     pool_size=20,
     max_overflow=10,
 )
+
 
 # Crear la fábrica de sesiones asíncronas
 async_session_maker = async_sessionmaker(
