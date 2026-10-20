@@ -2,7 +2,8 @@
 Utilidades RBAC para autorización por roles.
 
 Este módulo define:
-- Roles soportados por el sistema (ADMIN, TEAM_LEADER, DEVELOPER).
+- Roles soportados por el sistema (ADMIN, GROUP_LEADER, DEVELOPER).
+  TEAM_LEADER se acepta como alias histórico de GROUP_LEADER.
 - Decorador de permisos para proteger endpoints FastAPI.
 """
 
@@ -20,7 +21,8 @@ class RBACRole(str, Enum):
     """Roles de acceso soportados por CoreStream."""
 
     ADMIN = "ADMIN"
-    TEAM_LEADER = "TEAM_LEADER"
+    GROUP_LEADER = "GROUP_LEADER"
+    TEAM_LEADER = "TEAM_LEADER"  # alias histórico (docs/RBAC.md)
     DEVELOPER = "DEVELOPER"
 
 

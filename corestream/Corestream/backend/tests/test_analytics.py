@@ -314,19 +314,12 @@ def test_funcion_usada_por_el_endpoint_de_metricas_existe():
     assert callable(getattr(analytics_service, "get_ticket_metrics", None))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: routers/analytics.py llama a analytics_service.get_user_performance "
-        "(líneas 172 y 308), get_activity_heatmap (221) y get_burndown_chart (264) "
-        "como funciones del MÓDULO, pero el módulo solo define get_ticket_metrics "
-        "(los otros son métodos de AnalyticsService con otra firma o no existen). "
-        "Los endpoints /performance, /heatmap, /burndown y /export/csv terminan en "
-        "AttributeError -> HTTP 500."
-    ),
-)
-@pytest.mark.parametrize(
-    "name", ["get_user_performance", "get_activity_heatmap", "get_burndown_chart"]
-)
-def test_funciones_usadas_por_el_router_existen_en_el_modulo(name):
-    assert callable(getattr(analytics_service, name, None))
+def test_solo_queda_el_endpoint_summary_de_analytics():
+    """
+    /performance, /heatmap, /burndown y /export/csv llamaban a funciones que
+    no existen (siempre 500) y no los usa ninguna vista: se eliminaron.
+    """
+    from app.routers.analytics import router
+
+    paths = {route.path for route in router.routes}
+    assert paths == {"/analytics/summary/{app_id}"}

@@ -95,16 +95,6 @@ class TestNormalizeRole:
         assert _normalize_role(UserRole.ADMIN) == "ADMIN"
         assert _normalize_role(UserRole.DEVELOPER) == "DEVELOPER"
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=ValueError,
-        reason=(
-            "BUG latente: RBACRole (app/middleware/rbac.py:19-24) define "
-            "TEAM_LEADER, pero el rol real en users.role es UserRole.GROUP_LEADER. "
-            "require_permissions lanzaría ValueError (-> 500) con un líder real. "
-            "Hoy ningún router usa require_permissions."
-        ),
-    )
     def test_acepta_group_leader_del_modelo(self):
         assert _normalize_role(UserRole.GROUP_LEADER) == "GROUP_LEADER"
 

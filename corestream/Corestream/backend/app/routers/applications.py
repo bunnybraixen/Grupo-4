@@ -12,11 +12,12 @@ import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from datetime import datetime, timezone
+from sqlalchemy import case, func, select
 from typing import List
 
 from app.database import get_db
-from app.models import Application, UserRole
+from app.models import Application, Epic, Ticket, TicketStatus, UserRole
 from app.schemas import ApplicationResponse, ApplicationCreate, ApplicationUpdate
 from app.middleware.auth import get_current_user, require_role
 
@@ -63,7 +64,42 @@ async def list_applications(
     )
     applications = result.scalars().all()
 
-    return [ApplicationResponse.from_orm(app) for app in applications]
+    # Contadores de la página en dos consultas agregadas (no una por app):
+    # épicas, tickets pendientes (TODO) y retrasados (vencidos y no DONE).
+    app_ids = [app.id for app in applications]
+    epic_counts: dict = {}
+    ticket_counts: dict = {}
+    if app_ids:
+        epic_counts = dict((await db.execute(
+            select(Epic.application_id, func.count(Epic.id))
+            .where(Epic.application_id.in_(app_ids))
+            .group_by(Epic.application_id)
+        )).all())
+        # tickets.due_date es timestamp SIN zona horaria (UTC naive)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        rows = await db.execute(
+            select(
+                Epic.application_id,
+                func.count(case((Ticket.status == TicketStatus.TODO, 1))),
+                func.count(case((
+                    (Ticket.due_date < now) & (Ticket.status != TicketStatus.DONE), 1
+                ))),
+            )
+            .join(Epic, Ticket.epic_id == Epic.id)
+            .where(Epic.application_id.in_(app_ids))
+            .group_by(Epic.application_id)
+        )
+        ticket_counts = {app_id: (pending, delayed) for app_id, pending, delayed in rows.all()}
+
+    responses = []
+    for app in applications:
+        pending, delayed = ticket_counts.get(app.id, (0, 0))
+        response = ApplicationResponse.from_orm(app)
+        response.epic_count = epic_counts.get(app.id, 0)
+        response.pending_count = pending
+        response.delayed_count = delayed
+        responses.append(response)
+    return responses
 
 
 @router.post(

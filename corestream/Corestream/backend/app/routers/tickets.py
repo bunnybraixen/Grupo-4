@@ -1216,10 +1216,21 @@ async def move_ticket_to_epic(
     epic_check = await db.execute(
         select(Epic).where(Epic.id == new_epic_id)
     )
-    if not epic_check.scalar_one_or_none():
+    new_epic = epic_check.scalar_one_or_none()
+    if not new_epic:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Épica con ID {new_epic_id} no encontrada"
+        )
+
+    # Un ticket solo se mueve entre épicas de su misma aplicación
+    current_app_id = (await db.execute(
+        select(Epic.application_id).where(Epic.id == ticket.epic_id)
+    )).scalar_one_or_none()
+    if current_app_id is not None and current_app_id != new_epic.application_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede mover un ticket a una épica de otra aplicación"
         )
 
     try:

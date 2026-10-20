@@ -207,15 +207,6 @@ async def test_move_ticket_a_epica_inexistente_lanza_404(db_session: AsyncSessio
     assert exc.value.status_code == 404
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: move_ticket_to_epic (app/routers/tickets.py, PATCH /tickets/{id}/move) "
-        "solo comprueba que la épica destino exista; no valida que pertenezca "
-        "a la misma aplicación que la de origen. FIX-002 ya no está aplicado: "
-        "un ticket puede saltar a otra aplicación."
-    ),
-)
 async def test_move_ticket_prevents_cross_app_movement(db_session: AsyncSession):
     """
     App A con Epic A1 y App B con Epic B1. Mover un ticket de A1 a B1 debe
@@ -268,14 +259,6 @@ async def test_list_applications_respeta_paginacion(db_session: AsyncSession):
     assert len(page) == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BUG: list_applications (app/routers/applications.py:35-66) ya no calcula "
-        "epic_count / pending_count / delayed_count; ApplicationResponse los "
-        "documenta pero siempre salen con el valor por defecto 0 (regresión de FIX-003)."
-    ),
-)
 async def test_application_list_has_real_counts(db_session: AsyncSession):
     """
     App con 3 épicas; Epic 1: 5 TODO + 2 DONE; Epic 2: 3 TODO + 1 retrasado.
