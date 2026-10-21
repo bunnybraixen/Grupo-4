@@ -28,19 +28,9 @@ import type { UserRole } from '@/types'
  */
 const routes: RouteRecordRaw[] = [
   {
-    /**
-     * Ruta raíz
-     * Redirige al dashboard apropiado basado en el rol del usuario
-     */
+    /** Ruta raíz: mostrar login si no hay sesión activa. */
     path: '/',
-    redirect: () => {
-      /**
-       * La redirección real ocurre en el guard de navegación
-       * que valida la autenticación primero
-       */
-      const userRole = localStorage.getItem('userRole')
-      return userRole === 'ADMIN' ? '/admin' : '/dev'
-    }
+    redirect: '/login'
   },
 
   /**

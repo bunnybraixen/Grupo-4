@@ -344,6 +344,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Limpia también el estado y la persistencia del cliente HTTP
     clearAuthTokens()
     localStorage.removeItem('authTokens')
+    localStorage.removeItem('userRole')
   }
 
   /**
