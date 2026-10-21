@@ -8,9 +8,11 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import { existsSync } from 'node:fs'
 
-const BACKEND_TARGET = existsSync('/.dockerenv')
-  ? 'http://backend:8000'
-  : 'http://localhost:8000'
+const BACKEND_TARGET =
+  process.env.VITE_BACKEND_URL ||
+  (existsSync('/.dockerenv')
+    ? 'http://backend:8000'
+    : 'http://localhost:8000')
 
 export default defineConfig({
   plugins: [vue()],
