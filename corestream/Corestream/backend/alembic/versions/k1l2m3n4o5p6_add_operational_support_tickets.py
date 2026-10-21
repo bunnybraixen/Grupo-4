@@ -1,7 +1,7 @@
 """add operational_support_tickets
 
 Revision ID: k1l2m3n4o5p6
-Revises: j6k7l8m9n0p1
+Revises: k7l8m9n0p1q2
 Create Date: 2026-10-13 00:00:00.000000
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'k1l2m3n4o5p6'
-down_revision: Union[str, None] = 'j6k7l8m9n0p1'
+down_revision: Union[str, None] = 'k7l8m9n0p1q2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

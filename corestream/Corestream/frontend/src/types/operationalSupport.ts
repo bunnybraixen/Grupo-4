@@ -9,7 +9,8 @@ export type OperationalTicketStatus = 'OPEN' | 'RESOLVED'
 
 export interface OperationalTicketUser {
   id: string
-  fullName: string
+  /** El backend devuelve snake_case (no pasa por el conversor de claves) */
+  full_name: string
   email: string
 }
 
