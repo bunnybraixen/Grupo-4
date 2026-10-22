@@ -37,10 +37,10 @@
       </svg>
 
       <p class="text-gray-700 dark:text-gray-300 font-medium mb-2">
-        Arrastra archivos aquí o haz clic para seleccionar
+        {{ t('fileUpload.dropzoneTitle') }}
       </p>
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Máximo 25 MB por archivo · Código, documentación y datos
+        {{ t('fileUpload.dropzoneSubtitle') }}
       </p>
 
       <button
@@ -48,29 +48,29 @@
         type="button"
         class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
       >
-        Seleccionar Archivos
+        {{ t('fileUpload.selectFiles') }}
       </button>
     </div>
 
     <!-- Tipos de archivo permitidos -->
     <div class="mt-4 grid grid-cols-3 gap-3">
       <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-        <h4 class="font-semibold text-blue-900 dark:text-blue-200 text-xs mb-1">Código</h4>
+        <h4 class="font-semibold text-blue-900 dark:text-blue-200 text-xs mb-1">{{ t('fileUpload.code') }}</h4>
         <p class="text-xs text-blue-700 dark:text-blue-300">.py .js .ts .java .go .rs ...</p>
       </div>
       <div class="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
-        <h4 class="font-semibold text-green-900 dark:text-green-200 text-xs mb-1">Documentación</h4>
+        <h4 class="font-semibold text-green-900 dark:text-green-200 text-xs mb-1">{{ t('fileUpload.documentation') }}</h4>
         <p class="text-xs text-green-700 dark:text-green-300">.md .pdf .docx .txt ...</p>
       </div>
       <div class="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg">
-        <h4 class="font-semibold text-purple-900 dark:text-purple-200 text-xs mb-1">Datos</h4>
+        <h4 class="font-semibold text-purple-900 dark:text-purple-200 text-xs mb-1">{{ t('fileUpload.data') }}</h4>
         <p class="text-xs text-purple-700 dark:text-purple-300">.json .yaml .sql .csv ...</p>
       </div>
     </div>
 
     <!-- Archivos en progreso -->
     <div v-if="uploadingFiles.length > 0" class="mt-6">
-      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Subiendo...</h3>
+      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{{ t('fileUpload.uploading') }}</h3>
       <div class="space-y-3">
         <div
           v-for="f in uploadingFiles"
@@ -91,12 +91,12 @@
 
     <!-- Lista de archivos cargados -->
     <div v-if="isLoading" class="mt-6 text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-      Cargando archivos...
+      {{ t('fileUpload.loadingFiles') }}
     </div>
 
     <div v-else-if="uploadedFiles.length > 0" class="mt-6">
       <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-        Archivos ({{ uploadedFiles.length }})
+        {{ t('fileUpload.filesCount', { count: uploadedFiles.length }) }}
       </h3>
       <div class="space-y-2">
         <div
@@ -123,7 +123,7 @@
               @click="downloadFile(doc)"
               type="button"
               class="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-              title="Descargar"
+              :title="t('fileUpload.download')"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -133,7 +133,7 @@
               @click="deleteFile(doc.id)"
               type="button"
               class="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-              title="Eliminar"
+              :title="t('fileUpload.delete')"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -145,7 +145,7 @@
     </div>
 
     <div v-else-if="!isLoading && uploadedFiles.length === 0 && uploadingFiles.length === 0" class="mt-6 text-center py-6 text-gray-400 dark:text-gray-500 text-sm">
-      No hay archivos aún. Sube el primero usando el área de arriba.
+      {{ t('fileUpload.noFilesYet') }}
     </div>
 
     <!-- Mensajes de estado -->
@@ -167,8 +167,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import { useDialogStore } from '@/stores/dialog'
+
+const { t } = useI18n()
 
 interface ApiDocument {
   id: string
@@ -250,9 +253,9 @@ const uploadFile = async (file: File) => {
     if (uploadItem) uploadItem.progress = 100
     uploadedFiles.value.unshift(doc)
     emit('uploaded', doc)
-    showMessage('success', `"${file.name}" cargado exitosamente`)
+    showMessage('success', t('fileUpload.uploadSuccess', { name: file.name }))
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : `Error al cargar ${file.name}`
+    const msg = error instanceof Error ? error.message : t('fileUpload.uploadError')
     showMessage('error', msg)
   } finally {
     uploadingFiles.value = uploadingFiles.value.filter((f) => f.id !== uploadId)
@@ -288,14 +291,14 @@ const downloadFile = async (doc: ApiDocument) => {
 }
 
 const deleteFile = async (docId: string) => {
-  if (!(await dialogStore.confirm('¿Eliminar este archivo permanentemente?'))) return
+  if (!(await dialogStore.confirm(t('fileUpload.confirmDeleteMessage')))) return
   try {
     await api.documents.delete(docId)
     uploadedFiles.value = uploadedFiles.value.filter((f) => f.id !== docId)
     emit('deleted', docId)
-    showMessage('success', 'Archivo eliminado exitosamente')
+    showMessage('success', t('fileUpload.deleteSuccess'))
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Error al eliminar el archivo'
+    const msg = error instanceof Error ? error.message : t('fileUpload.deleteError')
     showMessage('error', msg)
   }
 }

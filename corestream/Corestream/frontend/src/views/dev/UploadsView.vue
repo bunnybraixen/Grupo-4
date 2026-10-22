@@ -4,10 +4,10 @@
       <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">
-            Mis Cargas
+            {{ t('uploadsPage.tag') }}
           </p>
           <h1 class="text-3xl font-bold text-slate-900 dark:text-white">
-            Archivos de tickets
+            {{ t('uploadsPage.title') }}
           </h1>
         </div>
 
@@ -17,7 +17,7 @@
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="Buscar por archivo, ticket o proyecto..."
+              :placeholder="t('uploadsPage.searchPlaceholder')"
               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 pl-9 text-sm text-slate-800 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
             />
             <svg
@@ -38,7 +38,7 @@
           </div>
 
           <div class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200 text-center font-medium">
-            {{ totalDocuments }} documentos
+            {{ totalDocuments }} {{ t('codeDocsPage.visibleFiles') }}
           </div>
         </div>
       </header>
@@ -47,18 +47,18 @@
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800 space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-700 dark:text-slate-300">
-            Subir archivo a ticket
+            {{ t('uploadsPage.uploadToTicket') }}
           </h2>
 
           <div class="flex items-center gap-2">
             <label class="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              Ticket asignado:
+              {{ t('uploadsPage.assignedTicket') }}
             </label>
             <select
               v-model="selectedTicketId"
               class="rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-xs text-slate-800 dark:text-white outline-none focus:border-blue-500 max-w-xs truncate"
             >
-              <option value="" disabled>Selecciona un ticket...</option>
+              <option value="" disabled>{{ t('uploadsPage.selectTicket') }}</option>
               <option v-for="t in availableTickets" :key="t.id" :value="t.id">
                 {{ t.title }} ({{ t.appName }})
               </option>
@@ -67,11 +67,11 @@
         </div>
 
         <div v-if="availableTickets.length === 0 && !isLoading" class="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 text-xs text-amber-700 dark:text-amber-300">
-          No tienes tickets disponibles para adjuntar archivos. Los desarrolladores solo pueden subir archivos a los tickets que les han sido asignados.
+          {{ t('uploadsPage.noTicketsDeveloper') }}
         </div>
 
         <div v-else-if="!selectedTicketId" class="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-500 dark:text-slate-400">
-          Por favor selecciona un ticket arriba para habilitar la carga de documentos.
+          {{ t('uploadsPage.selectTicketHint') }}
         </div>
 
         <FileUpload
@@ -83,11 +83,11 @@
       </div>
 
       <div v-if="isLoading" class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        Cargando archivos...
+        {{ t('uploadsPage.loadingFiles') }}
       </div>
 
       <div v-else-if="filteredGroupedDocuments.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-        {{ searchQuery.trim() ? 'No se encontraron documentos que coincidan con la búsqueda.' : 'No tienes documentos visibles todavía.' }}
+        {{ searchQuery.trim() ? t('uploadsPage.noSearchResults') : t('uploadsPage.noVisibleFiles') }}
       </div>
 
       <div v-else class="space-y-6">
@@ -95,14 +95,14 @@
           <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/60">
             <div>
               <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                Proyecto
+                {{ t('uploadsPage.project') }}
               </p>
               <h2 class="mt-1 text-xl font-semibold text-slate-800 dark:text-white">
                 {{ group.applicationName }}
               </h2>
             </div>
             <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-              {{ group.documents.length }} archivo{{ group.documents.length === 1 ? '' : 's' }}
+              {{ group.documents.length }} {{ group.documents.length === 1 ? t('uploadsPage.file') : t('uploadsPage.files') }}
             </span>
           </div>
 
@@ -122,7 +122,7 @@
                     <template v-if="doc.ticket_id || doc.ticketId">
                       <span>•</span>
                       <span class="font-medium text-blue-600 dark:text-blue-400">
-                        Ticket: {{ getTicketTitle(String(doc.ticket_id ?? doc.ticketId)) }}
+                        {{ t('uploadsPage.ticketPrefix') }} {{ getTicketTitle(String(doc.ticket_id ?? doc.ticketId)) }}
                       </span>
                     </template>
                     <span>•</span>
@@ -137,14 +137,14 @@
                   @click="downloadDocument(doc)"
                   class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-900/60"
                 >
-                  Descargar
+                  {{ t('uploadsPage.download') }}
                 </button>
                 <button
                   type="button"
                   @click="deleteDocument(doc)"
                   class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-900/60"
                 >
-                  Eliminar
+                  {{ t('uploadsPage.delete') }}
                 </button>
               </div>
             </div>
@@ -157,10 +157,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import { useDialogStore } from '@/stores/dialog'
 import { useAuthStore } from '@/stores/auth'
 import FileUpload from '@/components/FileUpload.vue'
+
+const { t } = useI18n()
 
 type DocRow = {
   id: string

@@ -8,13 +8,13 @@
     <div class="text-center">
       <h1 class="text-6xl font-bold text-gray-900 dark:text-white mb-4">404</h1>
       <p class="text-xl text-gray-600 dark:text-gray-400 mb-8">
-        Página no encontrada
+        {{ t('notFound.title') }}
       </p>
       <router-link
         to="/"
         class="inline-block px-6 py-3 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
       >
-        Volver al inicio
+        {{ t('notFound.home') }}
       </router-link>
     </div>
   </div>
@@ -24,4 +24,7 @@
 /**
  * Componente NotFoundView - Sin lógica adicional requerida
  */
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 </script>

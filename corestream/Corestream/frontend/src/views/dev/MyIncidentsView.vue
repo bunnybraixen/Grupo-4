@@ -36,21 +36,21 @@
         <div class="flex items-center justify-between mb-6">
           <div>
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-              Mis Incidentes
+              {{ t('myIncidentsPage.title') }}
             </h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Tickets bloqueados que esperan tu respuesta.
+              {{ t('myIncidentsPage.subtitle') }}
             </p>
           </div>
         </div>
 
         <div class="mb-5">
-          <label for="incident-search" class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Buscar incidente o ticket</label>
+          <label for="incident-search" class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('myIncidentsPage.searchLabel') }}</label>
           <input
             id="incident-search"
             v-model="searchQuery"
             type="search"
-            placeholder="Título, descripción o proyecto..."
+            :placeholder="t('myIncidentsPage.searchPlaceholder')"
             class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           />
         </div>
@@ -64,7 +64,7 @@
           <div class="flex flex-col items-center gap-3">
             <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              {{ $t?.('incidents.loading') || 'Cargando incidentes...' }}
+              {{ t('myIncidentsPage.loading') }}
             </p>
           </div>
         </div>
@@ -79,40 +79,40 @@
               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p class="text-lg font-medium">
-            {{ $t?.('incidents.noAssigned') || 'No tienes incidentes asignados' }}
+            {{ t('myIncidentsPage.noAssigned') }}
           </p>
           <p class="text-sm mt-1">
-            {{ $t?.('incidents.noAssignedHint') || 'Los incidentes aparecerán aquí cuando te sean asignados.' }}
+            {{ t('myIncidentsPage.noAssignedHint') }}
           </p>
         </div>
 
         <!-- ===== SECCIONES POR ESTADO ===== -->
         <div v-else class="space-y-6">
           <p v-if="!searchedIncidents.length && !blockedTickets.length && !redirectedTickets.length" class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No hay incidentes ni tickets que coincidan con la búsqueda.
+            {{ t('myIncidentsPage.noMatches') }}
           </p>
           <!--
             Sección: Abiertos / Reabiertos
             Requieren atención inmediata del desarrollador.
           -->
           <section v-if="redirectedTickets.length" class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
-            <h2 class="mb-3 text-base font-semibold text-amber-900 dark:text-amber-200">Redirecciones pendientes de respuesta</h2>
+            <h2 class="mb-3 text-base font-semibold text-amber-900 dark:text-amber-200">{{ t('myIncidentsPage.pendingRedirects') }}</h2>
             <div class="space-y-2">
               <article v-for="ticket in redirectedTickets" :key="ticket.id" class="rounded-lg border border-amber-200 bg-white p-3 dark:border-amber-900 dark:bg-slate-900">
                 <button type="button" class="text-left" @click="router.push({ name: 'Workbench' })">
                   <span class="block font-medium text-gray-900 dark:text-white">{{ ticket.title }}</span>
-                  <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || 'Ticket redirigido' }}</span>
+                  <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || t('myIncidentsPage.redirectedTicket') }}</span>
                 </button>
                 <div class="mt-3 flex gap-2">
-                  <button type="button" :disabled="ticketActionLoading" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" @click="answerRedirect(ticket.id, true)">Aceptar</button>
-                  <button type="button" :disabled="ticketActionLoading" class="rounded-md border border-amber-500 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200 disabled:opacity-50" @click="answerRedirect(ticket.id, false)">Rechazar</button>
+                  <button type="button" :disabled="ticketActionLoading" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50" @click="answerRedirect(ticket.id, true)">{{ t('myIncidentsPage.accept') }}</button>
+                  <button type="button" :disabled="ticketActionLoading" class="rounded-md border border-amber-500 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200 disabled:opacity-50" @click="answerRedirect(ticket.id, false)">{{ t('myIncidentsPage.reject') }}</button>
                 </div>
               </article>
             </div>
           </section>
 
           <section v-if="blockedTickets.length" class="rounded-xl border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-slate-900">
-            <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-white">Tickets bloqueados</h2>
+            <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-white">{{ t('myIncidentsPage.blockedTickets') }}</h2>
             <div class="space-y-3">
               <article
                 v-for="ticket in blockedTickets"
@@ -120,13 +120,13 @@
                 class="rounded-lg border border-gray-200 p-3 dark:border-slate-700"
               >
                 <p class="font-medium text-gray-900 dark:text-white">{{ ticket.title }}</p>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || 'Ticket bloqueado' }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ ticket.appName || ticket.epicTitle || t('myIncidentsPage.blockedTicket') }}</p>
                 <p v-if="ticket.description" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ ticket.description }}</p>
                 <div class="mt-3 flex flex-wrap gap-2">
                   <input
                     v-model="resolutionDrafts[ticket.id]"
                     maxlength="500"
-                    placeholder="Respuesta o resolución (mínimo 10 caracteres)"
+                    :placeholder="t('myIncidentsPage.resolutionPlaceholder')"
                     class="min-w-[240px] flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   />
                   <button
@@ -135,7 +135,7 @@
                     class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                     @click="resolveTicketBlock(ticket.id)"
                   >
-                    Resolver y reanudar
+                    {{ t('myIncidentsPage.resolveAndResume') }}
                   </button>
                 </div>
               </article>
@@ -196,6 +196,7 @@
  * y un panel de detalle para información completa.
  */
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useIncidentsStore } from '@/stores/incidents'
 import { useAuthStore } from '@/stores/auth'
@@ -217,6 +218,7 @@ const applicationsStore = useApplicationsStore()
 const teamsStore = useTeamsStore()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const isTeamLeader = computed(() => authStore.isTeamLeader || authStore.isAdmin)
 const searchQuery = ref('')
 const workbenchTickets = ref<Ticket[]>([])

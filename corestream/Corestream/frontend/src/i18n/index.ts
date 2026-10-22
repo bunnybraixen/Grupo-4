@@ -7,15 +7,11 @@
 import { createI18n } from 'vue-i18n'
 import es from './es'
 import en from './en'
-import fr from './fr'
-import de from './de'
-import pt from './pt'
 
-/**
- * Tipo para los mensajes disponibles
- * Asegura tipado fuerte de las traducciones en toda la aplicación
- */
-type MessageSchema = typeof es
+export type SupportedLocale = 'es' | 'en'
+
+const storedLocale = localStorage.getItem('corestream-locale')
+const initialLocale: SupportedLocale = storedLocale === 'en' ? 'en' : 'es'
 
 /**
  * Configuración de la instancia de vue-i18n
@@ -25,18 +21,34 @@ type MessageSchema = typeof es
  * - globalInjection: permite acceso global al objeto $t
  * - legacy: false para usar API de Composition
  */
-const i18n = createI18n<MessageSchema>({
-  locale: 'es',
+const i18n = createI18n({
+  locale: initialLocale,
   fallbackLocale: 'en',
   messages: {
     es,
     en,
-    fr,
-    de,
-    pt,
   },
   globalInjection: true,
   legacy: false,
 })
+
+export function setLocale(locale: SupportedLocale): void {
+  if (typeof (i18n.global.locale as any) === 'object' && 'value' in (i18n.global.locale as any)) {
+    (i18n.global.locale as any).value = locale
+  } else {
+    (i18n.global as any).locale = locale
+  }
+  localStorage.setItem('corestream-locale', locale)
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('lang', locale)
+  }
+}
+
+export function getLocale(): SupportedLocale {
+  const current = typeof (i18n.global.locale as any) === 'object' && 'value' in (i18n.global.locale as any)
+    ? (i18n.global.locale as any).value
+    : (i18n.global as any).locale
+  return (current === 'en' ? 'en' : 'es') as SupportedLocale
+}
 
 export default i18n

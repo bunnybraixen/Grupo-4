@@ -8,50 +8,46 @@
 <template>
   <div class="p-8 max-w-6xl mx-auto text-[var(--text-primary)] space-y-10">
 
-    <!-- ====================================================== -->
-    <!-- HEADER                                                 -->
-    <!-- ====================================================== -->
+    <!-- HEADER -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Gestión de Equipos y Usuarios</h1>
+        <h1 class="text-3xl font-bold">{{ t('teamPage.title') }}</h1>
         <p class="mt-2 text-sm text-[var(--text-muted)]">
-          Crea equipos, asigna desarrolladores y gestiona usuarios del sistema
+          {{ t('teamPage.subtitle') }}
         </p>
       </div>
       <button @click="openTeamModal()"
         class="px-4 py-2.5 rounded-xl bg-[var(--teal-action)] text-white hover:opacity-90 font-medium text-sm flex items-center gap-2 shadow-sm">
-        + Crear Nuevo Equipo
+        {{ t('teamPage.createNewTeam') }}
       </button>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- MODAL CREAR / EDITAR EQUIPO                            -->
-    <!-- ====================================================== -->
+    <!-- MODAL CREAR / EDITAR EQUIPO -->
     <div v-if="showTeamModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-        <h2 class="text-xl font-bold">{{ editingTeamId ? 'Editar Equipo' : 'Crear Nuevo Equipo' }}</h2>
+        <h2 class="text-xl font-bold">{{ editingTeamId ? t('teamPage.editTeam') : t('teamPage.createNewTeam') }}</h2>
 
         <div>
-          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Nombre del equipo</label>
-          <input v-model="teamForm.name" placeholder="Ej: Equipo Frontend…"
+          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.teamName') }}</label>
+          <input v-model="teamForm.name" :placeholder="t('teamPage.teamNamePlaceholder')"
             class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 outline-none text-sm focus:border-[var(--teal)]" />
         </div>
 
         <div>
-          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Descripción</label>
-          <textarea v-model="teamForm.description" rows="2" placeholder="Propósito del equipo…"
+          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.description') }}</label>
+          <textarea v-model="teamForm.description" rows="2" :placeholder="t('teamPage.descriptionPlaceholder')"
             class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 outline-none text-sm focus:border-[var(--teal)]"></textarea>
         </div>
 
         <div>
           <div class="flex items-center justify-between mb-1">
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)]">Integrantes</label>
-            <span class="text-xs text-[var(--text-muted)]">{{ teamForm.memberEmails.length }} seleccionados</span>
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)]">{{ t('teamPage.members') }}</label>
+            <span class="text-xs text-[var(--text-muted)]">{{ t('teamPage.selectedCount', { count: teamForm.memberEmails.length }) }}</span>
           </div>
           <!-- Buscador de integrantes -->
           <input
             v-model="teamMemberSearch"
-            placeholder="🔍 Buscar integrante por nombre o correo…"
+            :placeholder="t('teamPage.searchMemberPlaceholder')"
             class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 mb-2 text-xs outline-none focus:border-[var(--teal)]"
           />
           <div class="max-h-48 overflow-y-auto space-y-1.5 border border-[var(--border-subtle)] rounded-lg p-3 bg-[var(--bg-app)]">
@@ -66,73 +62,68 @@
               <span class="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-subtle)]">{{ u.role }}</span>
             </div>
             <div v-if="filteredAvailableUsers.length === 0" class="text-xs text-[var(--text-muted)] py-2 text-center">
-              No se encontraron usuarios
+              {{ t('teamPage.noUsersFound') }}
             </div>
           </div>
         </div>
 
         <div>
-          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Agregar por correo (opcional)</label>
+          <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.addByEmail') }}</label>
           <div class="flex gap-2">
-            <input v-model="customEmail" @keyup.enter="addCustomEmail" placeholder="desarrollador@correo.com"
+            <input v-model="customEmail" @keyup.enter="addCustomEmail" :placeholder="t('teamPage.emailPlaceholder')"
               class="flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-sm outline-none focus:border-[var(--teal)]" />
             <button @click="addCustomEmail" type="button"
-              class="px-3 py-1.5 text-xs bg-[var(--teal)]/20 text-[var(--teal)] rounded-lg hover:bg-[var(--teal)]/30 font-medium">Añadir</button>
+              class="px-3 py-1.5 text-xs bg-[var(--teal)]/20 text-[var(--teal)] rounded-lg hover:bg-[var(--teal)]/30 font-medium">{{ t('teamPage.add') }}</button>
           </div>
         </div>
 
         <p v-if="modalError" class="text-xs text-red-400 font-medium">{{ modalError }}</p>
 
         <div class="flex justify-end gap-2 pt-2">
-          <button @click="closeTeamModal" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancelar</button>
+          <button @click="closeTeamModal" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">{{ t('common.cancel') }}</button>
           <button @click="saveTeam" :disabled="!teamForm.name.trim()"
-            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal-action)] text-white hover:opacity-90 disabled:opacity-50 font-medium">Guardar Equipo</button>
+            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal-action)] text-white hover:opacity-90 disabled:opacity-50 font-medium">{{ t('teamPage.saveTeam') }}</button>
         </div>
       </div>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- MODAL CONFIRMAR ELIMINAR EQUIPO                        -->
-    <!-- ====================================================== -->
+    <!-- MODAL CONFIRMAR ELIMINAR EQUIPO -->
     <div v-if="teamToDelete" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div class="bg-[var(--bg-card)] border border-red-500/30 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-        <h2 class="text-lg font-bold text-red-400">🗑 Eliminar Equipo</h2>
+        <h2 class="text-lg font-bold text-red-400">{{ t('teamPage.deleteTeamTitle') }}</h2>
         <p class="text-sm text-[var(--text-muted)]">
-          ¿Eliminar el equipo <span class="font-semibold text-[var(--text-primary)]">{{ teamToDelete.name }}</span>?
-          Los proyectos asignados a este equipo quedarán sin equipo asignado.
+          {{ t('teamPage.deleteTeamConfirm', { name: teamToDelete.name }) }}
         </p>
         <div class="flex justify-end gap-2">
-          <button @click="teamToDelete = null" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancelar</button>
-          <button @click="doDeleteTeam" class="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 font-medium">Sí, eliminar</button>
+          <button @click="teamToDelete = null" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">{{ t('common.cancel') }}</button>
+          <button @click="doDeleteTeam" class="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 font-medium">{{ t('teamPage.yesDelete') }}</button>
         </div>
       </div>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- MODAL EDITAR USUARIO                                   -->
-    <!-- ====================================================== -->
+    <!-- MODAL EDITAR USUARIO -->
     <div v-if="editingUser" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-        <h2 class="text-xl font-bold">✏️ Editar Usuario</h2>
+        <h2 class="text-xl font-bold">{{ t('teamPage.editUserTitle') }}</h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Nombre completo</label>
-            <input v-model="editUserForm.fullName" placeholder="Nombre Apellido"
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.fullName') }}</label>
+            <input v-model="editUserForm.fullName" :placeholder="t('teamPage.fullNamePlaceholder')"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Correo electrónico</label>
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.email') }}</label>
             <input v-model="editUserForm.email" type="email"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Nueva contraseña <span class="text-[var(--text-muted)] normal-case text-[10px]">(opcional)</span></label>
-            <input v-model="editUserForm.password" type="password" placeholder="Mínimo 8 caracteres…"
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.newPassword') }} <span class="text-[var(--text-muted)] normal-case text-[10px]">{{ t('teamPage.newPasswordHint') }}</span></label>
+            <input v-model="editUserForm.password" type="password" :placeholder="t('teamPage.newPasswordPlaceholder')"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Rol</label>
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.role') }}</label>
             <select v-model="editUserForm.role"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]">
               <option value="DEVELOPER">Developer</option>
@@ -145,24 +136,22 @@
         <p v-if="editUserError" class="text-xs text-red-400 font-medium">{{ editUserError }}</p>
 
         <div class="flex justify-end gap-2 pt-2">
-          <button @click="editingUser = null; editUserError = ''" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancelar</button>
+          <button @click="editingUser = null; editUserError = ''" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">{{ t('common.cancel') }}</button>
           <button @click="saveUserEdits" :disabled="savingUser || !editUserForm.email.trim()"
             class="px-4 py-2 rounded-lg text-sm bg-[var(--teal-action)] text-white hover:opacity-90 disabled:opacity-50 font-medium">
-            {{ savingUser ? 'Guardando…' : 'Guardar cambios' }}
+            {{ savingUser ? t('teamPage.saving') : t('teamPage.saveChanges') }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- LISTA DE EQUIPOS                                       -->
-    <!-- ====================================================== -->
+    <!-- LISTA DE EQUIPOS -->
     <div class="space-y-4">
-      <h2 class="text-xl font-bold flex items-center gap-2">👥 Equipos Configurados ({{ teamsStore.teams.length }})</h2>
+      <h2 class="text-xl font-bold flex items-center gap-2">{{ t('teamPage.configuredTeams', { count: teamsStore.teams.length }) }}</h2>
 
       <div v-if="teamsStore.teams.length === 0"
         class="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
-        No hay equipos creados. Haz clic en «+ Crear Nuevo Equipo» para empezar.
+        {{ t('teamPage.noTeamsCreated') }}
       </div>
 
       <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -174,15 +163,15 @@
                 <h3 class="font-bold text-lg flex items-center gap-2">
                   <span class="inline-block h-3 w-3 rounded-full bg-[var(--teal)]"></span>{{ team.name }}
                 </h3>
-                <p class="text-xs text-[var(--text-muted)] mt-1">{{ team.description || 'Sin descripción' }}</p>
+                <p class="text-xs text-[var(--text-muted)] mt-1">{{ team.description || t('teamPage.noDescription') }}</p>
               </div>
               <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--teal)]/15 text-[var(--teal)] border border-[var(--teal)]/30 flex-shrink-0">
-                {{ team.memberEmails.length }} miembro{{ team.memberEmails.length === 1 ? '' : 's' }}
+                {{ t('teamPage.membersCount', { count: team.memberEmails.length }) }}
               </span>
             </div>
             <div class="mt-4">
-              <p class="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2 font-semibold">Integrantes:</p>
-              <div v-if="team.memberEmails.length === 0" class="text-xs text-[var(--text-muted)] italic">Sin miembros.</div>
+              <p class="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2 font-semibold">{{ t('teamPage.members') }}:</p>
+              <div v-if="team.memberEmails.length === 0" class="text-xs text-[var(--text-muted)] italic">{{ t('teamPage.noMembers') }}</div>
               <div v-else class="flex flex-wrap gap-1.5">
                 <span v-for="email in team.memberEmails" :key="email"
                   class="px-2.5 py-1 rounded-lg text-xs bg-[var(--bg-app)] border border-[var(--border-subtle)] flex items-center gap-1.5">
@@ -194,38 +183,36 @@
           </div>
           <div class="flex gap-2 pt-3 border-t border-[var(--border-subtle)] justify-end">
             <button @click="openTeamModal(team)"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--teal)]">✏️ Editar</button>
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--teal)]">{{ t('teamPage.edit') }}</button>
             <button @click="teamToDelete = team"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20">🗑 Eliminar</button>
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20">{{ t('teamPage.delete') }}</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- CREAR NUEVO USUARIO                                    -->
-    <!-- ====================================================== -->
+    <!-- CREAR NUEVO USUARIO -->
     <div class="space-y-4">
-      <h2 class="text-xl font-bold flex items-center gap-2">➕ Crear Nuevo Usuario</h2>
+      <h2 class="text-xl font-bold flex items-center gap-2">{{ t('teamPage.createNewUser') }}</h2>
       <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6 shadow-sm space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Nombre completo</label>
-            <input v-model="newUser.fullName" placeholder="Nombre Apellido"
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.fullName') }}</label>
+            <input v-model="newUser.fullName" :placeholder="t('teamPage.fullNamePlaceholder')"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Correo electrónico</label>
-            <input v-model="newUser.email" type="email" placeholder="usuario@correo.com"
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.email') }}</label>
+            <input v-model="newUser.email" type="email" :placeholder="t('teamPage.emailInputPlaceholder')"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Contraseña</label>
-            <input v-model="newUser.password" type="password" placeholder="Mínimo 8 caracteres"
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.password') }}</label>
+            <input v-model="newUser.password" type="password" :placeholder="t('teamPage.passwordPlaceholder')"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]" />
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">Rol</label>
+            <label class="block text-xs uppercase tracking-widest text-[var(--text-muted)] mb-1">{{ t('teamPage.role') }}</label>
             <select v-model="newUser.role"
               class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg p-2.5 text-sm outline-none focus:border-[var(--teal)]">
               <option value="DEVELOPER">Developer</option>
@@ -239,33 +226,31 @@
         <div class="flex justify-end">
           <button @click="createUser" :disabled="creatingUser || !newUser.email.trim() || !newUser.password.trim()"
             class="px-5 py-2.5 rounded-xl bg-[var(--teal-action)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50">
-            {{ creatingUser ? 'Creando…' : '✓ Crear Usuario' }}
+            {{ creatingUser ? t('teamPage.creating') : t('teamPage.createUser') }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ====================================================== -->
-    <!-- TABLA USUARIOS DEL SISTEMA                             -->
-    <!-- ====================================================== -->
+    <!-- TABLA USUARIOS DEL SISTEMA -->
     <div class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-xl font-bold flex items-center gap-2">👤 Usuarios del Sistema ({{ systemUsers.length }})</h2>
+        <h2 class="text-xl font-bold flex items-center gap-2">{{ t('teamPage.systemUsers', { count: systemUsers.length }) }}</h2>
         <button @click="loadUsers" class="text-xs text-[var(--teal)] border border-[var(--teal)]/40 px-3 py-1.5 rounded-lg hover:bg-[var(--teal)]/10">
-          ↻ Recargar
+          {{ t('teamPage.reload') }}
         </button>
       </div>
 
-      <div v-if="loadingUsers" class="text-sm text-[var(--text-muted)] py-4 text-center">Cargando usuarios…</div>
+      <div v-if="loadingUsers" class="text-sm text-[var(--text-muted)] py-4 text-center">{{ t('teamPage.loadingUsers') }}</div>
       <div v-else class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
         <table class="w-full text-left text-sm border-collapse">
           <thead>
             <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-app)] text-[var(--text-muted)] text-xs uppercase tracking-wider">
-              <th class="p-3">Nombre</th>
-              <th class="p-3">Correo</th>
-              <th class="p-3">Rol</th>
-              <th class="p-3">Equipos</th>
-              <th class="p-3 text-right">Acciones</th>
+              <th class="p-3">{{ t('teamPage.nameHeader') }}</th>
+              <th class="p-3">{{ t('teamPage.emailHeader') }}</th>
+              <th class="p-3">{{ t('teamPage.roleHeader') }}</th>
+              <th class="p-3">{{ t('teamPage.teamsHeader') }}</th>
+              <th class="p-3 text-right">{{ t('teamPage.actionsHeader') }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-[var(--border-subtle)]">
@@ -284,18 +269,18 @@
                 <div class="flex flex-wrap gap-1">
                   <span v-for="t in teamsStore.getUserTeams(u.email)" :key="t.id"
                     class="px-2 py-0.5 rounded text-xs bg-[var(--teal)]/15 text-[var(--teal)] border border-[var(--teal)]/30 font-medium">{{ t.name }}</span>
-                  <span v-if="teamsStore.getUserTeams(u.email).length === 0" class="text-xs text-[var(--text-muted)]">Sin equipo</span>
+                  <span v-if="teamsStore.getUserTeams(u.email).length === 0" class="text-xs text-[var(--text-muted)]">{{ t('teamPage.noTeam') }}</span>
                 </div>
               </td>
               <td class="p-3 text-right">
                 <button @click="openEditUser(u)"
                   class="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--teal)] text-[var(--text-primary)]">
-                  ✏️ Editar
+                  {{ t('teamPage.edit') }}
                 </button>
               </td>
             </tr>
             <tr v-if="systemUsers.length === 0">
-              <td colspan="5" class="p-6 text-center text-[var(--text-muted)] text-sm">No hay usuarios cargados.</td>
+              <td colspan="5" class="p-6 text-center text-[var(--text-muted)] text-sm">{{ t('teamPage.noUsersLoaded') }}</td>
             </tr>
           </tbody>
         </table>
@@ -307,9 +292,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useTeamsStore, type Team } from '@/stores/teams'
 import { api } from '@/services/api'
 import type { User } from '@/types'
+
+const { t } = useI18n()
 
 const teamsStore = useTeamsStore()
 const systemUsers = ref<User[]>([])

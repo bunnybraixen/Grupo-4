@@ -15,16 +15,16 @@
     <!-- Encabezado -->
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold">Soporte</h1>
+        <h1 class="text-2xl font-bold">{{ t('supportOperations.title') }}</h1>
         <p class="mt-1 text-sm text-[var(--text-muted)]">
-          Tickets operacionales con timer. Los líderes y el admin los resuelven.
+          {{ t('supportOperations.subtitle') }}
         </p>
       </div>
       <button
         class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         @click="showCreateForm = !showCreateForm"
       >
-        {{ showCreateForm ? 'Cancelar' : '+ Nuevo ticket' }}
+        {{ showCreateForm ? t('supportOperations.cancel') : t('supportOperations.newTicket') }}
       </button>
     </div>
 
@@ -35,22 +35,22 @@
       @submit.prevent="handleCreate"
     >
       <div>
-        <label class="mb-1 block text-sm font-medium">Título <span class="text-red-500">*</span></label>
+        <label class="mb-1 block text-sm font-medium">{{ t('supportOperations.ticketTitle') }} <span class="text-red-500">*</span></label>
         <input
           v-model="form.title"
           type="text"
           required
-          placeholder="Resumen breve del problema"
+          :placeholder="t('supportOperations.ticketTitlePlaceholder')"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none focus:border-blue-500"
         />
       </div>
       <div>
-        <label class="mb-1 block text-sm font-medium">Problema <span class="text-red-500">*</span></label>
+        <label class="mb-1 block text-sm font-medium">{{ t('supportOperations.problem') }} <span class="text-red-500">*</span></label>
         <textarea
           v-model="form.problem"
           rows="3"
           required
-          placeholder="Describe qué está pasando y cómo afecta..."
+          :placeholder="t('supportOperations.problemPlaceholder')"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none focus:border-blue-500"
         ></textarea>
       </div>
@@ -60,7 +60,7 @@
         :disabled="creating || !form.title.trim() || !form.problem.trim()"
         class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
       >
-        {{ creating ? 'Creando...' : 'Crear ticket' }}
+        {{ creating ? t('supportOperations.creating') : t('supportOperations.createTicket') }}
       </button>
     </form>
 
@@ -71,7 +71,7 @@
     <!-- Alcance: Todos / Mis tickets (solo ADMIN y GROUP_LEADER pueden ver todos) -->
     <div v-if="store.canManageAll" class="mb-4 flex items-center gap-2">
       <span class="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
-        Alcance
+        {{ t('supportOperations.scope') }}
       </span>
       <button
         v-for="opt in scopeOptions"
@@ -104,13 +104,13 @@
 
     <!-- Loading -->
     <div v-if="store.isLoading" class="py-16 text-center text-sm text-[var(--text-muted)]">
-      Cargando tickets...
+      {{ t('supportOperations.loadingTickets') }}
     </div>
 
     <!-- ===== TICKETS ACTIVOS (timer corriendo) ===== -->
     <div v-else-if="activeTab === 'open'" class="space-y-3">
       <p v-if="store.openTickets.length === 0" class="py-12 text-center text-sm text-[var(--text-muted)]">
-        No hay tickets de soporte activos.
+        {{ t('supportOperations.noActiveTickets') }}
       </p>
       <article
         v-for="ticket in store.openTickets"
@@ -122,14 +122,14 @@
             <h2 class="font-semibold">{{ ticket.title }}</h2>
             <p class="mt-1 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{{ ticket.problem }}</p>
             <p class="mt-2 text-xs text-[var(--text-muted)]">
-              Levantado por {{ ticket.created_by?.full_name ?? '—' }}
+              {{ t('supportOperations.raisedBy', { name: ticket.created_by?.full_name ?? '—' }) }}
               · {{ formatDate(ticket.created_at) }}
             </p>
             <!-- Asignado (redirección) -->
             <p class="mt-1 text-xs text-[var(--text-muted)]">
-              Asignado a
+              {{ t('supportOperations.assignedTo') }}
               <span class="font-medium text-[var(--text-secondary)]">
-                {{ ticket.assignee?.full_name ?? 'Sin asignar' }}
+                {{ ticket.assignee?.full_name ?? t('supportOperations.unassigned') }}
               </span>
             </p>
           </div>
@@ -140,7 +140,7 @@
             </span>
             <span class="flex items-center gap-1.5 text-xs text-emerald-500">
               <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
-              En curso
+              {{ t('supportOperations.inProgress') }}
             </span>
             <!-- Redirigir: solo ADMIN / GROUP_LEADER -->
             <button
@@ -148,14 +148,14 @@
               class="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
               @click="openAssign(ticket)"
             >
-              Redirigir
+              {{ t('supportOperations.redirect') }}
             </button>
             <button
               v-if="canResolveTicket(ticket)"
               class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
               @click="openResolve(ticket)"
             >
-              Marcar como resuelto
+              {{ t('supportOperations.markResolved') }}
             </button>
           </div>
         </div>
@@ -165,7 +165,7 @@
     <!-- ===== ARCHIVADOS (resueltos, revisión de detalles) ===== -->
     <div v-else class="space-y-3">
       <p v-if="store.archivedTickets.length === 0" class="py-12 text-center text-sm text-[var(--text-muted)]">
-        Aún no hay tickets archivados.
+        {{ t('supportOperations.noArchivedTickets') }}
       </p>
       <article
         v-for="ticket in store.archivedTickets"
@@ -177,7 +177,7 @@
             <div class="flex items-center gap-2">
               <h2 class="font-semibold">{{ ticket.title }}</h2>
               <span class="rounded-full bg-[var(--status-done-bg)] px-2 py-0.5 text-xs font-medium text-[var(--status-done-text)]">
-                Resuelto
+                {{ t('supportOperations.resolved') }}
               </span>
             </div>
             <p class="mt-1 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{{ ticket.problem }}</p>
@@ -185,14 +185,14 @@
             <!-- Detalle: cómo se arregló -->
             <div class="mt-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3">
               <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                Cambios realizados
+                {{ t('supportOperations.changesMade') }}
               </p>
               <p class="whitespace-pre-wrap text-sm">{{ ticket.resolution_notes || '—' }}</p>
             </div>
 
             <p class="mt-2 text-xs text-[var(--text-muted)]">
-              Levantado por {{ ticket.created_by?.full_name ?? '—' }} ·
-              Resuelto por {{ ticket.resolved_by?.full_name ?? '—' }}
+              {{ t('supportOperations.raisedBy', { name: ticket.created_by?.full_name ?? '—' }) }} ·
+              {{ t('supportOperations.resolvedBy', { name: ticket.resolved_by?.full_name ?? '—' }) }}
               · {{ ticket.resolved_at ? formatDate(ticket.resolved_at) : '' }}
             </p>
           </div>
@@ -211,16 +211,16 @@
       @click.self="resolvingTicket = null"
     >
       <div class="w-full max-w-lg rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-6">
-        <h2 class="mb-1 text-lg font-semibold">Marcar como resuelto</h2>
+        <h2 class="mb-1 text-lg font-semibold">{{ t('supportOperations.resolveTicket') }}</h2>
         <p class="mb-4 text-sm text-[var(--text-muted)]">{{ resolvingTicket.title }}</p>
 
         <label class="mb-1 block text-sm font-medium">
-          Cambios realizados <span class="text-red-500">*</span>
+          {{ t('supportOperations.changesMade') }} <span class="text-red-500">*</span>
         </label>
         <textarea
           v-model="resolutionNotes"
           rows="5"
-          placeholder="Describe los cambios que se hicieron para resolver el problema..."
+          :placeholder="t('supportOperations.resolutionNotesPlaceholder')"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none focus:border-blue-500"
         ></textarea>
         <p v-if="resolveError" class="mt-2 text-sm text-red-500">{{ resolveError }}</p>
@@ -230,14 +230,14 @@
             class="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm"
             @click="resolvingTicket = null"
           >
-            Cancelar
+            {{ t('supportOperations.cancel') }}
           </button>
           <button
             class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             :disabled="resolveLoading || resolutionNotes.trim().length < 10"
             @click="handleResolve"
           >
-            {{ resolveLoading ? 'Guardando...' : 'Resolver y archivar' }}
+            {{ resolveLoading ? t('teamPage.saving') : t('supportOperations.resolveAndArchive') }}
           </button>
         </div>
       </div>
@@ -250,17 +250,17 @@
       @click.self="assigningTicket = null"
     >
       <div class="w-full max-w-lg rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-6">
-        <h2 class="mb-1 text-lg font-semibold">Redirigir ticket</h2>
+        <h2 class="mb-1 text-lg font-semibold">{{ t('supportOperations.redirectTicket') }}</h2>
         <p class="mb-4 text-sm text-[var(--text-muted)]">
           {{ assigningTicket.title }}
         </p>
 
-        <label class="mb-1 block text-sm font-medium">Asignar a</label>
+        <label class="mb-1 block text-sm font-medium">{{ t('supportOperations.assignTo') }}</label>
         <select
           v-model="assignTo"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none focus:border-blue-500"
         >
-          <option value="">Sin asignar</option>
+          <option value="">{{ t('supportOperations.unassigned') }}</option>
           <option v-for="u in store.assignableUsers" :key="u.id" :value="u.id">
             {{ u.full_name }} ({{ u.email }})
           </option>
@@ -272,14 +272,14 @@
             class="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm"
             @click="assigningTicket = null"
           >
-            Cancelar
+            {{ t('supportOperations.cancel') }}
           </button>
           <button
             class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             :disabled="assignLoading"
             @click="handleAssign"
           >
-            {{ assignLoading ? 'Guardando...' : 'Redirigir' }}
+            {{ assignLoading ? t('teamPage.saving') : t('supportOperations.redirect') }}
           </button>
         </div>
       </div>
@@ -289,10 +289,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useSupportOperationsStore } from '@/stores/supportOperations'
 import type { OperationalTicket } from '@/types/operationalSupport'
 
+const { t } = useI18n()
 const authStore = useAuthStore()
 const store = useSupportOperationsStore()
 
@@ -329,13 +331,13 @@ function canResolveTicket(ticket: OperationalTicket): boolean {
 }
 
 const scopeOptions = computed(() => [
-  { id: 'all' as const, label: 'Todos' },
-  { id: 'mine' as const, label: 'Mis tickets' },
+  { id: 'all' as const, label: t('supportOperations.allTickets') },
+  { id: 'mine' as const, label: t('supportOperations.myTickets') },
 ])
 
 const tabs = computed(() => [
-  { id: 'open' as const, label: 'Activos', count: store.openTickets.length },
-  { id: 'archived' as const, label: 'Archivados', count: store.archivedTickets.length },
+  { id: 'open' as const, label: t('supportOperations.activeTickets'), count: store.openTickets.length },
+  { id: 'archived' as const, label: t('supportOperations.archivedTickets'), count: store.archivedTickets.length },
 ])
 
 function formatDate(iso: string): string {

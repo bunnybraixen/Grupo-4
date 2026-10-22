@@ -14,15 +14,17 @@
     <svg v-else class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6.5 6.5 0 0 0 8.268 8.268c.344-.215.825-.003.803.401Z" />
     </svg>
-    <span>{{ isDark ? 'Modo claro' : 'Modo oscuro' }}</span>
+    <span>{{ isDark ? t('settings.lightMode') : t('settings.darkMode') }}</span>
   </button>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
 
+const { t } = useI18n()
 const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.theme === 'dark')
-const actionLabel = computed(() => `Cambiar a modo ${isDark.value ? 'claro' : 'oscuro'}`)
+const actionLabel = computed(() => isDark.value ? t('settings.lightMode') : t('settings.darkMode'))
 </script>

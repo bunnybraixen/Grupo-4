@@ -13,9 +13,9 @@
   <div class="space-y-6 p-6">
     <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Reportes generales</h1>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('reportsPage.title') }}</h1>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Estado operacional consolidado del proyecto con los filtros aplicados en pantalla.
+          {{ t('reportsPage.subtitle') }}
         </p>
       </div>
       <div class="flex gap-2">
@@ -25,7 +25,7 @@
           :disabled="!summary || isExporting"
           @click="downloadPDF"
         >
-          Exportar PDF
+          {{ t('reportsPage.exportPdf') }}
         </button>
         <button
           type="button"
@@ -33,7 +33,7 @@
           :disabled="!summary || isExporting"
           @click="downloadExcel"
         >
-          Exportar Excel
+          {{ t('reportsPage.exportExcel') }}
         </button>
       </div>
     </header>
@@ -41,12 +41,12 @@
     <!-- ============================ FILTROS ============================ -->
     <section class="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Proyecto
+        {{ t('reportsPage.project') }}
         <select
           v-model="selectedProjectId"
           class="min-w-56 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-teal-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         >
-          <option value="">Selecciona un proyecto…</option>
+          <option value="">{{ t('reportsPage.selectProject') }}</option>
           <option v-for="project in projects" :key="project.id" :value="project.id">
             {{ project.name }}
           </option>
@@ -54,13 +54,13 @@
       </label>
 
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Desarrollador
+        {{ t('reportsPage.developer') }}
         <select
           v-model="selectedDeveloperId"
           :disabled="!developers.length"
           class="min-w-56 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-teal-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         >
-          <option value="">Todo el equipo</option>
+          <option value="">{{ t('reportsPage.allTeam') }}</option>
           <option v-for="developer in developers" :key="developer.id" :value="developer.id">
             {{ developer.fullName || developer.email }}
           </option>
@@ -68,13 +68,13 @@
       </label>
 
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Sprint
+        {{ t('reportsPage.sprint') }}
         <select
           v-model="selectedSprintId"
           :disabled="!sprints.length"
           class="min-w-56 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-teal-500 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         >
-          <option value="">Todos los sprints</option>
+          <option value="">{{ t('reportsPage.allSprints') }}</option>
           <option v-for="sprint in sprints" :key="sprint.id" :value="sprint.id">
             {{ sprint.name }}
           </option>
@@ -82,12 +82,12 @@
       </label>
     </section>
 
-    <p v-if="isLoading" class="text-sm text-gray-500 dark:text-gray-400">Cargando reporte…</p>
+    <p v-if="isLoading" class="text-sm text-gray-500 dark:text-gray-400">{{ t('reportsPage.loading') }}</p>
     <p v-else-if="errorMessage" class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-500">
       {{ errorMessage }}
     </p>
     <p v-else-if="!summary" class="text-sm text-gray-500 dark:text-gray-400">
-      Selecciona un proyecto para ver el reporte consolidado.
+      {{ t('reportsPage.selectProjectHint') }}
     </p>
 
     <template v-else>
@@ -108,12 +108,12 @@
       <!-- ===================== DISTRIBUCIONES ===================== -->
       <section class="grid gap-4 lg:grid-cols-2">
         <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">Distribución por estado</h2>
+          <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">{{ t('reportsPage.statusDistribution') }}</h2>
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-gray-500 dark:text-gray-400">
-                <th class="py-1 font-medium">Estado</th>
-                <th class="py-1 text-right font-medium">Tickets</th>
+                <th class="py-1 font-medium">{{ t('reportsPage.status') }}</th>
+                <th class="py-1 text-right font-medium">{{ t('reportsPage.tickets') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -126,12 +126,12 @@
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">Distribución por prioridad</h2>
+          <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">{{ t('reportsPage.priorityDistribution') }}</h2>
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-gray-500 dark:text-gray-400">
-                <th class="py-1 font-medium">Prioridad</th>
-                <th class="py-1 text-right font-medium">Tickets</th>
+                <th class="py-1 font-medium">{{ t('reportsPage.priority') }}</th>
+                <th class="py-1 text-right font-medium">{{ t('reportsPage.tickets') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -146,14 +146,14 @@
 
       <!-- ===================== CUELLOS DE BOTELLA ===================== -->
       <section v-if="bottleneckRows.length" class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">Cuellos de botella (permanencia más alta)</h2>
+        <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">{{ t('reportsPage.bottlenecks') }}</h2>
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-gray-500 dark:text-gray-400">
-              <th class="py-1 font-medium">Estado</th>
-              <th class="py-1 text-right font-medium">Tickets</th>
-              <th class="py-1 text-right font-medium">Promedio (h)</th>
-              <th class="py-1 text-right font-medium">Máximo (h)</th>
+              <th class="py-1 font-medium">{{ t('reportsPage.status') }}</th>
+              <th class="py-1 text-right font-medium">{{ t('reportsPage.tickets') }}</th>
+              <th class="py-1 text-right font-medium">{{ t('reportsPage.averageHours') }}</th>
+              <th class="py-1 text-right font-medium">{{ t('reportsPage.maxHours') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -179,6 +179,7 @@
  * coincida exactamente con lo que se ve en pantalla.
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import apiClient from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -194,6 +195,7 @@ import type { Sprint } from '@/types/sprint'
 
 const authStore = useAuthStore()
 const teamsStore = useTeamsStore()
+const { t, locale } = useI18n()
 
 const projects = ref<Application[]>([])
 const developers = ref<User[]>([])
@@ -207,57 +209,44 @@ const isExporting = ref(false)
 const errorMessage = ref('')
 let summaryRequestId = 0
 
-const STATUS_LABELS: Record<string, string> = {
-  TODO: 'Por hacer',
-  IN_PROGRESS: 'En progreso',
-  BLOCKED: 'Bloqueado',
-  REDIRECTED: 'Redirigido',
-  DONE: 'Completado',
-  COMPLETED: 'Completado'
-}
-
-const PRIORITY_LABELS: Record<string, string> = {
-  LOW: 'Baja',
-  MEDIUM: 'Media',
-  HIGH: 'Alta',
-  URGENT: 'Urgente'
-}
+const statusLabel = (status: string) => t(`analyticsPage.statuses.${status === 'COMPLETED' ? 'DONE' : status}`)
+const priorityLabel = (priority: string) => t(`statuses.${priority.toLowerCase()}`)
 // ── Datos computados para la vista y la exportación ─────────────────────────
 
 const indicators = computed(() => {
   const data = summary.value
   if (!data) return []
   return [
-    { label: 'Tickets totales', value: String(data.total_tickets ?? 0) },
-    { label: 'Completados', value: String(data.completed_tickets ?? 0) },
-    { label: 'Pendientes', value: String(data.pending_tickets ?? 0) },
-    { label: 'En progreso', value: String(data.in_progress_tickets ?? 0) },
-    { label: 'Vencidos', value: String(data.overdue_tickets ?? 0) },
-    { label: 'Bloqueados', value: String(data.blocked_tickets ?? 0) },
-    { label: 'Redireccionados', value: String(data.redirected_tickets ?? 0) },
-    { label: '% Avance', value: `${Math.round(data.completion_percentage ?? 0)}%` },
-    { label: '% Bloqueo', value: `${Math.round(data.blocked_percentage ?? 0)}%` },
-    { label: 'Tiempo promedio', value: `${data.avg_time_hours ?? data.avg_time ?? 0} h` }
+    { label: t('reportsPage.indicators.totalTickets'), value: String(data.total_tickets ?? 0) },
+    { label: t('reportsPage.indicators.completed'), value: String(data.completed_tickets ?? 0) },
+    { label: t('reportsPage.indicators.pending'), value: String(data.pending_tickets ?? 0) },
+    { label: t('reportsPage.indicators.inProgress'), value: String(data.in_progress_tickets ?? 0) },
+    { label: t('reportsPage.indicators.overdue'), value: String(data.overdue_tickets ?? 0) },
+    { label: t('reportsPage.indicators.blocked'), value: String(data.blocked_tickets ?? 0) },
+    { label: t('reportsPage.indicators.redirected'), value: String(data.redirected_tickets ?? 0) },
+    { label: t('reportsPage.indicators.progress'), value: `${Math.round(data.completion_percentage ?? 0)}%` },
+    { label: t('reportsPage.indicators.blockedPercent'), value: `${Math.round(data.blocked_percentage ?? 0)}%` },
+    { label: t('reportsPage.indicators.averageTime'), value: `${data.avg_time_hours ?? data.avg_time ?? 0} h` }
   ]
 })
 
 const statusRows = computed<string[][]>(() =>
   Object.entries(summary.value?.by_status ?? {}).map(([status, count]) => [
-    STATUS_LABELS[status] ?? status,
+    statusLabel(status),
     String(count)
   ])
 )
 
 const priorityRows = computed<string[][]>(() =>
   Object.entries(summary.value?.by_priority ?? {}).map(([priority, count]) => [
-    PRIORITY_LABELS[priority] ?? priority,
+    priorityLabel(priority),
     String(count)
   ])
 )
 
 const bottleneckRows = computed<string[][]>(() =>
   (summary.value?.bottlenecks ?? []).map((item) => [
-    STATUS_LABELS[item.status] ?? item.status,
+    statusLabel(item.status),
     String(item.ticket_count),
     String(Math.round(item.average_hours ?? 0)),
     String(Math.round(item.max_hours ?? 0))
@@ -297,7 +286,7 @@ const loadProjects = async (): Promise<void> => {
     projects.value.sort((a, b) => a.name.localeCompare(b.name))
     selectedProjectId.value = projects.value[0]?.id ?? ''
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'No se pudieron cargar los proyectos.'
+    errorMessage.value = error instanceof Error ? error.message : t('reportsPage.projectLoadError')
   }
 }
 
@@ -342,7 +331,7 @@ const loadSummary = async (projectId: string): Promise<void> => {
     if (requestId === summaryRequestId) summary.value = response.data
   } catch (error) {
     if (requestId === summaryRequestId) {
-      errorMessage.value = error instanceof Error ? error.message : 'No se pudo cargar el reporte.'
+      errorMessage.value = error instanceof Error ? error.message : t('reportsPage.reportLoadError')
     }
   } finally {
     if (requestId === summaryRequestId) isLoading.value = false
@@ -362,15 +351,15 @@ const buildPayload = (): ProjectReportPayload => {
       projectName: projectName.value,
       developerName: developerName.value,
       sprintName: sprintName.value,
-      generatedAt: new Date().toLocaleString('es-CL')
+      generatedAt: new Date().toLocaleString(locale.value)
     },
     indicators: indicators.value,
     tables: [
-      table('Distribución por estado', ['Estado', 'Tickets'], statusRows.value),
-      table('Distribución por prioridad', ['Prioridad', 'Tickets'], priorityRows.value),
+      table(t('reportsPage.statusDistribution'), [t('reportsPage.status'), t('reportsPage.tickets')], statusRows.value),
+      table(t('reportsPage.priorityDistribution'), [t('reportsPage.priority'), t('reportsPage.tickets')], priorityRows.value),
       table(
-        'Cuellos de botella',
-        ['Estado', 'Tickets', 'Promedio (h)', 'Máximo (h)'],
+        t('reportsPage.bottleneckTable'),
+        [t('reportsPage.status'), t('reportsPage.tickets'), t('reportsPage.averageHours'), t('reportsPage.maxHours')],
         bottleneckRows.value
       )
     ]

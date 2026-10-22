@@ -14,14 +14,14 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="text-[var(--teal)] text-lg">🔎</span>
-          <span class="text-sm font-semibold text-[var(--text-primary)]">Búsqueda global</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">{{ t('workbenchDashboard.globalSearch') }}</span>
         </div>
         <button
           v-if="globalSearchQuery.trim()"
           @click="clearGlobalSearch"
           class="text-[11px] text-[var(--text-muted)] underline hover:text-[var(--teal)]"
         >
-          Limpiar
+          {{ t('workbenchDashboard.clearFilters') }}
         </button>
       </div>
 
@@ -30,12 +30,12 @@
           v-model="globalSearchQuery"
           @input="runGlobalSearch"
           type="text"
-          placeholder="Buscar épicas, tickets, subtareas, usuarios…"
+          :placeholder="t('workbenchDashboard.searchPlaceholder')"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
         />
       </div>
 
-      <div v-if="globalSearchLoading" class="text-[11px] text-[var(--text-muted)]">Buscando coincidencias…</div>
+      <div v-if="globalSearchLoading" class="text-[11px] text-[var(--text-muted)]">{{ t('workbenchDashboard.searching') }}</div>
       <div v-else-if="hasGlobalSearchResults" class="space-y-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)] p-2">
         <div v-for="(items, groupName) in globalSearchResults" :key="groupName">
           <div v-if="items.length" class="space-y-1.5">
@@ -66,7 +66,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-[var(--teal)] text-lg">🎫</span>
-          <span class="text-sm font-semibold text-[var(--text-primary)]">Mis Tickets</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">{{ t('workbenchDashboard.myTickets') }}</span>
           <span class="px-2 py-0.5 text-xs font-medium bg-[var(--bg-app)] text-[var(--text-muted)] rounded-full border border-[var(--border-subtle)]">
             {{ tickets.length }}
           </span>
@@ -79,30 +79,30 @@
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-app)] hover:bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span :class="['text-sm', isLoading ? 'animate-spin inline-block' : '']">↻</span>
-          Actualizar
+          {{ t('workbenchDashboard.refresh') }}
         </button>
       </div>
 
       <!-- Búsqueda libre por título/descripción -->
       <div class="flex items-center gap-2">
-        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Buscar:</span>
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{{ t('workbenchDashboard.search') }}</span>
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Título o descripción..."
+          :placeholder="t('workbenchDashboard.titleOrDescription')"
           class="w-full max-w-md rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
         />
       </div>
 
       <div id="workbench-ticket-filters" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-          <span>Asignado</span>
+          <span>{{ t('workbenchDashboard.assignee') }}</span>
           <select
             :value="assigneeFilterIds[0] ?? ''"
             @change="onAssigneeFilterChange($event)"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
           >
-            <option value="">Todos</option>
+            <option value="">{{ t('workbenchDashboard.statuses.all') }}</option>
             <option v-for="user in availableUsers" :key="user.id" :value="user.id">
               {{ user.fullName || user.email }}
             </option>
@@ -110,13 +110,13 @@
         </label>
 
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-          <span>Sprint</span>
+          <span>{{ t('workbenchDashboard.sprint') }}</span>
           <select
             :value="sprintFilterId"
             @change="setSprintFilterId(($event.target as HTMLSelectElement).value)"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
           >
-            <option value="">Todos los sprints</option>
+            <option value="">{{ t('workbenchDashboard.allSprints') }}</option>
             <option v-for="sprint in workbenchSprints" :key="sprint.id" :value="sprint.id">
               {{ sprint.name }}{{ sprint.appName ? ` · ${sprint.appName}` : '' }}
             </option>
@@ -124,38 +124,38 @@
         </label>
 
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-          <span>Ordenar por</span>
+          <span>{{ t('workbenchDashboard.sortBy') }}</span>
           <select
             :value="sortBy"
             @change="setSort(($event.target as HTMLSelectElement).value as any, sortOrder)"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
           >
-            <option value="default">Orden por defecto</option>
-            <option value="priority">Prioridad</option>
-            <option value="title">Nombre alfabético</option>
-            <option value="progress">Avance</option>
-            <option value="status">Estado</option>
-            <option value="dueDate">Fecha límite</option>
-            <option value="createdAt">Fecha de creación</option>
+            <option value="default">{{ t('workbenchDashboard.defaultSort') }}</option>
+            <option value="priority">{{ t('workbenchDashboard.priority').replace(':', '') }}</option>
+            <option value="title">{{ t('workbenchDashboard.alphabetical') }}</option>
+            <option value="progress">{{ t('workbenchDashboard.progress') }}</option>
+            <option value="status">{{ t('analyticsPage.status') }}</option>
+            <option value="dueDate">{{ t('workbenchDashboard.dueDate') }}</option>
+            <option value="createdAt">{{ t('workbenchDashboard.createdDate') }}</option>
           </select>
         </label>
 
         <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-          <span>Dirección</span>
+          <span>{{ t('workbenchDashboard.direction') }}</span>
           <select
             :value="sortOrder"
             @change="setSort(sortBy, ($event.target as HTMLSelectElement).value as any)"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
           >
-            <option value="desc">Descendente</option>
-            <option value="asc">Ascendente</option>
+            <option value="desc">{{ t('workbenchDashboard.descending') }}</option>
+            <option value="asc">{{ t('workbenchDashboard.ascending') }}</option>
           </select>
         </label>
       </div>
 
       <!-- Filtros de Estado -->
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Estado:</span>
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{{ t('workbenchDashboard.statusLabel') }}</span>
         <button
           v-for="f in statusFilters"
           :key="f.value"
@@ -173,7 +173,7 @@
 
       <!-- Filtros de Prioridad -->
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Prioridad:</span>
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{{ t('workbenchDashboard.priority') }}</span>
         <button
           v-for="f in priorityFilters"
           :key="f.value"
@@ -191,7 +191,7 @@
 
       <!-- Filtros de Fecha -->
       <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Fecha:</span>
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{{ t('workbenchDashboard.date') }}</span>
         <button
           v-for="f in dateFilters"
           :key="f.value"
@@ -212,7 +212,7 @@
       <!-- La fila se oculta si el cliente todavía no tiene etiquetas.  -->
       <!-- ============================================================ -->
       <div v-if="availableTags.length" class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">Etiquetas:</span>
+        <span class="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{{ t('workbenchDashboard.tags') }}</span>
         <button
           v-for="tag in availableTags"
           :key="tag.id"
@@ -248,13 +248,13 @@
         class="flex flex-col items-center justify-center h-48 gap-3 text-slate-400"
       >
         <span class="text-5xl opacity-40">⚠️</span>
-        <p class="text-sm font-medium text-red-300">Error al cargar los tickets</p>
+        <p class="text-sm font-medium text-red-300">{{ t('workbenchDashboard.loadError') }}</p>
         <p class="text-xs opacity-60 max-w-xs text-center">{{ error }}</p>
         <button
           @click="refresh"
           class="mt-1 px-4 py-1.5 text-xs font-medium text-[var(--teal)] border border-[var(--teal)]/40 rounded-lg hover:bg-[var(--teal)]/10 transition-colors"
         >
-          Reintentar
+          {{ t('workbenchDashboard.retry') }}
         </button>
       </div>
 
@@ -264,7 +264,7 @@
         class="flex flex-col items-center justify-center h-48 gap-3 text-slate-400"
       >
         <span class="text-4xl animate-spin inline-block">↻</span>
-        <p class="text-sm">Cargando tickets...</p>
+        <p class="text-sm">{{ t('workbenchDashboard.loading') }}</p>
       </div>
 
       <!-- Estado: Sin resultados con filtros activos -->
@@ -273,12 +273,12 @@
         class="flex flex-col items-center justify-center h-48 gap-3 text-slate-400"
       >
         <span class="text-5xl opacity-40">🔍</span>
-        <p class="text-sm font-medium">No hay tickets con los filtros seleccionados</p>
+        <p class="text-sm font-medium">{{ t('workbenchDashboard.filteredEmpty') }}</p>
         <button
           @click="clearFilters"
           class="mt-1 px-4 py-1.5 text-xs font-medium text-[var(--teal)] border border-[var(--teal)]/40 rounded-lg hover:bg-[var(--teal)]/10 transition-colors"
         >
-          Limpiar filtros
+          {{ t('workbenchDashboard.clearFilters') }}
         </button>
       </div>
 
@@ -288,8 +288,8 @@
         class="flex flex-col items-center justify-center h-48 gap-3 text-slate-400"
       >
         <span class="text-5xl opacity-40">📭</span>
-        <p class="text-sm font-medium">No tienes tickets asignados</p>
-        <p class="text-xs opacity-60">Las tareas que te asignen aparecerán aquí</p>
+        <p class="text-sm font-medium">{{ t('workbenchDashboard.assignedEmpty') }}</p>
+        <p class="text-xs opacity-60">{{ t('workbenchDashboard.ticketsWillAppear') }}</p>
       </div>
 
       <!-- Lista de tarjetas de ticket con controles completos -->
@@ -335,7 +335,7 @@
             <span v-if="ticket.assignee" class="text-[var(--teal)] font-medium">
               👤 {{ ticket.assignee.fullName || ticket.assignee.email }}
             </span>
-            <span v-else>👤 Sin asignar</span>
+            <span v-else>👤 {{ t('workbenchDashboard.unassigned') }}</span>
             <span v-if="ticket.dueDate">📅 {{ ticket.dueDate.slice(0, 10) }}</span>
           </div>
 
@@ -366,7 +366,7 @@
               :disabled="working"
               class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)] disabled:opacity-50"
             >
-              <option value="">👤 Asignar a...</option>
+              <option value="">👤 {{ t('workbenchDashboard.assignTo') }}</option>
               <option v-for="u in assignableUsers" :key="u.id" :value="u.id">
                 {{ u.fullName || u.email }}
               </option>
@@ -392,12 +392,12 @@
 
             <button
               v-if="ticket.status === 'TODO' || ticket.status === 'IN_PROGRESS'"
-              :title="ticket.status === 'TODO' ? 'Inicia el ticket para levantar una pregunta' : 'Levantar una pregunta y bloquear el ticket'"
+              :title="ticket.status === 'TODO' ? t('actions.startToAsk') : t('actions.raiseQuestion')"
               :disabled="working || ticket.status !== 'IN_PROGRESS'"
               @click="openQuestionFor = openQuestionFor === ticket.id ? null : ticket.id"
               class="px-3 py-1 rounded-lg text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              {{ ticket.status === 'TODO' ? 'Inicia para preguntar' : 'Levantar Pregunta' }}
+              {{ ticket.status === 'TODO' ? t('actions.startToAskShort') : t('actions.raiseQuestion') }}
             </button>
 
             <button
@@ -406,7 +406,7 @@
               @click="acceptRedirect(ticket)"
               class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
             >
-              Aceptar ticket
+              {{ t('actions.acceptTicket') }}
             </button>
 
             <button
@@ -415,21 +415,21 @@
               @click="openRedirectFor = openRedirectFor === ticket.id ? null : ticket.id"
               class="px-3 py-1 rounded-lg text-xs bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30 disabled:opacity-50 font-medium"
             >
-              Redireccionar
+              {{ t('actions.redirect') }}
             </button>
 
             <button
               @click="toggleSubtaskPanel(ticket.id)"
               class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
             >
-              ☑ Subtareas ({{ (ticket.subtasks ?? []).length }})
+              ☑ {{ t('workbench.subtasks') }} ({{ (ticket.subtasks ?? []).length }})
             </button>
 
             <button
               @click="toggleDetail(ticket.id)"
               class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
             >
-              👁 Detalle
+              👁 {{ t('workbenchDashboard.detail') }}
             </button>
           </div>
 
@@ -439,24 +439,24 @@
           </div>
 
           <div v-if="openQuestionFor === ticket.id" class="rounded-lg border border-amber-500/30 bg-[var(--bg-app)] p-3 space-y-2">
-            <label class="block text-xs font-medium text-[var(--text-secondary)]">¿Qué impide avanzar?</label>
-            <textarea v-model="questionDraft" maxlength="500" rows="3" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" placeholder="Describe la pregunta o dependencia (mínimo 10 caracteres)"></textarea>
+            <label class="block text-xs font-medium text-[var(--text-secondary)]">{{ t('workbenchDashboard.questionTitle') }}</label>
+            <textarea v-model="questionDraft" maxlength="500" rows="3" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" :placeholder="t('workbenchDashboard.questionPlaceholder')"></textarea>
             <div class="flex justify-end gap-2">
-              <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
-              <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">Bloquear ticket</button>
+              <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">{{ t('common.cancel') }}</button>
+              <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">{{ t('workbenchDashboard.blockTicket') }}</button>
             </div>
           </div>
 
           <div v-if="openRedirectFor === ticket.id" class="rounded-lg border border-sky-500/30 bg-[var(--bg-app)] p-3 space-y-2">
-            <label class="block text-xs font-medium text-[var(--text-secondary)]">Nuevo responsable</label>
+            <label class="block text-xs font-medium text-[var(--text-secondary)]">{{ t('workbenchDashboard.newAssignee') }}</label>
             <select v-model="redirectAssigneeId" class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400">
-              <option value="">Seleccionar usuario...</option>
+              <option value="">{{ t('workbenchDashboard.selectUser') }}</option>
               <option v-for="user in redirectCandidates" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
             </select>
-            <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" placeholder="Motivo obligatorio (mínimo 10 caracteres)"></textarea>
+            <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" :placeholder="t('workbenchDashboard.requiredReason')"></textarea>
             <div class="flex justify-end gap-2">
-              <button @click="openRedirectFor = null; redirectAssigneeId = ''; redirectReason = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
-              <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">Confirmar redirección</button>
+              <button @click="openRedirectFor = null; redirectAssigneeId = ''; redirectReason = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">{{ t('common.cancel') }}</button>
+              <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">{{ t('workbenchDashboard.confirmRedirect') }}</button>
             </div>
           </div>
 
@@ -465,8 +465,8 @@
             v-if="openSubtasksFor === ticket.id"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] p-3 space-y-2"
           >
-            <p v-if="!(ticket.subtasks ?? []).length" class="text-xs text-[var(--text-muted)]">
-              Este ticket todavía no tiene subtareas.
+              <p v-if="!(ticket.subtasks ?? []).length" class="text-xs text-[var(--text-muted)]">
+              {{ t('workbenchDashboard.noSubtasks') }}
             </p>
             <ul v-else class="space-y-1.5">
               <li v-for="sub in ticket.subtasks" :key="sub.id" class="flex items-center gap-2 text-xs">
@@ -489,7 +489,7 @@
               <input
                 v-model="newSubtaskTitle"
                 @keyup.enter="addSubtask(ticket)"
-                placeholder="Nueva subtarea…"
+                :placeholder="t('workbenchDashboard.newSubtask')"
                 class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs outline-none focus:border-[var(--teal)]"
               />
               <button
@@ -497,7 +497,7 @@
                 @click="addSubtask(ticket)"
                 class="px-3 py-1 rounded-lg text-xs bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30 disabled:opacity-50 font-medium"
               >
-                Añadir
+                {{ t('workbenchDashboard.add') }}
               </button>
             </div>
           </div>
@@ -507,13 +507,13 @@
             v-if="openDetailFor === ticket.id"
             class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] p-3 text-xs space-y-1.5"
           >
-            <p><span class="text-[var(--text-muted)]">Descripción:</span> {{ ticket.description || '—' }}</p>
-            <p><span class="text-[var(--text-muted)]">Épica:</span> {{ ticket.epicTitle || '—' }}</p>
-            <p><span class="text-[var(--text-muted)]">Asignado:</span> {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : 'Sin asignar' }}</p>
+            <p><span class="text-[var(--text-muted)]">{{ t('workbenchDashboard.description') }}</span> {{ ticket.description || '—' }}</p>
+            <p><span class="text-[var(--text-muted)]">{{ t('workbenchDashboard.epic') }}</span> {{ ticket.epicTitle || '—' }}</p>
+            <p><span class="text-[var(--text-muted)]">{{ t('workbenchDashboard.assignedLabel') }}</span> {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : t('workbenchDashboard.noAssignee') }}</p>
             <p v-if="ticket.prLink"><span class="text-[var(--text-muted)]">PR:</span>
               <a :href="ticket.prLink" target="_blank" rel="noopener" class="text-[var(--teal)] underline break-all ml-1">{{ ticket.prLink }}</a>
             </p>
-            <p><span class="text-[var(--text-muted)]">Fecha límite:</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
+            <p><span class="text-[var(--text-muted)]">{{ t('workbenchDashboard.dueDateLabel') }}</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
 
             <!-- ======================================================== -->
             <!-- NEW-03: selector para asociar / desasociar etiquetas     -->
@@ -521,11 +521,11 @@
             <!-- ======================================================== -->
             <div class="pt-2 border-t border-[var(--border-subtle)] space-y-2">
               <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="text-[var(--text-muted)]">Etiquetas:</span>
+                <span class="text-[var(--text-muted)]">{{ t('workbenchDashboard.tags') }}</span>
                 <TagChips :tags="ticket.tags ?? []" size="xs" show-empty empty-label="Sin etiquetas" />
               </div>
               <p v-if="!availableTags.length" class="italic text-[var(--text-muted)]">
-                Todavía no hay etiquetas reutilizables creadas.
+                {{ t('workbenchDashboard.noTags') }}
               </p>
               <div v-else class="flex flex-wrap gap-x-3 gap-y-1">
                 <label v-for="tag in availableTags" :key="tag.id" class="inline-flex items-center gap-1.5">
@@ -546,7 +546,7 @@
                 @click="saveTicketTags(ticket)"
                 class="px-3 py-1 rounded-lg text-xs font-medium bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30 disabled:opacity-50"
               >
-                Guardar etiquetas
+                {{ t('common.save') }}
               </button>
             </div>
 
@@ -554,15 +554,15 @@
             <div class="pt-2 border-t border-[var(--border-subtle)] space-y-2">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
-                  Documentos del ticket
+                  {{ t('workbenchPage.ticketDocuments') }}
                 </span>
                 <span class="rounded-full bg-[var(--bg-tag)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
-                  adjuntos
+                  {{ t('workbenchPage.attachments') }}
                 </span>
               </div>
               <FileUpload v-if="ticket.id && canUploadToTicket(ticket)" :ticket-id="ticket.id" />
               <div v-else class="rounded-lg border border-dashed border-[var(--border-subtle)] p-3 text-center text-xs text-[var(--text-muted)]">
-                <p>Solo puedes subir archivos a los tickets asignados a ti.</p>
+                <p>{{ t('workbenchDashboard.noPermissionUpload') }}</p>
                 <div class="mt-2">
                   <FileUpload :ticket-id="ticket.id" />
                 </div>
@@ -572,7 +572,7 @@
             <!-- WEB-11: historial cronológico de eventos del ticket -->
             <div class="pt-2 border-t border-[var(--border-subtle)]">
               <p class="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--text-muted)]">
-                Historial de eventos
+                {{ t('workbenchPage.history') }}
               </p>
               <TicketHistory
                 :events="ticketEvents[ticket.id] ?? []"
@@ -590,6 +590,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useWorkbenchTickets } from '@/composables/useWorkbenchTickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
@@ -599,6 +600,8 @@ import TagChips from '@/components/shared/TagChips.vue'
 import TicketHistory from '@/components/shared/TicketHistory.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import type { Subtask, Tag, Ticket, TicketHistoryEvent, User } from '@/types'
+
+const { t } = useI18n()
 
 // =====================================================================
 // COMPOSABLE: tickets del workbench + filtros
@@ -696,19 +699,17 @@ const globalSearchQuery = ref('')
 const globalSearchResults = ref<Record<string, any[]>>({})
 const globalSearchLoading = ref(false)
 
-const globalSearchLabel = (group: string): string => ({
-  tickets: 'Tickets',
-  incidents: 'Incidentes',
-  epics: 'Épicas',
-  subtasks: 'Subtareas',
-  projects: 'Proyectos',
-  documents: 'Documentos',
-  users: 'Usuarios',
-} as Record<string, string>)[group] ?? group
+const globalSearchLabel = (group: string): string => {
+  const groups: Record<string, string> = {
+    tickets: 'tickets', incidents: 'incidents', epics: 'epics', subtasks: 'subtasks',
+    projects: 'projects', documents: 'documents', users: 'users',
+  }
+  return groups[group] ? t(`workbenchDashboard.groups.${groups[group]}`) : group
+}
 
 const globalSearchDisplayValue = (group: string, item: any): string => {
-  if (group === 'users') return item.subtitle || item.email || item.title || 'Usuario'
-  return item.title || item.name || item.fullName || item.email || 'Resultado'
+  if (group === 'users') return item.subtitle || item.email || item.title || t('workbenchDashboard.groups.user')
+  return item.title || item.name || item.fullName || item.email || t('workbenchDashboard.groups.result')
 }
 
 const globalSearchMeta = (group: string, item: any): string => {
@@ -865,26 +866,26 @@ const clearFilters = () => {
 // =====================================================================
 
 const statusFilters = computed(() => [
-  { value: 'all' as const, label: 'Todos' },
-  { value: 'in_progress' as const, label: 'En progreso' },
-  { value: 'todo' as const, label: 'Por hacer' },
-  { value: 'blocked' as const, label: 'Bloqueado' },
-  { value: 'completed' as const, label: 'Completados' },
+  { value: 'all' as const, label: t('workbenchDashboard.statuses.all') },
+  { value: 'in_progress' as const, label: t('workbenchDashboard.statuses.inProgress') },
+  { value: 'todo' as const, label: t('workbenchDashboard.statuses.todo') },
+  { value: 'blocked' as const, label: t('workbenchDashboard.statuses.blocked') },
+  { value: 'completed' as const, label: t('workbenchDashboard.statuses.completed') },
 ])
 
 const priorityFilters = computed(() => [
-  { value: 'all' as const, label: 'Todas' },
-  { value: 'LOW' as const, label: 'Baja' },
-  { value: 'MEDIUM' as const, label: 'Media' },
-  { value: 'HIGH' as const, label: 'Alta' },
-  { value: 'URGENT' as const, label: 'Urgente' },
+  { value: 'all' as const, label: t('workbenchDashboard.priorities.all') },
+  { value: 'LOW' as const, label: t('workbenchDashboard.priorities.low') },
+  { value: 'MEDIUM' as const, label: t('workbenchDashboard.priorities.medium') },
+  { value: 'HIGH' as const, label: t('workbenchDashboard.priorities.high') },
+  { value: 'URGENT' as const, label: t('workbenchDashboard.priorities.urgent') },
 ])
 
 const dateFilters = computed(() => [
-  { value: 'all' as const, label: 'Todas las fechas' },
-  { value: 'overdue' as const, label: 'Atrasados' },
-  { value: 'today' as const, label: 'Hoy' },
-  { value: 'week' as const, label: 'Esta semana' },
+  { value: 'all' as const, label: t('workbenchDashboard.dates.all') },
+  { value: 'overdue' as const, label: t('workbenchDashboard.dates.overdue') },
+  { value: 'today' as const, label: t('workbenchDashboard.dates.today') },
+  { value: 'week' as const, label: t('workbenchDashboard.dates.week') },
 ])
 
 // =====================================================================
@@ -1111,11 +1112,12 @@ const handleAssigneeChange = async (ticket: Ticket, event: Event) => {
 // CLASES CSS
 // =====================================================================
 
-const statusLabel = (status: string): string =>
-  ({ TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Completado', COMPLETED: 'Completado' })[status] ?? status
+const statusLabel = (status: string): string => {
+  const statusKey = status === 'COMPLETED' ? 'DONE' : status
+  return t(`analyticsPage.statuses.${statusKey}`)
+}
 
-const priorityLabel = (priority: string): string =>
-  ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' })[priority] ?? priority
+const priorityLabel = (priority: string): string => t(`statuses.${priority.toLowerCase()}`)
 
 const statusClass = (status: string): string =>
   ({

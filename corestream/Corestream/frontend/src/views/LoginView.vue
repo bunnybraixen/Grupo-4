@@ -7,12 +7,24 @@
 -->
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <label class="absolute right-4 top-4">
+      <span class="sr-only">{{ t('auth.selectLanguage') }}</span>
+      <select
+        :value="locale"
+        :aria-label="t('auth.selectLanguage')"
+        class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        @change="changeLocale"
+      >
+        <option value="es">{{ t('auth.spanish') }}</option>
+        <option value="en">{{ t('auth.english') }}</option>
+      </select>
+    </label>
     <div class="max-w-md w-full space-y-8">
       <!-- Encabezado -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-primary">CoreStream</h1>
         <p class="mt-2 text-gray-600 dark:text-gray-400">
-          Plataforma de Gestión de Proyectos
+          {{ t('auth.productDescription') }}
         </p>
       </div>
 
@@ -23,7 +35,7 @@
       >
         <div>
           <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Correo Electrónico
+            {{ t('auth.email') }}
           </label>
           <input
             id="email"
@@ -31,14 +43,14 @@
             type="email"
             required
             autocomplete="username"
-            placeholder="tu-correo@empresa.com"
+            :placeholder="t('auth.emailPlaceholder')"
             class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 outline-none focus:border-blue-500"
           />
         </div>
 
         <div>
           <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Contraseña
+            {{ t('auth.password') }}
           </label>
           <input
             id="password"
@@ -61,7 +73,7 @@
           :disabled="isSubmitting"
           class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg px-4 py-2 transition-colors"
         >
-          {{ isSubmitting ? 'Iniciando sesión…' : 'Iniciar Sesión' }}
+          {{ isSubmitting ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
       </form>
     </div>
@@ -79,11 +91,18 @@
  */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { setLocale, type SupportedLocale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const { locale, t } = useI18n()
 const authStore = useAuthStore()
+
+function changeLocale(event: Event) {
+  setLocale((event.target as HTMLSelectElement).value as SupportedLocale)
+}
 
 const email = ref('')
 const password = ref('')
@@ -118,10 +137,10 @@ const handleSubmit = async (): Promise<void> => {
     const status = err?.response?.status
     errorMessage.value =
       status === 401
-        ? 'Correo o contraseña incorrectos'
+        ? t('auth.invalidCredentials')
         : status === 429
-          ? 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.'
-          : err?.response?.data?.detail ?? 'No se pudo iniciar sesión'
+          ? t('auth.tooManyAttempts')
+          : err?.response?.data?.detail ?? t('auth.signInFailed')
   } finally {
     isSubmitting.value = false
   }

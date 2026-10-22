@@ -1,0 +1,114 @@
+===== DOCKER COMPOSE: SERVICIOS =====
+postgres
+redis
+backend
+frontend
+
+===== DOCKER COMPOSE: ESTADO =====
+NAME                  IMAGE                 COMMAND                  SERVICE    CREATED        STATUS                    PORTS
+corestream-backend    corestream-backend    "uvicorn app.main:ap…"   backend    44 hours ago   Up 16 minutes             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+corestream-frontend   corestream-frontend   "docker-entrypoint.s…"   frontend   44 hours ago   Up 47 minutes             0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+corestream-postgres   postgres:15           "docker-entrypoint.s…"   postgres   44 hours ago   Up 17 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+corestream-redis      redis:7-alpine        "docker-entrypoint.s…"   redis      44 hours ago   Up 17 minutes (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+
+===== CONTENEDORES =====
+NAMES                 IMAGE                 PORTS                                         STATUS
+corestream-frontend   corestream-frontend   0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp   Up 47 minutes
+corestream-backend    corestream-backend    0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp   Up 16 minutes
+corestream-postgres   postgres:15           0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   Up 17 minutes (healthy)
+corestream-redis      redis:7-alpine        0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp   Up 17 minutes (healthy)
+
+===== REDES =====
+NETWORK ID     NAME                            DRIVER    SCOPE
+95db1b293f22   bridge                          bridge    local
+8f9534dab903   corestream_corestream-network   bridge    local
+b7cbdda86e67   host                            host      local
+cdf738883b18   none                            null      local
+
+===== VOLUMENES =====
+DRIVER    VOLUME NAME
+local     1d3ee8e8f41adfcfc9beaea73b3d3d3d016704562b5b1e2258887a5a91d29867
+local     5e543ed880861f938499e7a3efd56400367d974aad624ae0c7ac686f3bb6791e
+local     11ab9b01d2a55460cbdcfe7b6ba4017464d5674e55220ef3124d72a9f83a3b28
+local     47a0f08050cd67ae2c790f16f9d2cf9608e0d4d9833ea91c9204b3a6a660444e
+local     75b2c98f7b0b32fa047b4a04f75291f5f68563879c15925b578635f05ae36da6
+local     221b635521204f1ccb132fda5d5df23a3723eeba5327b41926e06c550d6b1cc7
+local     5779d0f004f24a697c404a2cca461f92ce15f69ea353229b25e87c9a8e08643d
+local     564431d54e372736719df6c2ac1e6487b32edd0b318d4cea18e449da5473c1d0
+local     c4e78494c9b4aa21271f16e15a998698eae57ebe2906597ae6fceee130d489f6
+local     cb027f7a9b1c283a9a5e7d1069556cb81ff63b92e0e3fbe996f4dcc68e8ed378
+local     cb815adef21e6f5e8bfc121b76f625d6451921defce92ad91e402ed097afc741
+local     corestream_postgres-data
+local     corestream_redis-data
+local     d93e195781874996b12ed267323a3e531e5597df1a3d75c213eef44074002d57
+local     e80749ec8857505874260ae124abd462734854f08a63b3305021bb4792d13b76
+
+===== ARCHIVOS DEL PROYECTO =====
+./backend/alembic/env.py
+./backend/alembic.ini
+./backend/alembic/script.py.mako
+./backend/app/config.py
+./backend/app/database.py
+./backend/app/__init__.py
+./backend/app/logging_config.py
+./backend/app/main.py
+./backend/app/redis_client.py
+./backend/Dockerfile
+./backend/.dockerignore
+./backend/.env.example
+./backend/migrations/create_indices_fix_003.sql
+./backend/_probe.py
+./backend/pyproject.toml
+./backend/.pytest_cache/CACHEDIR.TAG
+./backend/.pytest_cache/.gitignore
+./backend/.pytest_cache/README.md
+./backend/pytest.ini
+./backend/requirements-dev.txt
+./backend/requirements.txt
+./backend/scripts/backup_db.sh
+./backend/scripts/restore_db.sh
+./backend/tests/conftest.py
+./backend/tests/__init__.py
+./backend/tests/test_analytics.py
+./backend/tests/test_models_lazy_loading.py
+./backend/tests/test_operational_support.py
+./backend/tests/test_rbac.py
+./backend/tests/test_state_machine.py
+./backend/tests/test_support_tickets.py
+./backend/tests/test_tickets.py
+./backend/tests/test_validations.py
+./backend/tests/validation_script.sh
+./create_users.py
+./diagnostico_corestream.txt
+./docker
+./docker-compose.dev.yml
+./docker-compose.yml
+./docs/ARCHITECTURE.md
+./docs/COLORS.md
+./docs/DEPLOYMENT.md
+./docs/FUTURE_WORK.md
+./docs/RBAC.md
+./docs/SETUP.md
+./e2e_simulation.py
+./.env.example
+./frontend/cypress.config.ts
+./frontend/cypress/tsconfig.json
+./frontend/Dockerfile
+./frontend/Dockerfile.dev
+./frontend/.dockerignore
+./frontend/.env.example
+./frontend/index.html
+./frontend/nginx/default.conf
+./frontend/package.json
+./frontend/package-lock.json
+./frontend/postcss.config.js
+./frontend/src/App.vue
+./frontend/src/main.ts
+./frontend/src/vite-env.d.ts
+./frontend/tailwind.config.js
+./frontend/tsconfig.json
+./frontend/vite.config.ts
+./frontend/vitest.config.ts
+./.github/workflows/ci.yml
+./.gitignore
+./README.md

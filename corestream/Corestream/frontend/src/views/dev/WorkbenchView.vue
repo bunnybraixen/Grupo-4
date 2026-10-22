@@ -16,9 +16,9 @@
     <!-- Header banner del usuario y su equipo -->
     <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Mi Workbench</h1>
+        <h1 class="text-3xl font-bold">{{ t('workbenchPage.title') }}</h1>
         <p class="mt-1 text-sm text-[var(--text-muted)]">
-          Bienvenido {{ userName }}. Revisa los proyectos y tareas asignados a tu equipo.
+          {{ t('workbenchPage.welcome', { name: userName }) }}
         </p>
       </div>
 
@@ -30,7 +30,7 @@
           👥 {{ team.name }}
         </span>
         <span v-if="userTeams.length === 0" class="px-3 py-1 rounded-full text-xs bg-slate-500/20 text-slate-300 border border-slate-500/30">
-          Sin equipo asignado
+          {{ t('workbenchPage.noTeam') }}
         </span>
       </div>
     </div>
@@ -48,12 +48,12 @@
     <div class="space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold flex items-center gap-2">
-          <span>🚀</span> Proyectos Asignados a mi Equipo ({{ teamApplications.length }})
+          <span>🚀</span> {{ t('workbenchPage.assignedProjects') }} ({{ teamApplications.length }})
         </h2>
       </div>
 
       <div v-if="teamApplications.length === 0" class="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
-        No tienes proyectos asignados actualmente a tu equipo.
+        {{ t('workbenchPage.noAssignedProjects') }}
       </div>
 
       <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -75,7 +75,7 @@
                 <h3 class="font-bold text-lg text-[var(--text-primary)]">{{ app.name }}</h3>
               </div>
               <p class="text-xs text-[var(--text-muted)] mt-1 line-clamp-2">
-                {{ app.description || 'Sin descripción disponible.' }}
+                {{ app.description || t('workbenchPage.noDescription') }}
               </p>
             </div>
             <span
@@ -89,7 +89,7 @@
           <!-- Barra de Progreso del Proyecto -->
           <div class="mt-3 border-t border-[var(--border-subtle)] pt-3">
             <div class="flex items-center justify-between text-xs uppercase tracking-wider text-[var(--text-muted)] mb-1">
-              <span>{{ getAppProgress(app.id).completedEpics }}/{{ getAppProgress(app.id).totalEpics }} Épicas listas</span>
+              <span>{{ getAppProgress(app.id).completedEpics }}/{{ getAppProgress(app.id).totalEpics }} {{ t('workbenchPage.epicsReady') }}</span>
               <span class="font-bold text-[var(--teal)]">{{ getAppProgress(app.id).percentage }}%</span>
             </div>
 
@@ -101,8 +101,8 @@
             </div>
 
             <div class="mt-1 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
-              <span>{{ getAppProgress(app.id).completedTickets }}/{{ getAppProgress(app.id).totalTickets }} tickets completados</span>
-              <span>{{ getAppProgress(app.id).remainingTickets }} pendientes</span>
+              <span>{{ getAppProgress(app.id).completedTickets }}/{{ getAppProgress(app.id).totalTickets }} {{ t('workbenchPage.completedTickets') }}</span>
+              <span>{{ t('workbenchPage.remainingCount', { count: getAppProgress(app.id).remainingTickets }) }}</span>
             </div>
           </div>
         </div>
@@ -113,14 +113,14 @@
     <div v-if="selectedApp" class="space-y-4 rounded-2xl border border-[var(--teal)]/40 bg-[var(--bg-card)] p-6 shadow-md">
       <div class="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
         <div>
-          <span class="text-xs font-semibold text-[var(--teal)] uppercase tracking-wider">Proyecto Seleccionado</span>
+          <span class="text-xs font-semibold text-[var(--teal)] uppercase tracking-wider">{{ t('workbenchPage.selectedProject') }}</span>
           <h2 class="text-2xl font-bold text-[var(--text-primary)] mt-0.5">{{ selectedApp.name }}</h2>
         </div>
         <button
           @click="selectedAppId = null"
           class="px-3 py-1.5 rounded-lg text-xs border border-[var(--border-subtle)] bg-[var(--bg-app)] hover:border-[var(--teal)]"
         >
-          Cerrar vista
+          {{ t('workbenchPage.closeView') }}
         </button>
       </div>
 
@@ -129,7 +129,7 @@
       </p>
 
       <div v-if="(appEpicsMap[selectedApp.id] ?? []).length === 0" class="text-center py-8 text-[var(--text-muted)] text-sm">
-        Este proyecto no tiene épicas registradas.
+        {{ t('workbenchPage.noEpics') }}
       </div>
 
       <!-- Lista de Épicas del Proyecto -->
@@ -176,7 +176,7 @@
             :class="getEpicProgress(epic.id).isComplete ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30' : 'bg-slate-500/15 text-slate-300 border-slate-400/30'"
             class="px-2.5 py-1 text-xs font-semibold rounded-full border self-start md:self-center"
           >
-            {{ getEpicProgress(epic.id).isComplete ? 'ÉPICA COMPLETA' : `${getEpicProgress(epic.id).remaining} pendientes` }}
+            {{ getEpicProgress(epic.id).isComplete ? t('workbenchPage.epicComplete') : t('workbenchPage.remainingCount', { count: getEpicProgress(epic.id).remaining }) }}
           </span>
         </div>
 
@@ -185,7 +185,7 @@
           v-if="isEpicExpanded(epic.id) && (epicTicketsMap[epic.id] ?? []).length === 0"
           class="p-4 text-xs text-[var(--text-muted)] italic"
         >
-          No hay tickets creados en esta épica.
+          {{ t('workbenchPage.noTicketsInEpic') }}
         </div>
 
         <div v-else-if="isEpicExpanded(epic.id)" class="divide-y divide-[var(--border-subtle)]">
@@ -210,13 +210,13 @@
                   <span v-if="ticket.assignee" class="flex items-center gap-1 font-medium text-[var(--teal)]">
                     👤 {{ ticket.assignee.fullName || ticket.assignee.email }}
                   </span>
-                  <span v-else class="text-slate-400">👤 Sin asignar</span>
-                  <span v-if="ticket.dueDate">📅 Fecha: {{ ticket.dueDate.slice(0, 10) }}</span>
+                  <span v-else class="text-slate-400">👤 {{ t('workbenchPage.unassigned') }}</span>
+                  <span v-if="ticket.dueDate">📅 {{ t('workbenchPage.dueDate') }} {{ ticket.dueDate.slice(0, 10) }}</span>
                 </div>
 
                 <div v-if="canManageTeamTickets" class="flex gap-4 text-xs text-[var(--text-muted)]">
-                  <span>Trabajado: {{ formatDuration(liveSeconds(ticket, 'work')) }}</span>
-                  <span>Bloqueado: {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</span>
+                  <span>{{ t('workbenchPage.worked') }} {{ formatDuration(liveSeconds(ticket, 'work')) }}</span>
+                  <span>{{ t('workbenchPage.blocked') }} {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</span>
                 </div>
 
                 <!-- NEW-03: etiquetas asociadas al ticket -->
@@ -225,7 +225,7 @@
                 <!-- Barra de progreso de subtareas -->
                 <div v-if="getSubtaskStats(ticket).total > 0" class="mt-2 max-w-sm">
                   <div class="flex items-center justify-between text-[11px] text-[var(--text-muted)] mb-1">
-                    <span>Subtareas: {{ getSubtaskStats(ticket).completed }}/{{ getSubtaskStats(ticket).total }} completadas</span>
+                    <span>{{ t('workbenchPage.subtasks') }}: {{ getSubtaskStats(ticket).completed }}/{{ getSubtaskStats(ticket).total }} {{ t('workbenchPage.subtasksCompleted') }}</span>
                     <span class="font-medium text-[var(--teal)]">{{ getSubtaskStats(ticket).percentage }}%</span>
                   </div>
                   <div class="h-1.5 w-full rounded-full overflow-hidden bg-[var(--bg-app)] border border-[var(--border-subtle)]">
@@ -246,7 +246,7 @@
                   @change="handleAssigneeChange(ticket, $event)"
                   class="bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]"
                 >
-                  <option value="">👤 Asignar a...</option>
+                  <option value="">👤 {{ t('workbenchPage.assignTo') }}</option>
                   <option v-for="u in assignableUsers" :key="u.id" :value="u.id">
                     {{ u.fullName || u.email }}
                   </option>
@@ -255,7 +255,7 @@
                   v-if="canAssignTickets && !assignableUsers.length"
                   class="text-[11px] text-[var(--text-muted)]"
                 >
-                  No hay miembros de tu equipo para asignar
+                  {{ t('workbenchPage.noAssignees') }}
                 </span>
 
                 <button
@@ -264,7 +264,7 @@
                   @click="startTicket(ticket)"
                   class="px-3 py-1 rounded-lg text-xs bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 disabled:opacity-50 font-medium"
                 >
-                  ▶ Iniciar
+                  ▶ {{ t('workbenchPage.start') }}
                 </button>
                 <button
                   v-if="ticket.status === 'IN_PROGRESS'"
@@ -272,7 +272,7 @@
                   @click="completeTicket(ticket)"
                   class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
                 >
-                  ✓ Finalizar
+                  ✓ {{ t('workbenchPage.finish') }}
                 </button>
                 <button
                   v-if="isGroupLeader && ticket.status === 'IN_PROGRESS' && ticket.assigneeId === currentUserId"
@@ -280,7 +280,7 @@
                   @click="openQuestionFor = openQuestionFor === ticket.id ? null : ticket.id"
                   class="px-3 py-1 rounded-lg text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 font-medium"
                 >
-                  Levantar Pregunta
+                  {{ t('workbenchPage.raiseQuestion') }}
                 </button>
                 <button
                   v-if="canManageTeamTickets && ticket.status === 'BLOCKED'"
@@ -288,7 +288,7 @@
                   @click="resolveQuestion(ticket)"
                   class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
                 >
-                  Resolver y reanudar
+                  {{ t('workbenchPage.resolveAndResume') }}
                 </button>
                 <button
                   v-if="canManageTeamTickets && ticket.status === 'REDIRECTED' && ticket.assigneeId === currentUserId"
@@ -296,7 +296,7 @@
                   @click="acceptRedirect(ticket)"
                   class="px-3 py-1 rounded-lg text-xs bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30 disabled:opacity-50 font-medium"
                 >
-                  Aceptar ticket
+                  {{ t('workbenchPage.acceptTicket') }}
                 </button>
                 <button
                   v-if="canManageTeamTickets && ['TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED'].includes(ticket.status)"
@@ -304,52 +304,52 @@
                   @click="toggleRedirectForm(ticket.id)"
                   class="px-3 py-1 rounded-lg text-xs bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30 disabled:opacity-50 font-medium"
                 >
-                  Redireccionar
+                  {{ t('workbenchPage.redirect') }}
                 </button>
                 <button
                   @click="toggleSubtaskPanel(ticket.id)"
                   class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
                 >
-                  ☑ Subtareas ({{ (ticket.subtasks ?? []).length }})
+                  ☑ {{ t('workbenchPage.subtasks') }} ({{ (ticket.subtasks ?? []).length }})
                 </button>
                 <button
                   @click="toggleTicketDetail(ticket.id)"
                   class="px-3 py-1 rounded-lg text-xs bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
                 >
-                  👁 Detalle
+                  👁 {{ t('workbenchPage.detail') }}
                 </button>
               </div>
             </div>
 
             <div v-if="canManageTeamTickets && ticket.status === 'BLOCKED'" class="mt-2 rounded-lg border border-emerald-500/30 bg-[var(--bg-app)] p-3 space-y-2">
-              <p class="text-xs text-[var(--text-secondary)]">{{ blockedQuestion(ticket.id) || 'Ticket bloqueado. Agrega una respuesta para reanudar el trabajo.' }}</p>
-              <textarea v-model="resolutionDrafts[ticket.id]" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-emerald-400" placeholder="Respuesta o resolución"></textarea>
+              <p class="text-xs text-[var(--text-secondary)]">{{ blockedQuestion(ticket.id) || t('workbenchPage.blockedHint') }}</p>
+              <textarea v-model="resolutionDrafts[ticket.id]" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-emerald-400" :placeholder="t('workbenchPage.responsePlaceholder')"></textarea>
             </div>
 
             <div v-if="canManageTeamTickets && openRedirectFor === ticket.id" class="mt-2 rounded-lg border border-sky-500/30 bg-[var(--bg-app)] p-3 space-y-2">
               <select v-model="redirectAssigneeId" class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400">
-                <option value="">Seleccionar nuevo responsable...</option>
+                <option value="">{{ t('workbenchPage.selectAssignee') }}</option>
                 <option v-for="user in redirectCandidates" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
               </select>
-              <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" placeholder="Motivo obligatorio (mínimo 10 caracteres)"></textarea>
+              <textarea v-model="redirectReason" maxlength="500" rows="2" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-sky-400" :placeholder="t('workbenchPage.requiredReason')"></textarea>
               <div class="flex justify-end gap-2">
-                <button @click="closeRedirectForm" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
-                <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">Confirmar redirección</button>
+                <button @click="closeRedirectForm" class="px-3 py-1 text-xs text-[var(--text-muted)]">{{ t('common.cancel') }}</button>
+                <button :disabled="working || !redirectAssigneeId || redirectReason.trim().length < 10" @click="redirectTicket(ticket)" class="px-3 py-1 rounded-lg text-xs bg-sky-600 text-white disabled:opacity-50">{{ t('workbenchPage.confirmRedirect') }}</button>
               </div>
             </div>
 
             <div v-if="isGroupLeader && openQuestionFor === ticket.id" class="mt-2 rounded-lg border border-amber-500/30 bg-[var(--bg-app)] p-3 space-y-2">
-              <textarea v-model="questionDraft" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" placeholder="Pregunta o impedimento (mínimo 10 caracteres)"></textarea>
+              <textarea v-model="questionDraft" rows="2" maxlength="500" class="w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-xs outline-none focus:border-amber-400" :placeholder="t('workbenchPage.questionPlaceholder')"></textarea>
               <div class="flex justify-end gap-2">
-                <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">Cancelar</button>
-                <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">Bloquear ticket</button>
+                <button @click="openQuestionFor = null; questionDraft = ''" class="px-3 py-1 text-xs text-[var(--text-muted)]">{{ t('common.cancel') }}</button>
+                <button :disabled="working || questionDraft.trim().length < 10" @click="raiseQuestion(ticket)" class="px-3 py-1 rounded-lg text-xs bg-amber-500 text-white disabled:opacity-50">{{ t('workbenchDashboard.blockTicket') }}</button>
               </div>
             </div>
 
             <!-- Panel de Subtareas -->
             <div v-if="openSubtasksFor === ticket.id" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] p-3 space-y-2 mt-2">
               <p v-if="!(ticket.subtasks ?? []).length" class="text-xs text-[var(--text-muted)]">
-                Este ticket todavía no tiene subtareas.
+                {{ t('workbenchPage.noSubtasks') }}
               </p>
               <ul v-else class="space-y-1.5">
                 <li v-for="sub in ticket.subtasks" :key="sub.id" class="flex items-center gap-2 text-xs">
@@ -369,7 +369,7 @@
                 <input
                   v-model="newSubtaskTitle"
                   @keyup.enter="addSubtask(ticket)"
-                  placeholder="Nueva subtarea…"
+                  :placeholder="t('workbenchPage.newSubtask')"
                   class="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1 text-xs outline-none focus:border-[var(--teal)]"
                 />
                 <button
@@ -377,23 +377,23 @@
                   @click="addSubtask(ticket)"
                   class="px-3 py-1 rounded-lg text-xs bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30 disabled:opacity-50 font-medium"
                 >
-                  Añadir
+                  {{ t('workbenchPage.add') }}
                 </button>
               </div>
             </div>
 
             <!-- Panel de Detalle del Ticket -->
             <div v-if="openDetailFor === ticket.id" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] p-3 text-xs space-y-1.5 mt-2">
-              <p><span class="text-[var(--text-muted)]">Descripción:</span> {{ ticket.description || 'Sin descripción' }}</p>
-              <p><span class="text-[var(--text-muted)]">Épica:</span> {{ epic.title }}</p>
-              <p><span class="text-[var(--text-muted)]">Asignado:</span> {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : 'Sin asignar' }}</p>
-              <p><span class="text-[var(--text-muted)]">PR Link:</span> {{ ticket.prLink || '—' }}</p>
-              <p><span class="text-[var(--text-muted)]">Fecha límite:</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
+              <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.description') }}</span> {{ ticket.description || t('workbenchPage.noDescription') }}</p>
+              <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.epicLabel') }}</span> {{ epic.title }}</p>
+              <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.assigned') }}</span> {{ ticket.assignee ? (ticket.assignee.fullName || ticket.assignee.email) : t('workbenchPage.unassigned') }}</p>
+              <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.prLink') }}</span> {{ ticket.prLink || '—' }}</p>
+              <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.dueDateLabel') }}</span> {{ ticket.dueDate ? ticket.dueDate.slice(0, 10) : '—' }}</p>
               <template v-if="canManageTeamTickets">
-                <p><span class="text-[var(--text-muted)]">Tiempo trabajado:</span> {{ formatDuration(liveSeconds(ticket, 'work')) }}</p>
-                <p><span class="text-[var(--text-muted)]">Tiempo bloqueado:</span> {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</p>
+                <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.workedTime') }}</span> {{ formatDuration(liveSeconds(ticket, 'work')) }}</p>
+                <p><span class="text-[var(--text-muted)]">{{ t('workbenchPage.blockedTime') }}</span> {{ formatDuration(liveSeconds(ticket, 'blocked')) }}</p>
                 <div class="pt-2 border-t border-[var(--border-subtle)]">
-                  <p class="mb-2 font-semibold text-[var(--text-muted)]">Historial</p>
+                  <p class="mb-2 font-semibold text-[var(--text-muted)]">{{ t('workbenchPage.history') }}</p>
                   <TicketHistory :events="ticketEvents[ticket.id] ?? []" :loading="ticketEventsLoading === ticket.id" :error="ticketEventsError" />
                 </div>
               </template>
@@ -401,14 +401,14 @@
               <!-- Documentos del ticket -->
               <div class="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)]/40 p-3">
                 <div class="mb-2 flex items-center justify-between gap-3">
-                  <span class="font-medium text-[var(--text-primary)]">Documentos del ticket</span>
+                  <span class="font-medium text-[var(--text-primary)]">{{ t('workbenchPage.ticketDocuments') }}</span>
                   <span class="rounded-full bg-[var(--bg-tag)] px-2 py-1 text-[10px] font-medium text-[var(--text-muted)]">
-                    adjuntos
+                    {{ t('workbenchPage.attachments') }}
                   </span>
                 </div>
                 <FileUpload v-if="ticket.id && canUploadToTicket(ticket)" :ticket-id="ticket.id" />
                 <p v-else class="text-xs text-[var(--text-muted)]">
-                  Solo puedes subir archivos a los tickets asignados a ti.
+                  {{ t('workbenchPage.uploadPermission') }}
                 </p>
               </div>
             </div>
@@ -434,6 +434,7 @@ import { useEpicsStore } from '@/stores/epics'
 import { useTicketsStore } from '@/stores/tickets'
 import { useAuthStore } from '@/stores/auth'
 import { useTeamsStore } from '@/stores/teams'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import apiClient from '@/services/api'
 import WorkbenchDashboard from '@/components/workbench/WorkbenchDashboard.vue'
@@ -447,6 +448,7 @@ const epicsStore = useEpicsStore()
 const ticketsStore = useTicketsStore()
 const authStore = useAuthStore()
 const teamsStore = useTeamsStore()
+const { t } = useI18n()
 
 const selectedAppId = ref<string | null>(null)
 const appEpicsMap = ref<Record<string, Epic[]>>({})
@@ -665,14 +667,14 @@ const startTicket = async (ticket: Ticket) => {
     await api.tickets.updateStatus(ticket.id, 'IN_PROGRESS')
     await loadTicketsForEpic(ticket.epicId)
   } catch (err: any) {
-    ticketError.value = err?.response?.data?.detail || 'No se pudo iniciar el ticket.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.start')
   } finally {
     working.value = false
   }
 }
 
 const completeTicket = async (ticket: Ticket) => {
-  const prLink = window.prompt('Enlace del Pull Request para finalizar el ticket (opcional):')
+  const prLink = window.prompt(t('actions.prPrompt'))
   if (prLink === null) return
   working.value = true
   ticketError.value = ''
@@ -680,7 +682,7 @@ const completeTicket = async (ticket: Ticket) => {
     await api.tickets.complete(ticket.id, prLink.trim())
     await loadTicketsForEpic(ticket.epicId)
   } catch (err: any) {
-    ticketError.value = err?.response?.data?.detail || 'No se pudo finalizar el ticket.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.finish')
   } finally {
     working.value = false
   }
@@ -704,7 +706,7 @@ const loadTicketEvents = async (ticketId: string) => {
     const { data } = await apiClient.get<TicketHistoryEvent[]>(`/tickets/${ticketId}/events`)
     ticketEvents.value[ticketId] = data
   } catch (err: any) {
-    ticketEventsError.value = err?.response?.data?.detail || 'No se pudo cargar el historial.'
+    ticketEventsError.value = err?.response?.data?.detail || t('workbenchPage.errors.history')
   } finally {
     ticketEventsLoading.value = null
   }
@@ -715,14 +717,14 @@ const resolveQuestion = async (ticket: Ticket) => {
   ticketError.value = ''
   try {
     await apiClient.post(`/tickets/${ticket.id}/resolve-question`, {
-      resolution: resolutionDrafts.value[ticket.id]?.trim() || 'Pregunta resuelta por el líder',
+      resolution: resolutionDrafts.value[ticket.id]?.trim() || t('actions.resolvedByLeader'),
     })
     resolutionDrafts.value[ticket.id] = ''
     await loadTicketsForEpic(ticket.epicId)
     await loadTicketEvents(ticket.id)
   } catch (err: any) {
     console.error('Error resolviendo pregunta:', err?.response?.status, err?.response?.data || err)
-    ticketError.value = err?.response?.data?.detail || 'No se pudo resolver la pregunta.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.resolveQuestion')
   } finally {
     working.value = false
   }
@@ -740,7 +742,7 @@ const raiseQuestion = async (ticket: Ticket) => {
     await loadTicketEvents(ticket.id)
   } catch (err: any) {
     console.error('Error levantando pregunta:', err?.response?.status, err?.response?.data || err)
-    ticketError.value = err?.response?.data?.detail || 'No se pudo levantar la pregunta.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.raiseQuestion')
   } finally {
     working.value = false
   }
@@ -780,7 +782,7 @@ const redirectTicket = async (ticket: Ticket) => {
     await loadTicketEvents(ticket.id)
   } catch (err: any) {
     console.error('Error redireccionando ticket:', err?.response?.status, err?.response?.data || err)
-    ticketError.value = err?.response?.data?.detail || 'No se pudo redireccionar el ticket.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.redirect')
   } finally {
     working.value = false
   }
@@ -795,7 +797,7 @@ const acceptRedirect = async (ticket: Ticket) => {
     await loadTicketEvents(ticket.id)
   } catch (err: any) {
     console.error('Error aceptando ticket:', err?.response?.status, err?.response?.data || err)
-    ticketError.value = err?.response?.data?.detail || 'No se pudo aceptar el ticket.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.acceptRedirect')
   } finally {
     working.value = false
   }
@@ -811,7 +813,7 @@ const addSubtask = async (ticket: Ticket) => {
     newSubtaskTitle.value = ''
     await loadTicketsForEpic(ticket.epicId)
   } catch (err: any) {
-    ticketError.value = err?.response?.data?.detail || 'No se pudo crear la subtarea.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.createSubtask')
   } finally {
     working.value = false
   }
@@ -824,7 +826,7 @@ const toggleSubtask = async (ticket: Ticket, sub: Subtask) => {
     await api.tickets.updateSubtask(ticket.id, sub.id, { isCompleted: !sub.isCompleted })
     await loadTicketsForEpic(ticket.epicId)
   } catch (err: any) {
-    ticketError.value = err?.response?.data?.detail || 'No se pudo actualizar la subtarea.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.updateSubtask')
   } finally {
     working.value = false
   }
@@ -839,7 +841,7 @@ const handleAssigneeChange = async (ticket: Ticket, event: Event) => {
     await api.tickets.update(ticket.id, { assigneeId } as unknown as Partial<Ticket>)
     await loadTicketsForEpic(ticket.epicId)
   } catch (err: any) {
-    ticketError.value = err?.response?.data?.detail || 'No se pudo asignar el usuario al ticket.'
+    ticketError.value = err?.response?.data?.detail || t('workbenchPage.errors.assign')
   } finally {
     working.value = false
   }
@@ -854,11 +856,12 @@ const loadUsers = async () => {
   }
 }
 
-const statusLabel = (status: string): string =>
-  ({ TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Completado', COMPLETED: 'Completado' })[status] ?? status
+const statusLabel = (status: string): string => {
+  const statusKey = status === 'COMPLETED' ? 'DONE' : status
+  return t(`analyticsPage.statuses.${statusKey}`)
+}
 
-const priorityLabel = (priority: string): string =>
-  ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' })[priority] ?? priority
+const priorityLabel = (priority: string): string => t(`statuses.${priority.toLowerCase()}`)
 
 const statusClass = (status: string): string =>
   ({

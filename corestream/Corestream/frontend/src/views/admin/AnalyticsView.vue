@@ -3,39 +3,39 @@
     <header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
-          Analítica de proyectos
+          {{ t('analyticsPage.title') }}
         </h1>
         <p class="mt-2 text-gray-600 dark:text-gray-400">
-          Métricas de tickets del proyecto seleccionado
+          {{ t('analyticsPage.subtitle') }}
         </p>
       </div>
 
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Proyecto
+        {{ t('analyticsPage.project') }}
         <select
           v-model="selectedProjectId"
           :disabled="isLoadingProjects || projects.length === 0"
           class="min-w-64 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         >
-          <option value="" disabled>Selecciona un proyecto</option>
+          <option value="" disabled>{{ t('analyticsPage.selectProject') }}</option>
           <option v-for="project in projects" :key="project.id" :value="project.id">
             {{ project.name }}
           </option>
         </select>
       </label>
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Desarrollador
+        {{ t('analyticsPage.developer') }}
         <select v-model="selectedDeveloperId" :disabled="!developers.length" class="min-w-56 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-          <option value="">Todo el equipo</option>
+          <option value="">{{ t('analyticsPage.allTeam') }}</option>
           <option v-for="developer in developers" :key="developer.id" :value="developer.id">
             {{ developer.fullName || developer.email }}
           </option>
         </select>
       </label>
       <label class="flex flex-col gap-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        Sprint
+        {{ t('analyticsPage.sprint') }}
         <select v-model="selectedSprintId" :disabled="!sprints.length" class="min-w-56 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm outline-none focus:border-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
-          <option value="">Todos los tickets</option>
+          <option value="">{{ t('analyticsPage.allTickets') }}</option>
           <option v-for="sprint in sprints" :key="sprint.id" :value="sprint.id">
             {{ sprint.name }}
           </option>
@@ -44,16 +44,16 @@
     </header>
 
     <p v-if="isLoadingProjects" class="py-8 text-center text-gray-500 dark:text-gray-400">
-      Cargando proyectos...
+      {{ t('analyticsPage.loadingProjects') }}
     </p>
     <p v-else-if="projectError" role="alert" class="py-8 text-center text-red-600 dark:text-red-400">
       {{ projectError }}
     </p>
     <p v-else-if="projects.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400">
-      No hay proyectos asignados a tus equipos.
+      {{ t('analyticsPage.noProjects') }}
     </p>
     <p v-else-if="isLoadingSummary" class="py-8 text-center text-gray-500 dark:text-gray-400">
-      Cargando analítica...
+      {{ t('analyticsPage.loadingAnalytics') }}
     </p>
     <p v-else-if="summaryError" role="alert" class="py-8 text-center text-red-600 dark:text-red-400">
       {{ summaryError }}
@@ -65,9 +65,9 @@
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="font-semibold text-slate-900 dark:text-white">{{ selectedSprint.name }}</h2>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Avance real y planificado</p>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('analyticsPage.plannedAndActual') }}</p>
           </div>
-          <p class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{{ summary.completion_percentage }}% real</p>
+          <p class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{{ summary.completion_percentage }}% {{ t('analyticsPage.actual') }}</p>
         </div>
         <div class="mt-4 h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
           <div class="relative h-full bg-slate-300 dark:bg-slate-500" :style="{ width: `${plannedProgress}%` }">
@@ -75,8 +75,8 @@
           </div>
         </div>
         <div class="mt-2 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span>Planificado {{ plannedProgress }}%</span>
-          <span>{{ summary.completed_tickets }}/{{ summary.total_tickets }} tickets completados</span>
+          <span>{{ t('analyticsPage.planned') }} {{ plannedProgress }}%</span>
+          <span>{{ summary.completed_tickets }}/{{ summary.total_tickets }} {{ t('analyticsPage.completedTickets') }}</span>
         </div>
       </section>
 
@@ -85,10 +85,10 @@
       <section class="mt-6 grid gap-6 lg:grid-cols-2">
         <div class="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
           <div class="flex items-baseline justify-between gap-3">
-            <h2 class="font-semibold text-slate-900 dark:text-white">Tickets redireccionados</h2>
-            <span class="text-sm text-amber-600 dark:text-amber-400">{{ summary.redirection_events_count ?? 0 }} eventos</span>
+            <h2 class="font-semibold text-slate-900 dark:text-white">{{ t('analyticsPage.redirectedTickets') }}</h2>
+            <span class="text-sm text-amber-600 dark:text-amber-400">{{ summary.redirection_events_count ?? 0 }} {{ t('analyticsPage.events') }}</span>
           </div>
-          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ summary.redirected_tickets ?? 0 }} tickets actualmente redirigidos</p>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ summary.redirected_tickets ?? 0 }} {{ t('analyticsPage.currentlyRedirected') }}</p>
           <ul v-if="summary.redirection_events?.length" class="mt-4 divide-y divide-slate-100 dark:divide-slate-700">
             <li v-for="event in summary.redirection_events" :key="`${event.ticket_id}-${event.created_at}`" class="py-2 text-sm">
               <span class="font-medium text-slate-800 dark:text-slate-200">{{ event.ticket_title }}</span>
@@ -96,24 +96,24 @@
               <span class="ml-2 text-slate-500 dark:text-slate-400">{{ formatEventDate(event.created_at) }}</span>
             </li>
           </ul>
-          <p v-else class="mt-4 text-sm text-slate-500 dark:text-slate-400">Sin eventos de redirección.</p>
+          <p v-else class="mt-4 text-sm text-slate-500 dark:text-slate-400">{{ t('analyticsPage.noRedirections') }}</p>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-          <h2 class="font-semibold text-slate-900 dark:text-white">Posibles cuellos de botella</h2>
-          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Estados con más tickets y mayor permanencia.</p>
+          <h2 class="font-semibold text-slate-900 dark:text-white">{{ t('analyticsPage.bottlenecks') }}</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ t('analyticsPage.bottlenecksDescription') }}</p>
           <div v-if="summary.bottlenecks?.length" class="mt-4 space-y-3">
             <div v-for="item in summary.bottlenecks.slice(0, 4)" :key="item.status">
               <div class="flex justify-between gap-3 text-sm">
                 <span class="font-medium text-slate-800 dark:text-slate-200">{{ statusLabel(item.status) }}</span>
-                <span class="text-slate-500 dark:text-slate-400">{{ item.ticket_count }} tickets · {{ item.average_hours }} h promedio</span>
+                <span class="text-slate-500 dark:text-slate-400">{{ item.ticket_count }} {{ t('reportsPage.tickets').toLowerCase() }} · {{ item.average_hours }} h {{ t('analyticsPage.average') }}</span>
               </div>
               <div class="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-700">
                 <div class="h-2 rounded-full bg-amber-500" :style="{ width: `${bottleneckWidth(item.ticket_count)}%` }" />
               </div>
             </div>
             <div class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
-              <p class="mb-2 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Tickets con mayor demora</p>
+              <p class="mb-2 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{{ t('analyticsPage.slowestTickets') }}</p>
               <button
                 v-for="ticket in slowestTickets"
                 :key="ticket.ticket_id"
@@ -126,7 +126,7 @@
               </button>
             </div>
           </div>
-          <p v-else class="mt-4 text-sm text-slate-500 dark:text-slate-400">Sin permanencias registradas.</p>
+          <p v-else class="mt-4 text-sm text-slate-500 dark:text-slate-400">{{ t('analyticsPage.noBottlenecks') }}</p>
         </div>
       </section>
     </template>
@@ -136,6 +136,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { api } from '@/services/api'
 import apiClient from '@/services/api'
 import MetricCards from '@/components/analytics/MetricCards.vue'
@@ -148,6 +149,7 @@ import type { Sprint } from '@/types/sprint'
 const authStore = useAuthStore()
 const teamsStore = useTeamsStore()
 const router = useRouter()
+const { t } = useI18n()
 
 const projects = ref<Application[]>([])
 const selectedProjectId = ref('')
@@ -208,7 +210,7 @@ const loadProjects = async () => {
     projects.value.sort((a, b) => a.name.localeCompare(b.name))
     selectedProjectId.value = projects.value[0]?.id ?? ''
   } catch (error) {
-    projectError.value = error instanceof Error ? error.message : 'No se pudieron cargar los proyectos.'
+    projectError.value = error instanceof Error ? error.message : t('analyticsPage.projectLoadError')
   } finally {
     isLoadingProjects.value = false
   }
@@ -231,7 +233,7 @@ const loadSummary = async (projectId: string) => {
     if (requestId === summaryRequestId) summary.value = data
   } catch (error) {
     if (requestId === summaryRequestId) {
-      summaryError.value = error instanceof Error ? error.message : 'No se pudo cargar la analítica.'
+      summaryError.value = error instanceof Error ? error.message : t('analyticsPage.analyticsLoadError')
     }
   } finally {
     if (requestId === summaryRequestId) isLoadingSummary.value = false
@@ -286,11 +288,9 @@ const formatEventDate = (value?: string | null) =>
 const developerName = (userId?: string | null) =>
   developers.value.find((developer) => developer.id === userId)?.fullName
     || developers.value.find((developer) => developer.id === userId)?.email
-    || 'Usuario'
+    || t('analyticsPage.user')
 
-const statusLabel = (status: string) => ({
-  TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Completado',
-}[status] ?? status)
+const statusLabel = (status: string) => t(`analyticsPage.statuses.${status}`)
 
 const bottleneckWidth = (count: number) => {
   const max = Math.max(...(summary.value?.bottlenecks ?? []).map((item) => item.ticket_count), 1)

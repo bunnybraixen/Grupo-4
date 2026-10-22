@@ -6,9 +6,9 @@
 -->
 <template>
   <div class="p-8 max-w-6xl mx-auto text-[var(--text-primary)]">
-    <h1 class="text-3xl font-bold">Constructor de Aplicaciones</h1>
+    <h1 class="text-3xl font-bold">{{ t('builderPage.title') }}</h1>
     <p class="mt-2 text-[var(--text-muted)]">
-      Crea y gestiona aplicaciones, épicas y tickets
+      {{ t('builderPage.subtitle') }}
     </p>
 
     <!-- ======== Pestañas: tablero de épicas | planificación de Sprints ======== -->
@@ -23,7 +23,7 @@
         ]"
         @click="viewMode = 'board'"
       >
-        Épicas y tickets
+        {{ t('builderPage.epicsAndTickets') }}
       </button>
       <button
         type="button"
@@ -35,7 +35,7 @@
         ]"
         @click="viewMode = 'sprints'"
       >
-        📅 Sprints y SLA
+        {{ t('builderPage.sprintsAndSla') }}
       </button>
     </div>
 
@@ -60,14 +60,14 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="text-[var(--teal)] text-lg">🔎</span>
-          <span class="text-sm font-semibold text-[var(--text-primary)]">Búsqueda global</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">{{ t('builderPage.globalSearch') }}</span>
         </div>
         <button
           v-if="builderGlobalSearchQuery.trim()"
           @click="clearBuilderGlobalSearch"
           class="text-[11px] text-[var(--text-muted)] underline hover:text-[var(--teal)]"
         >
-          Limpiar
+          {{ t('builderPage.clear') }}
         </button>
       </div>
 
@@ -76,12 +76,12 @@
           v-model="builderGlobalSearchQuery"
           @input="runBuilderGlobalSearch"
           type="text"
-          placeholder="Buscar épicas, tickets, subtareas, usuarios…"
+          :placeholder="t('builderPage.globalSearchPlaceholder')"
           class="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--teal)]"
         />
       </div>
 
-      <div v-if="builderGlobalSearchLoading" class="mt-2 text-[11px] text-[var(--text-muted)]">Buscando coincidencias…</div>
+      <div v-if="builderGlobalSearchLoading" class="mt-2 text-[11px] text-[var(--text-muted)]">{{ t('builderPage.searching') }}</div>
       <div v-else-if="hasBuilderGlobalSearchResults" class="mt-3 space-y-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)] p-2">
         <div v-for="(items, groupName) in builderGlobalSearchResults" :key="groupName">
           <div v-if="items.length" class="space-y-1.5">
@@ -105,9 +105,9 @@
 
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <p class="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Aplicaciones activas</p>
+        <p class="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">{{ t('builderPage.activeApplications') }}</p>
         <p class="text-sm text-[var(--text-muted)] mt-1">
-          {{ activeApplications.length }} proyecto{{ activeApplications.length === 1 ? '' : 's' }} disponible{{ activeApplications.length === 1 ? '' : 's' }}
+          {{ t('builderPage.projectsAvailable', { count: activeApplications.length }) }}
         </p>
       </div>
 
@@ -116,7 +116,7 @@
         @click="openNewApp"
         class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)] hover:bg-[var(--teal-90)]"
       >
-        + Nueva aplicación
+        {{ t('builderPage.newApplication') }}
       </button>
     </div>
 
@@ -136,11 +136,11 @@
               <h3 class="font-semibold text-lg text-[var(--text-primary)]">{{ app.name }}</h3>
             </div>
             <p class="mt-2 text-sm text-[var(--text-muted)]">
-              {{ app.description || 'Sin descripción disponible.' }}
+              {{ app.description || t('builderPage.noDescription') }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
-              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).totalEpics }} épicas</span>
-              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).remainingTickets }} pendientes</span>
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).totalEpics }} {{ t('builderPage.epicsCount', { count: '' }).trim() }}</span>
+              <span class="rounded-full bg-[var(--bg-app)] px-2 py-1">{{ getAppProgress(app.id).remainingTickets }} {{ t('builderPage.pendingCount', { count: '' }).trim() }}</span>
               <span
                 v-if="teamsStore.getTeamForApp(app.id)"
                 class="rounded-full bg-[var(--teal)]/15 text-[var(--teal)] border border-[var(--teal)]/30 px-2.5 py-1 font-semibold flex items-center gap-1"
@@ -160,7 +160,7 @@
                   : 'bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
               ]"
             >
-              {{ selectedAppId === app.id ? 'Seleccionada' : 'Seleccionar' }}
+              {{ selectedAppId === app.id ? t('builderPage.selected') : t('builderPage.select') }}
             </button>
 
             <button
@@ -168,7 +168,7 @@
               @click="openAppEditor(app)"
               class="px-3 py-2 rounded-lg text-sm bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]"
             >
-              Editar
+              {{ t('builderPage.edit') }}
             </button>
 
             <button
@@ -176,7 +176,7 @@
               @click="toggleAppArchive(app)"
               class="px-3 py-2 rounded-lg text-sm border border-[var(--border-subtle)] bg-[var(--bg-app)] text-[var(--text-primary)] hover:border-amber-500"
             >
-              {{ app.isActive === false ? 'Reactivar' : 'Archivar' }}
+              {{ app.isActive === false ? t('builderPage.reactivate') : t('builderPage.archive') }}
             </button>
 
             <button
@@ -184,7 +184,7 @@
               @click="openEpicCreatorFor(app.id)"
               class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] hover:bg-[var(--teal)]/30"
             >
-              Crear épicas
+              {{ t('builderPage.createEpics') }}
             </button>
           </div>
         </div>
@@ -193,10 +193,10 @@
         <div class="mt-4 border-t border-[var(--border-subtle)] pt-3">
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs uppercase tracking-[0.16em] text-[var(--text-muted)] mb-1.5">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-[var(--text-primary)]">Avance del proyecto:</span>
-              <span>{{ getAppProgress(app.id).completedEpics }}/{{ getAppProgress(app.id).totalEpics }} épicas listas</span>
+              <span class="font-semibold text-[var(--text-primary)]">{{ t('builderPage.projectProgress') }}</span>
+              <span>{{ t('builderPage.epicsReady', { completed: getAppProgress(app.id).completedEpics, total: getAppProgress(app.id).totalEpics }) }}</span>
               <span>·</span>
-              <span>{{ getAppProgress(app.id).completedTickets }}/{{ getAppProgress(app.id).totalTickets }} tickets completados</span>
+              <span>{{ t('builderPage.ticketsCompleted', { completed: getAppProgress(app.id).completedTickets, total: getAppProgress(app.id).totalTickets }) }}</span>
             </div>
             <span
               :class="getEpicProgressBadgeClass(getAppProgress(app.id).percentage)"
@@ -356,7 +356,7 @@
           @click="showNewEpic = true"
           class="w-full py-3 border-2 border-dashed border-[var(--border-subtle)] rounded-xl text-[var(--text-muted)] hover:border-[var(--teal)] hover:text-[var(--teal)] transition-all font-medium"
         >
-          + Añadir nueva Épica
+          {{ t('builderPage.newEpic') }}
         </button>
       </div>
       <div v-else class="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--teal)]/50 mb-4">
@@ -1160,6 +1160,7 @@
  * Creación de aplicaciones -> épicas -> tickets y avance básico de estado.
  */
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useApplicationsStore } from '@/stores/applications'
 import { useEpicsStore } from '@/stores/epics'
@@ -1176,6 +1177,8 @@ import type { Epic, Subtask, Ticket, TicketComment, TicketHistoryEvent, User, Ta
 import type { Sprint } from '@/types/sprint'
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+
+const { t } = useI18n()
 
 const applicationsStore = useApplicationsStore()
 const epicsStore = useEpicsStore()
