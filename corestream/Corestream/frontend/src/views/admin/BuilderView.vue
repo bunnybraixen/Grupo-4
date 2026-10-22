@@ -18,7 +18,7 @@
         :class="[
           'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
           viewMode === 'board'
-            ? 'bg-[var(--teal)] text-white'
+            ? 'bg-[var(--teal-action)] text-white'
             : 'bg-[var(--bg-app)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
         ]"
         @click="viewMode = 'board'"
@@ -30,7 +30,7 @@
         :class="[
           'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
           viewMode === 'sprints'
-            ? 'bg-[var(--teal)] text-white'
+            ? 'bg-[var(--teal-action)] text-white'
             : 'bg-[var(--bg-app)] text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
         ]"
         @click="viewMode = 'sprints'"
@@ -156,7 +156,7 @@
               :class="[
                 'px-3 py-2 rounded-lg text-sm transition-colors',
                 selectedAppId === app.id
-                  ? 'bg-[var(--teal)] text-white'
+                  ? 'bg-[var(--teal-action)] text-white'
                   : 'bg-[var(--bg-app)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--teal)]'
               ]"
             >
@@ -440,7 +440,7 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               ticketStatusFilter === status
-                ? 'bg-[var(--teal)] text-white'
+                ? 'bg-[var(--teal-action)] text-white'
                 : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
             ]"
           >
@@ -471,7 +471,7 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               ticketPriorityFilter === priority
-                ? 'bg-[var(--teal)] text-white'
+                ? 'bg-[var(--teal-action)] text-white'
                 : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
             ]"
           >
@@ -497,7 +497,7 @@
             :class="[
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               tagFilterIds.includes(tag.id)
-                ? 'bg-[var(--teal)] text-white'
+                ? 'bg-[var(--teal-action)] text-white'
                 : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
             ]"
           >

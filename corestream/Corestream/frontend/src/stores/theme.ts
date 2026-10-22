@@ -11,7 +11,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 export type Theme = 'light' | 'dark'
 
@@ -21,9 +21,14 @@ export const useThemeStore = defineStore('theme', () => {
    * Default: 'light' (modo claro como muestra el manual)
    * Se lee de localStorage si existe
    */
-  const theme = ref<Theme>(
-    (localStorage.getItem('corestream-theme') as Theme) || 'light'
-  )
+  const savedTheme = localStorage.getItem('corestream-theme')
+  const theme = ref<Theme>(savedTheme === 'dark' ? 'dark' : 'light')
+
+  function syncTheme(t: Theme) {
+    const root = document.documentElement
+    root.setAttribute('data-theme', t)
+    root.classList.toggle('dark', t === 'dark')
+  }
 
   /**
    * Aplicar tema al documento
@@ -31,9 +36,9 @@ export const useThemeStore = defineStore('theme', () => {
    * y guarda preferencia en localStorage
    */
   function applyTheme(t: Theme) {
-    document.documentElement.setAttribute('data-theme', t)
-    localStorage.setItem('corestream-theme', t)
     theme.value = t
+    syncTheme(t)
+    localStorage.setItem('corestream-theme', t)
   }
 
   /**
@@ -50,8 +55,8 @@ export const useThemeStore = defineStore('theme', () => {
    * o revertir con applyTheme(original) al Cancelar.
    */
   function previewTheme(t: Theme) {
-    document.documentElement.setAttribute('data-theme', t)
     theme.value = t
+    syncTheme(t)
   }
 
   /**
@@ -74,14 +79,6 @@ export const useThemeStore = defineStore('theme', () => {
   function isDark(): boolean {
     return theme.value === 'dark'
   }
-
-  /**
-   * Observar cambios de tema y aplicarlos
-   */
-  watch(theme, (newTheme) => {
-    document.documentElement.setAttribute('data-theme', newTheme)
-    localStorage.setItem('corestream-theme', newTheme)
-  })
 
   /**
    * Aplicar tema inicial al crear el store

@@ -51,7 +51,7 @@
           <button
             @click="saveProfile"
             :disabled="isSavingProfile"
-            class="px-4 py-2 text-sm font-semibold bg-[var(--teal)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+            class="px-4 py-2 text-sm font-semibold bg-[var(--teal-action)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {{ isSavingProfile ? 'Guardando…' : 'Guardar perfil' }}
           </button>
@@ -152,7 +152,7 @@
             <button
               @click="changePassword"
               :disabled="!pwForm.current || !pwForm.next || pwForm.next !== pwForm.confirm || isChangingPw"
-              class="px-4 py-2 text-sm font-semibold bg-[var(--teal)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              class="px-4 py-2 text-sm font-semibold bg-[var(--teal-action)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {{ isChangingPw ? 'Actualizando…' : 'Cambiar contraseña' }}
             </button>
@@ -210,7 +210,7 @@
           <button
             @click="savePrefs"
             :disabled="!prefsDirty || isSavingPrefs"
-            class="px-4 py-2 text-sm font-semibold bg-[var(--teal)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              class="px-4 py-2 text-sm font-semibold bg-[var(--teal-action)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {{ isSavingPrefs ? 'Guardando…' : 'Guardar preferencias' }}
           </button>

@@ -125,7 +125,7 @@
                   v-if="isAdmin"
                   type="button"
                   :disabled="saving[row.priority]"
-                  class="rounded-lg bg-[var(--teal)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
+                  class="rounded-lg bg-[var(--teal-action)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
                   @click="save(row)"
                 >
                   {{ saving[row.priority] ? 'Guardando…' : 'Guardar' }}

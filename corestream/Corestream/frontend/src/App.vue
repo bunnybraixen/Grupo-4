@@ -36,10 +36,11 @@
  * Configuración del componente con Composition API + Setup
  */
 
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { clearAuthTokens } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 
 /**
@@ -64,6 +65,7 @@ const router = useRouter()
  * Se usa aquí para restaurar la sesión tras recargar la página.
  */
 const authStore = useAuthStore()
+useThemeStore()
 
 /**
  * ========================================
@@ -130,85 +132,6 @@ const initializeApp = async (): Promise<void> => {
 }
 
 /**
- * Aplica el modo oscuro si está guardado en preferencias
- * 
- * El modo oscuro se controla agregando la clase 'dark' al elemento <html>
- * Los estilos de Tailwind se ajustan automáticamente con selectores dark:
- */
-const initializeDarkMode = (): void => {
-  /**
-   * Obtiene la preferencia de tema guardada
-   * Valores: 'dark', 'light', o null (seguir sistema)
-   */
-  const savedTheme = localStorage.getItem('theme')
-
-  /**
-   * Obtiene la preferencia del sistema operativo
-   */
-  const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-
-  /**
-   * Determina si debe aplicarse modo oscuro
-   * Prioridad: preferencia guardada > preferencia del sistema
-   */
-  const isDark = savedTheme ? savedTheme === 'dark' : systemPrefersDark
-
-  /**
-   * Aplica o remueve la clase 'dark' del elemento html
-   * Tailwind CSS usa esta clase para aplicar estilos oscuros
-   */
-  if (isDark) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-}
-
-/**
- * Escucha cambios en la preferencia de tema del sistema
- * Cuando el usuario cambia su preferencia OS, la aplicación se adapta
- */
-const setupDarkModeListener = (): void => {
-  /**
-   * Crea un listener para cambios en preferencia de tema del sistema
-   */
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-
-  /**
-   * Handler que se ejecuta cuando la preferencia cambia
-   */
-  const handleChange = (e: MediaQueryListEvent | MediaQueryList): void => {
-    /**
-     * Solo se aplica si el usuario no ha guardado una preferencia manual
-     */
-    if (!localStorage.getItem('theme')) {
-      if (e.matches) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
-    }
-  }
-
-  /**
-   * Agrega el listener (sintaxis moderna)
-   * En navegadores antiguos se usa addEventListener como fallback
-   */
-  if (mediaQuery.addEventListener) {
-    mediaQuery.addEventListener('change', handleChange)
-  }
-
-  /**
-   * Retorna función para limpiar el listener (se usa en onUnmounted)
-   */
-  return () => {
-    if (mediaQuery.removeEventListener) {
-      mediaQuery.removeEventListener('change', handleChange)
-    }
-  }
-}
-
-/**
  * ========================================
  * HOOKS DEL CICLO DE VIDA
  * ========================================
@@ -220,16 +143,6 @@ const setupDarkModeListener = (): void => {
  */
 onMounted(async () => {
   /**
-   * Inicializa modo oscuro
-   */
-  initializeDarkMode()
-
-  /**
-   * Configura listener para cambios en preferencia del sistema
-   */
-  setupDarkModeListener()
-
-  /**
    * Inicializa la aplicación (autenticación, usuario, preferencias)
    */
   await initializeApp()
@@ -240,16 +153,6 @@ onMounted(async () => {
   showNotifications.value = true
 })
 
-/**
- * onUnmounted: se ejecuta cuando el componente se desmonta
- * Se usa para limpiar listeners y recursos
- */
-onUnmounted(() => {
-  /**
-   * El listener del tema se limpia automáticamente al desmontar
-   * (Vue maneja la limpieza de efectos secundarios en Composition API)
-   */
-})
 </script>
 
 <style scoped>

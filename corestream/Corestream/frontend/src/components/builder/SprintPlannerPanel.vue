@@ -36,7 +36,7 @@
         <button
           v-if="canManage"
           type="button"
-          class="rounded-lg bg-[var(--teal)] px-3 py-2 text-sm text-white hover:bg-[var(--teal-90)]"
+          class="rounded-lg bg-[var(--teal-action)] px-3 py-2 text-sm text-white hover:bg-[var(--teal-90)]"
           @click="openCreateForm"
         >
           + Nuevo Sprint
@@ -149,7 +149,7 @@
         <button
           type="submit"
           :disabled="store.isSaving || !form.name.trim() || !form.applicationId"
-          class="rounded-lg bg-[var(--teal)] px-4 py-2 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
+          class="rounded-lg bg-[var(--teal-action)] px-4 py-2 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
         >
           {{ store.isSaving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear Sprint' }}
         </button>
@@ -462,7 +462,7 @@
             <button
               type="button"
               :disabled="!assignSelection.length || store.isSaving || !canManage"
-              class="rounded-lg bg-[var(--teal)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
+              class="rounded-lg bg-[var(--teal-action)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
               @click="attachTickets"
             >
               Asociar al Sprint

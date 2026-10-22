@@ -4,9 +4,9 @@
   Proporciona navegación sidebar y estructura común para todas las vistas admin.
 -->
 <template>
-  <div class="flex h-screen bg-gray-100 dark:bg-gray-950">
+  <div class="flex h-screen bg-gray-100 dark:bg-gray-950 transition-colors duration-200">
     <!-- Sidebar -->
-    <aside class="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+    <aside class="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-colors duration-200">
       <nav class="flex-1 p-6 space-y-4">
         <h2 class="font-bold text-lg text-gray-900 dark:text-white mb-6">
           Administración
@@ -54,7 +54,8 @@
           Soporte
         </router-link>
       </nav>
-      <div class="p-6 pt-0">
+      <div class="p-6 pt-0 space-y-2">
+        <ThemeToggle />
         <button
           class="w-full rounded-lg px-4 py-2 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
           @click="handleLogout"
@@ -74,6 +75,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

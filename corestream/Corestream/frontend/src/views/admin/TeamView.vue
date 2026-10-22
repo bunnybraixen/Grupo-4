@@ -19,7 +19,7 @@
         </p>
       </div>
       <button @click="openTeamModal()"
-        class="px-4 py-2.5 rounded-xl bg-[var(--teal)] text-white hover:opacity-90 font-medium text-sm flex items-center gap-2 shadow-sm">
+        class="px-4 py-2.5 rounded-xl bg-[var(--teal-action)] text-white hover:opacity-90 font-medium text-sm flex items-center gap-2 shadow-sm">
         + Crear Nuevo Equipo
       </button>
     </div>
@@ -86,7 +86,7 @@
         <div class="flex justify-end gap-2 pt-2">
           <button @click="closeTeamModal" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancelar</button>
           <button @click="saveTeam" :disabled="!teamForm.name.trim()"
-            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal)] text-white hover:opacity-90 disabled:opacity-50 font-medium">Guardar Equipo</button>
+            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal-action)] text-white hover:opacity-90 disabled:opacity-50 font-medium">Guardar Equipo</button>
         </div>
       </div>
     </div>
@@ -147,7 +147,7 @@
         <div class="flex justify-end gap-2 pt-2">
           <button @click="editingUser = null; editUserError = ''" class="px-4 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancelar</button>
           <button @click="saveUserEdits" :disabled="savingUser || !editUserForm.email.trim()"
-            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal)] text-white hover:opacity-90 disabled:opacity-50 font-medium">
+            class="px-4 py-2 rounded-lg text-sm bg-[var(--teal-action)] text-white hover:opacity-90 disabled:opacity-50 font-medium">
             {{ savingUser ? 'Guardando…' : 'Guardar cambios' }}
           </button>
         </div>
@@ -238,7 +238,7 @@
         <p v-if="createUserSuccess" class="text-xs text-emerald-400 font-medium">{{ createUserSuccess }}</p>
         <div class="flex justify-end">
           <button @click="createUser" :disabled="creatingUser || !newUser.email.trim() || !newUser.password.trim()"
-            class="px-5 py-2.5 rounded-xl bg-[var(--teal)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50">
+            class="px-5 py-2.5 rounded-xl bg-[var(--teal-action)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50">
             {{ creatingUser ? 'Creando…' : '✓ Crear Usuario' }}
           </button>
         </div>

@@ -163,7 +163,7 @@
           :class="[
             'px-3 py-1 rounded-full text-xs font-medium transition-colors',
             statusFilter === f.value
-              ? 'bg-[var(--teal)] text-white font-semibold'
+              ? 'bg-[var(--teal-action)] text-white font-semibold'
               : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
           ]"
         >
@@ -181,7 +181,7 @@
           :class="[
             'px-3 py-1 rounded-full text-xs font-medium transition-colors',
             priorityFilter === f.value
-              ? 'bg-[var(--teal)] text-white font-semibold'
+              ? 'bg-[var(--teal-action)] text-white font-semibold'
               : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
           ]"
         >
@@ -199,7 +199,7 @@
           :class="[
             'px-3 py-1 rounded-full text-xs font-medium transition-colors',
             dateFilter === f.value
-              ? 'bg-[var(--teal)] text-white font-semibold'
+              ? 'bg-[var(--teal-action)] text-white font-semibold'
               : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
           ]"
         >
@@ -221,7 +221,7 @@
           :class="[
             'px-3 py-1 rounded-full text-xs font-medium transition-colors',
             tagFilterIds.includes(tag.id)
-              ? 'bg-[var(--teal)] text-white font-semibold'
+              ? 'bg-[var(--teal-action)] text-white font-semibold'
               : 'bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]',
           ]"
         >

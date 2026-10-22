@@ -130,7 +130,7 @@
             v-if="ticket?.status === 'TODO'"
             @click="handleStart"
             :disabled="isStarting"
-            class="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all duration-200 mb-3 bg-[var(--teal)] text-white hover:opacity-90 cursor-pointer"
+            class="w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all duration-200 mb-3 bg-[var(--teal-action)] text-white hover:opacity-90 cursor-pointer"
           >
             <span>▶</span>
             <span>{{ isStarting ? 'Iniciando...' : 'Comenzar Ticket' }}</span>
@@ -253,7 +253,7 @@
               ? 'border-[var(--teal)] bg-[var(--bg-card-hover)]'
               : 'border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)]'"
           >
-            <div class="w-8 h-8 rounded-full bg-[var(--teal)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            <div class="w-8 h-8 rounded-full bg-[var(--teal-action)] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {{ (dev.fullName || dev.name || '?').slice(0, 2).toUpperCase() }}
             </div>
             <div class="flex-1 min-w-0">
@@ -300,7 +300,7 @@
   <Transition name="fade">
     <div
       v-if="promoteToast"
-      class="fixed bottom-6 right-6 z-[200] bg-[var(--teal)] text-white text-sm font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2"
+      class="fixed bottom-6 right-6 z-[200] bg-[var(--teal-action)] text-white text-sm font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2"
     >
       ✓ Subtarea convertida en ticket exitosamente.
     </div>
@@ -446,7 +446,7 @@ const priorityLabel = computed(() => {
 const statusBadgeClass = computed(() => {
   const map: Record<string, string> = {
     TODO: 'px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--status-todo-bg)] text-[var(--status-todo-text)]',
-    IN_PROGRESS: 'px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--teal)] text-white',
+    IN_PROGRESS: 'px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--teal-action)] text-white',
     BLOCKED: 'px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--priority-urg-bg)] text-white animate-pulse',
     BLOCKED_QUESTION: 'px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--priority-urg-bg)] text-white animate-pulse',
     REDIRECTED: 'px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-500 text-white',
