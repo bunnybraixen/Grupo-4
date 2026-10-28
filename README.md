@@ -1,4 +1,4 @@
-**PROYECTO: CORESTREAM WEB**
+**PROYECTO: CORESTREAM WEB FRONTEND**
 
 **DESCRIPCIÓN**
 CoreStream es una plataforma web de inteligencia operacional para la gestión y control de proyectos de desarrollo de software. Está dirigida principalmente a equipos de desarrollo, líderes de grupo y administradores, permitiendo organizar y monitorear el trabajo mediante la jerarquía: Aplicaciones -> Épicas -> Tickets -> Subtareas.
