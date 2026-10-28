@@ -9,61 +9,35 @@ Nota de versión: Este proyecto corresponde a la continuidad de CoreStream 1.0, 
 
 Frontend:
 
-Lenguajes: TypeScript, JavaScript, HTML5, CSS3
+Lenguajes y Framework: TypeScript, JavaScript, HTML5, CSS3, Vue 3.
 
-Framework: Vue 3
+Herramientas y Estado: Vite (build tool), Pinia (estado global), Vue Router (navegación), Axios (cliente HTTP).
 
-Build Tool: Vite
+UI y Componentes: Tailwind CSS (estilos), Vue Draggable (arrastrar y soltar), Vue-i18n (internacionalización).
 
-Estado Global: Pinia
-
-Navegación: Vue Router
-
-Cliente HTTP: Axios
-
-Estilos UI: Tailwind CSS
-
-Componentes e Interacción: Vue Draggable, Vue-i18n (Internacionalización)
-
-Visualización y Reportes: Chart.js, ApexCharts, jsPDF
-
-Testing: Vitest, Cypress
+Visualización y Testing: Chart.js y ApexCharts (gráficos), jsPDF (reportes PDF), Vitest y Cypress (testing).
 
 Backend:
 
-Lenguaje: Python
+Lenguaje y Framework: Python, FastAPI (API REST), Uvicorn (servidor ASGI).
 
-Framework Web: FastAPI
+Datos y Persistencia: Pydantic v2 (validación), SQLAlchemy (ORM), Alembic (migraciones), asyncpg (conector PostgreSQL asíncrono).
 
-Servidor ASGI: Uvicorn
+Tareas Asíncronas y Tiempo Real: Redis y ARQ (cache y cola de tareas), WebSockets (comunicación en tiempo real).
 
-Validación de Datos: Pydantic v2
-
-ORM y Migraciones: SQLAlchemy, Alembic
-
-Conector BD: asyncpg (PostgreSQL asíncrono)
-
-Cache y Tareas Asíncronas: Redis, ARQ
-
-Comunicación en Tiempo Real: WebSockets
-
-Seguridad: JWT (JSON Web Tokens), bcrypt, RBAC (Control de Acceso Basado en Roles)
-
-Testing: pytest, pytest-asyncio
+Seguridad y Testing: JWT, bcrypt, RBAC (autenticación y acceso por roles), pytest y pytest-asyncio (testing).
 
 Base de Datos:
 
-Motor Principal: PostgreSQL
-
-Memoria / Cache / PubSub: Redis
+PostgreSQL (motor principal) y Redis (memoria, cache y PubSub).
 
 DevOps, Infraestructura y CI/CD:
 
-Contenedorización: Docker, Docker Compose
+Docker y Docker Compose (contenedorización).
 
-Control de Versiones y CI/CD: Git, GitHub, GitHub Actions
+Git, GitHub y GitHub Actions (control de versiones y CI/CD).
 
-Despliegue Cloud: Vercel (Frontend), Railway (Backend, PostgreSQL y Redis)
+Vercel (despliegue frontend) y Render (despliegue backend, PostgreSQL y Redis).
 
 **ARQUITECTURA DE LA SOLUCIÓN**
 
