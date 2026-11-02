@@ -28,7 +28,7 @@
     <div
       :class="[
         'flex-1 overflow-y-auto',
-        selectedIncident ? 'mr-4' : '',
+        selectedIncident ? 'md:mr-4' : '',
       ]"
     >
       <div class="p-6">
@@ -173,8 +173,11 @@
     >
       <div
         v-if="selectedIncident"
-        class="w-[420px] flex-shrink-0 overflow-hidden"
+        class="fixed inset-0 z-50 flex md:relative md:inset-auto md:z-auto md:flex-shrink-0 md:w-[420px] md:overflow-hidden"
       >
+        <!-- Overlay para móvil -->
+        <div class="absolute inset-0 bg-black/50 md:hidden" @click="selectedIncident = null" />
+        <div class="relative ml-auto w-full max-w-[420px] md:max-w-none md:w-full overflow-y-auto">
         <IncidentDetailPanel
           :incident="selectedIncident"
           @close="selectedIncident = null"
@@ -182,6 +185,7 @@
           @resolve="onResolveIncident"
           @add-comment="onAddComment"
         />
+        </div>
       </div>
     </transition>
   </div>

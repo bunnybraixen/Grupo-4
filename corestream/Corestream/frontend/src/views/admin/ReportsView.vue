@@ -10,7 +10,7 @@
       fecha de generación y el alcance del reporte.
 -->
 <template>
-  <div class="space-y-6 p-6">
+  <div class="space-y-6 p-4 md:p-6">
     <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('reportsPage.title') }}</h1>
@@ -147,7 +147,8 @@
       <!-- ===================== CUELLOS DE BOTELLA ===================== -->
       <section v-if="bottleneckRows.length" class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h2 class="mb-3 font-semibold text-gray-900 dark:text-white">{{ t('reportsPage.bottlenecks') }}</h2>
-        <table class="w-full text-sm">
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[380px]">
           <thead>
             <tr class="text-left text-gray-500 dark:text-gray-400">
               <th class="py-1 font-medium">{{ t('reportsPage.status') }}</th>
@@ -165,6 +166,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </section>
     </template>
   </div>

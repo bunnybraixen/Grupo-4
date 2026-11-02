@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 p-6 lg:p-8">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 p-4 lg:p-8">
     <div class="mx-auto max-w-7xl space-y-6">
       <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>

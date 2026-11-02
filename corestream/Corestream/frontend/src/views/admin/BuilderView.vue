@@ -5,7 +5,7 @@
   Flujo: seleccionar aplicación -> crear épica -> crear tickets -> avanzar estado.
 -->
 <template>
-  <div class="p-8 max-w-6xl mx-auto text-[var(--text-primary)]">
+  <div class="p-4 md:p-8 max-w-6xl mx-auto text-[var(--text-primary)]">
     <h1 class="text-3xl font-bold">{{ t('builderPage.title') }}</h1>
     <p class="mt-2 text-[var(--text-muted)]">
       {{ t('builderPage.subtitle') }}

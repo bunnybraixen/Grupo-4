@@ -11,9 +11,9 @@
   ============================================================================
 -->
 <template>
-  <div class="p-6 max-w-5xl mx-auto text-[var(--text-primary)]">
+  <div class="p-4 md:p-6 max-w-5xl mx-auto text-[var(--text-primary)]">
     <!-- Encabezado -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold">{{ t('supportOperations.title') }}</h1>
         <p class="mt-1 text-sm text-[var(--text-muted)]">
@@ -117,7 +117,7 @@
         :key="ticket.id"
         class="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4"
       >
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div class="min-w-0">
             <h2 class="font-semibold">{{ ticket.title }}</h2>
             <p class="mt-1 whitespace-pre-wrap text-sm text-[var(--text-secondary)]">{{ ticket.problem }}</p>
@@ -172,7 +172,7 @@
         :key="ticket.id"
         class="rounded-xl border border-amber-500/30 bg-[var(--bg-card)] p-4"
       >
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="font-semibold">{{ ticket.title }}</h2>

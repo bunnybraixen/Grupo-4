@@ -64,7 +64,7 @@
           </button>
           
           <!-- Panel desplegable de notificaciones (visible en hover) -->
-          <div class="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 hidden group-hover:block p-4 z-50">
+          <div class="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 hidden group-hover:block p-4 z-50">
             <div class="space-y-3 max-h-96 overflow-y-auto">
               <div v-for="notification in notificationsList" :key="notification.id" class="flex gap-3 pb-3 border-b border-slate-100 dark:border-slate-700 last:border-0">
                 <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">

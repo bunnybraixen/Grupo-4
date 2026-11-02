@@ -7,7 +7,7 @@
 <template>
   <div class="flex-1 overflow-auto bg-slate-50 dark:bg-slate-900 min-h-screen">
     <AppHeader />
-    <div class="p-6 lg:p-8">
+    <div class="p-4 lg:p-8">
     <!-- Encabezado -->
     <div class="mb-6">
       <h1 class="text-3xl font-bold mb-1 text-slate-800 dark:text-white">

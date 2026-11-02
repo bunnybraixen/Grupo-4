@@ -12,7 +12,7 @@
   - Asignar miembros del equipo a los tickets
 -->
 <template>
-  <div class="p-8 max-w-6xl mx-auto text-[var(--text-primary)] space-y-6">
+  <div class="p-4 md:p-8 max-w-6xl mx-auto text-[var(--text-primary)] space-y-6">
     <!-- Header banner del usuario y su equipo -->
     <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>

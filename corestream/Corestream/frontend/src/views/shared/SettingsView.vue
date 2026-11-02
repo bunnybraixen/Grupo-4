@@ -2,7 +2,7 @@
   <div class="flex flex-col min-h-screen bg-[var(--bg-app)]">
     <AppHeader />
 
-    <div class="p-8 flex-1 overflow-auto max-w-3xl mx-auto w-full">
+    <div class="p-4 md:p-8 flex-1 overflow-auto max-w-3xl mx-auto w-full">
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-[var(--text-primary)] mb-1">⚙ {{ t('settings.settingsTitle') }}</h1>
         <p class="text-[var(--text-secondary)] text-sm">{{ t('settings.subtitle') }}</p>

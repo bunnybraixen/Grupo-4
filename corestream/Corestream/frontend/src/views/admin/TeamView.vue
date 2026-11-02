@@ -6,7 +6,7 @@
   - Ver tabla de todos los usuarios del sistema
 -->
 <template>
-  <div class="p-8 max-w-6xl mx-auto text-[var(--text-primary)] space-y-10">
+  <div class="p-4 md:p-8 max-w-6xl mx-auto text-[var(--text-primary)] space-y-10">
 
     <!-- HEADER -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -242,8 +242,8 @@
       </div>
 
       <div v-if="loadingUsers" class="text-sm text-[var(--text-muted)] py-4 text-center">{{ t('teamPage.loadingUsers') }}</div>
-      <div v-else class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
-        <table class="w-full text-left text-sm border-collapse">
+      <div v-else class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-x-auto shadow-sm">
+        <table class="w-full text-left text-sm border-collapse min-w-[600px]">
           <thead>
             <tr class="border-b border-[var(--border-subtle)] bg-[var(--bg-app)] text-[var(--text-muted)] text-xs uppercase tracking-wider">
               <th class="p-3">{{ t('teamPage.nameHeader') }}</th>
