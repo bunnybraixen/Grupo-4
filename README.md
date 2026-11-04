@@ -5,6 +5,21 @@ CoreStream es una plataforma web de inteligencia operacional para la gestión y 
 
 Nota de versión: Este proyecto corresponde a la continuidad de CoreStream 1.0, con el objetivo de incorporar nuevas funcionalidades y mejoras para evolucionar la plataforma hacia una solución más completa y competitiva en la gestión de proyectos.
 
+**MVP DESPLEGADO**
+
+Link Railway: https://frontend-production-dcf4.up.railway.app/
+
+**Enlace:** https://frontend-production-dcf4.up.railway.app/
+
+**Credenciales de acceso:**
+
+- **Team Leader:** leader@corestream.com
+- Contraseña: LeaderPassword123!
+- **Developer:** dev@corestream.com
+- Contraseña: DevPassword123!
+- **Admin:** admin@corestream.com
+- Contraseña: AdminPassword123!
+
 **TECNOLOGÍAS UTILIZADAS**
 
 Frontend:
