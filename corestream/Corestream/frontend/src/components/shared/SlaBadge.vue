@@ -26,8 +26,11 @@
  * SlaBadge - Indicador visual del estado de SLA de un ticket.
  */
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/common/IconFallback.vue'
 import type { TicketSlaStatus } from '@/types/sprint'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   /** Estado de SLA del ticket (lo calcula el backend en /sla/statuses) */
@@ -43,13 +46,13 @@ const state = computed(() => props.status?.state ?? 'ON_TRACK')
 const label = computed(() => {
   switch (state.value) {
     case 'BREACHED':
-      return 'SLA incumplido'
+      return t('builderPage.sprintPlanner.slaBadgeBreached')
     case 'AT_RISK':
-      return 'SLA próximo a vencer'
+      return t('builderPage.sprintPlanner.slaBadgeAtRisk')
     case 'MET':
-      return 'SLA cumplido'
+      return t('builderPage.sprintPlanner.slaBadgeMet')
     default:
-      return 'SLA en plazo'
+      return t('builderPage.sprintPlanner.slaBadgeOnTrack')
   }
 })
 
@@ -87,20 +90,20 @@ const countdown = computed(() => {
   if (minutes === null || minutes === undefined) {
     return props.status.isResolved ? '' : `${formatMinutes(Math.max(0, -props.status.resolutionRemainingMinutes))}`
   }
-  if (minutes < 0) return `${formatMinutes(Math.abs(minutes))} excedido`
-  return `${formatMinutes(minutes)} restantes`
+  if (minutes < 0) return `${formatMinutes(Math.abs(minutes))} ${t('builderPage.sprintPlanner.slaExceeded')}`
+  return `${formatMinutes(minutes)} ${t('builderPage.sprintPlanner.slaRemaining')}`
 })
 
 /** Detalle para el tooltip: objetivo de respuesta y de resolución */
 const tooltip = computed(() => {
   if (!props.status) return ''
   const lines = [
-    `SLA del ticket (prioridad ${props.status.priority})`,
-    `Respuesta: objetivo ${formatMinutes(props.status.responseTargetMinutes)} · ${translateState(props.status.responseState)}`,
-    `Resolución: objetivo ${formatMinutes(props.status.resolutionTargetMinutes)} · ${translateState(props.status.resolutionState)}`
+    t('builderPage.sprintPlanner.slaTicketTooltip', { priority: props.status.priority }),
+    `${t('builderPage.sprintPlanner.slaResponse')}: ${t('builderPage.sprintPlanner.target')} ${formatMinutes(props.status.responseTargetMinutes)} · ${translateState(props.status.responseState)}`,
+    `${t('builderPage.sprintPlanner.slaResolution')}: ${t('builderPage.sprintPlanner.target')} ${formatMinutes(props.status.resolutionTargetMinutes)} · ${translateState(props.status.resolutionState)}`
   ]
   if (props.status.nextDeadlineAt) {
-    lines.push(`Próximo vencimiento: ${formatDateTime(props.status.nextDeadlineAt)}`)
+    lines.push(`${t('builderPage.sprintPlanner.nextDeadline')}: ${formatDateTime(props.status.nextDeadlineAt)}`)
   }
   return lines.join('\n')
 })
@@ -119,11 +122,11 @@ function formatMinutes(minutes: number): string {
 /** Traduce el estado de un objetivo de SLA */
 function translateState(value: string): string {
   const map: Record<string, string> = {
-    ON_TRACK: 'en plazo',
-    AT_RISK: 'próximo a vencer',
-    BREACHED: 'incumplido',
-    MET: 'cumplido',
-    NOT_APPLICABLE: 'sin SLA'
+    ON_TRACK: t('builderPage.sprintPlanner.slaOnTrack'),
+    AT_RISK: t('builderPage.sprintPlanner.slaAtRisk'),
+    BREACHED: t('builderPage.sprintPlanner.slaBreached'),
+    MET: t('builderPage.sprintPlanner.slaMet'),
+    NOT_APPLICABLE: t('builderPage.sprintPlanner.slaNotApplicable')
   }
   return map[value] ?? value
 }
