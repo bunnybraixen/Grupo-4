@@ -17,11 +17,9 @@
     <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 class="text-lg font-bold text-[var(--text-primary)]">Objetivos de SLA por prioridad</h2>
+          <h2 class="text-lg font-bold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.slaTitle') || 'SLA targets by priority' }}</h2>
           <p class="mt-1 text-sm text-[var(--text-muted)]">
-            Define el tiempo objetivo de <strong>respuesta</strong> y de
-            <strong>resolución</strong> según la prioridad/severidad del ticket, y el
-            <strong>umbral</strong> a partir del cual avisa «próximo a vencer».
+            {{ t('builderPage.sprintPlanner.slaDescription') || 'Define the target response and resolution times based on ticket priority/severity, plus the alert threshold that marks tickets as due soon.' }}
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -29,14 +27,14 @@
             v-if="!isAdmin"
             class="rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]"
           >
-            Solo ADMIN puede editar
+            {{ t('builderPage.sprintPlanner.adminOnly') }}
           </span>
           <button
             type="button"
             class="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-primary)]"
             @click="loadConfigs"
           >
-            Recargar
+            {{ t('builderPage.sprintPlanner.reload') }}
           </button>
         </div>
       </div>
@@ -58,11 +56,11 @@
         <table class="w-full min-w-[760px] text-sm">
           <thead>
             <tr class="text-left text-[var(--text-muted)]">
-              <th class="py-2 pr-3 font-medium">Prioridad</th>
-              <th class="py-2 pr-3 font-medium">Respuesta (min)</th>
-              <th class="py-2 pr-3 font-medium">Resolución (min)</th>
-              <th class="py-2 pr-3 font-medium">Umbral alerta (%)</th>
-              <th class="py-2 pr-3 font-medium">Activa</th>
+              <th class="py-2 pr-3 font-medium">{{ t('workbenchDashboard.priority') }}</th>
+              <th class="py-2 pr-3 font-medium">{{ t('builderPage.sprintPlanner.responseMinutes') }}</th>
+              <th class="py-2 pr-3 font-medium">{{ t('builderPage.sprintPlanner.resolutionMinutes') }}</th>
+              <th class="py-2 pr-3 font-medium">{{ t('builderPage.sprintPlanner.warnThreshold') }}</th>
+              <th class="py-2 pr-3 font-medium">{{ t('builderPage.sprintPlanner.active') }}</th>
               <th class="py-2 font-medium"></th>
             </tr>
           </thead>
@@ -77,9 +75,9 @@
                 <span
                   v-if="row.isDefault"
                   class="ml-2 rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]"
-                  title="Aún no hay fila persistida; se muestran los valores por defecto"
+                  :title="t('builderPage.sprintPlanner.defaultHint')"
                 >
-                  por defecto
+                  {{ t('builderPage.sprintPlanner.defaultBadge') }}
                 </span>
               </td>
               <td class="py-2 pr-3">
@@ -128,7 +126,7 @@
                   class="rounded-lg bg-[var(--teal-action)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
                   @click="save(row)"
                 >
-                  {{ saving[row.priority] ? 'Guardando…' : 'Guardar' }}
+                  {{ saving[row.priority] ? t('builderPage.sprintPlanner.saving') : t('builderPage.sprintPlanner.saveBadge') }}
                 </button>
               </td>
             </tr>
@@ -141,10 +139,9 @@
     <div class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 class="text-lg font-bold text-[var(--text-primary)]">Tickets próximos al límite / incumplidos</h2>
+          <h2 class="text-lg font-bold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.alertsTitle') }}</h2>
           <p class="mt-1 text-sm text-[var(--text-muted)]">
-            Tickets cuyo SLA está <strong>próximo a vencer</strong> (según el umbral) o ya
-            <strong>incumplido</strong>. Ordenados por urgencia.
+            {{ t('builderPage.sprintPlanner.alertsDescription') }}
           </p>
         </div>
         <button
@@ -152,19 +149,19 @@
           class="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-primary)]"
           @click="loadAlerts"
         >
-          Actualizar
+          {{ t('builderPage.sprintPlanner.loadAlerts') }}
         </button>
       </div>
 
       <div v-if="alertsLoading" class="py-6 text-center text-sm text-[var(--text-muted)]">
-        Calculando SLA…
+        {{ t('builderPage.sprintPlanner.calculateSla') }}
       </div>
 
       <p
         v-else-if="!store.slaAlerts.length"
         class="mt-4 rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-sm text-[var(--text-muted)]"
       >
-        No hay tickets en riesgo ni incumplidos para el filtro actual. 👍
+        {{ t('builderPage.sprintPlanner.noAlerts') }}
       </p>
 
       <ul v-else class="mt-4 space-y-2">
@@ -175,11 +172,11 @@
         >
           <SlaBadge :status="alert" />
           <span class="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]">
-            {{ alert.title || 'Ticket sin título' }}
+            {{ alert.title || t('builderPage.sprintPlanner.ticketWithoutTitle') }}
           </span>
           <span class="text-[11px] text-[var(--text-muted)]">{{ priorityLabel(alert.priority) }}</span>
-          <span class="text-[11px] text-[var(--text-muted)]">· {{ alert.epicTitle || 'Sin épica' }}</span>
-          <span class="text-[11px] text-[var(--text-muted)]">· {{ alert.sprintName || 'Sin Sprint' }}</span>
+          <span class="text-[11px] text-[var(--text-muted)]">· {{ alert.epicTitle || t('builderPage.sprintPlanner.noEpic') }}</span>
+          <span class="text-[11px] text-[var(--text-muted)]">· {{ alert.sprintName || t('builderPage.sprintPlanner.noSprint') }}</span>
         </li>
       </ul>
     </div>
@@ -191,8 +188,11 @@
  * SlaSettingsPanel - Configuración de objetivos de SLA + alertas (NEW-06).
  */
 import { onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSprintsStore } from '@/stores/sprints'
 import SlaBadge from '@/components/shared/SlaBadge.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   /** Solo ADMIN puede modificar los objetivos (el backend lo exige) */
@@ -270,7 +270,7 @@ const save = async (row: ConfigRow): Promise<void> => {
       warnThresholdPercent: row.warnThresholdPercent,
       isActive: row.isActive
     })
-    saveMessage.value = `Objetivos de prioridad «${priorityLabel(row.priority)}» guardados.`
+    saveMessage.value = t('builderPage.sprintPlanner.saveMessage', { priority: priorityLabel(row.priority) })
     await loadConfigs()
   } catch {
     // store.error ya contiene el detalle
@@ -279,9 +279,9 @@ const save = async (row: ConfigRow): Promise<void> => {
   }
 }
 
-/** Etiqueta en español de una prioridad */
+/** Etiqueta de una prioridad */
 const priorityLabel = (priority: string): string =>
-  ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' })[priority] ?? priority
+  ({ LOW: t('statuses.low'), MEDIUM: t('statuses.medium'), HIGH: t('statuses.high'), URGENT: t('statuses.urgent') })[priority] ?? priority
 
 onMounted(() => {
   void loadConfigs()

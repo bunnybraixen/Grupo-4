@@ -58,7 +58,7 @@
         <div
           v-if="ticket.assignee"
           class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white flex-shrink-0"
-          :title="assigneeName || 'Sin nombre'"
+          :title="assigneeName || t('builderPage.sprintPlanner.noAssigneeName')"
         >
           {{ getInitials(assigneeName) }}
         </div>
@@ -88,7 +88,7 @@
       <!-- ================================================================ -->
       <div v-if="isOverdue && daysOverdue > 0" class="text-xs font-semibold text-red-400">
         <Icon icon="mdi:close-circle" class="inline mr-1" />
-        {{ daysOverdue }} días atrasado
+        {{ t('builderPage.sprintPlanner.daysOverdue', { count: daysOverdue }) }}
       </div>
     </div>
 
@@ -110,7 +110,10 @@
 // =====================================================================
 
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
+
+const { t } = useI18n()
 
 // =====================================================================
 // DEFINICIÓN DE TIPOS
@@ -218,13 +221,13 @@ const getStatusColor = (status: string): string => {
 const getStatusLabel = (status: string): string => {
   switch (status) {
     case 'TODO':
-      return 'Por Hacer'
+      return t('statuses.todo')
     case 'IN_PROGRESS':
-      return 'En Curso'
+      return t('statuses.inProgress')
     case 'BLOCKED':
-      return 'Bloqueado'
+      return t('statuses.blocked')
     case 'DONE':
-      return 'Completado'
+      return t('statuses.done')
     default:
       return status
   }

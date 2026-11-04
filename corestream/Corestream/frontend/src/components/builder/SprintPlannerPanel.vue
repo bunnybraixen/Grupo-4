@@ -15,10 +15,9 @@
     <!-- ============================ ENCABEZADO ============================ -->
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h2 class="text-xl font-bold text-[var(--text-primary)]">Planificación de Sprints</h2>
+        <h2 class="text-xl font-bold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.title') }}</h2>
         <p class="mt-1 text-sm text-[var(--text-muted)]">
-          Un Sprint es un período de trabajo independiente de las épicas: un ticket
-          puede pertenecer a la vez a una Épica y a un Sprint.
+          {{ t('builderPage.sprintPlanner.subtitle') }}
         </p>
       </div>
 
@@ -27,7 +26,7 @@
           v-model="projectFilter"
           class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)]"
         >
-          <option value="">Todos los proyectos</option>
+          <option value="">{{ t('builderPage.sprintPlanner.allProjects') }}</option>
           <option v-for="app in applications" :key="app.id" :value="app.id">
             {{ app.name }}
           </option>
@@ -39,7 +38,7 @@
           class="rounded-lg bg-[var(--teal-action)] px-3 py-2 text-sm text-white hover:bg-[var(--teal-90)]"
           @click="openCreateForm"
         >
-          + Nuevo Sprint
+          {{ t('builderPage.sprintPlanner.newSprint') }}
         </button>
       </div>
     </div>
@@ -56,7 +55,7 @@
       @submit.prevent="submitForm"
     >
       <h3 class="font-semibold text-[var(--text-primary)]">
-        {{ editingId ? 'Editar Sprint' : 'Nuevo Sprint' }}
+        {{ editingId ? t('builderPage.sprintPlanner.editSprint') : t('builderPage.sprintPlanner.newSprintDialog') }}
       </h3>
 
       <p
@@ -68,25 +67,25 @@
 
       <div class="grid gap-3 md:grid-cols-2">
         <label class="block text-sm">
-          <span class="text-[var(--text-muted)]">Nombre</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.name') }}</span>
           <input
             v-model="form.name"
             type="text"
             required
-            placeholder="Ej: Sprint 12"
+            :placeholder="t('builderPage.sprintPlanner.name')"
             class="mt-1 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)]"
           />
         </label>
 
         <label class="block text-sm">
-          <span class="text-[var(--text-muted)]">Proyecto</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.project') }}</span>
           <select
             v-model="form.applicationId"
             required
             :disabled="Boolean(editingId)"
             class="mt-1 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)] disabled:opacity-60"
           >
-            <option value="" disabled>Selecciona un proyecto</option>
+            <option value="" disabled>{{ t('builderPage.sprintPlanner.selectProject') }}</option>
             <option v-for="app in applications" :key="app.id" :value="app.id">
               {{ app.name }}
             </option>
@@ -94,7 +93,7 @@
         </label>
 
         <label class="block text-sm">
-          <span class="text-[var(--text-muted)]">Fecha de inicio</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.startDate') }}</span>
           <input
             v-model="form.startDate"
             type="datetime-local"
@@ -104,7 +103,7 @@
         </label>
 
         <label class="block text-sm">
-          <span class="text-[var(--text-muted)]">Fecha de término</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.endDate') }}</span>
           <input
             v-model="form.endDate"
             type="datetime-local"
@@ -114,25 +113,25 @@
         </label>
 
         <label class="block text-sm md:col-span-2">
-          <span class="text-[var(--text-muted)]">Objetivo del Sprint (opcional)</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.sprintGoal') }}</span>
           <textarea
             v-model="form.goal"
             rows="2"
-            placeholder="Ej: cerrar el módulo de autenticación"
+            :placeholder="t('builderPage.sprintPlanner.sprintGoalPlaceholder')"
             class="mt-1 w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)]"
           ></textarea>
         </label>
 
         <label class="block text-sm">
-          <span class="text-[var(--text-muted)]">Estado</span>
+          <span class="text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.status') }}</span>
           <select
             v-model="form.status"
             class="mt-1 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)]"
           >
-            <option value="PLANNED">Planificado</option>
-            <option value="ACTIVE">En curso</option>
+            <option value="PLANNED">{{ t('builderPage.sprintPlanner.statusPlanned') }}</option>
+            <option value="ACTIVE">{{ t('builderPage.sprintPlanner.statusActive') }}</option>
             <option value="COMPLETED" :disabled="form.status !== 'COMPLETED'">
-              Cerrado (se cierra con «Cerrar y calcular Velocity»)
+              {{ t('builderPage.sprintPlanner.statusCompleted') }}
             </option>
           </select>
         </label>
@@ -144,25 +143,25 @@
           class="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-primary)]"
           @click="closeForm"
         >
-          Cancelar
+          {{ t('builderPage.sprintPlanner.cancel') }}
         </button>
         <button
           type="submit"
           :disabled="store.isSaving || !form.name.trim() || !form.applicationId"
           class="rounded-lg bg-[var(--teal-action)] px-4 py-2 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
         >
-          {{ store.isSaving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Crear Sprint' }}
+          {{ store.isSaving ? t('builderPage.sprintPlanner.saving') : editingId ? t('builderPage.sprintPlanner.saveChanges') : t('builderPage.sprintPlanner.createSprint') }}
         </button>
       </div>
     </form>
 
     <!-- ============================ LISTA DE SPRINTS ============================ -->
     <div v-if="store.isLoading && !store.sprints.length" class="py-8 text-center text-sm text-[var(--text-muted)]">
-      Cargando Sprints…
+      {{ t('builderPage.sprintPlanner.loading') }}
     </div>
 
     <div v-else-if="!filteredSprints.length" class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-8 text-center text-sm text-[var(--text-muted)]">
-      No hay Sprints para este filtro. Crea el primero con «+ Nuevo Sprint».
+      {{ t('builderPage.sprintPlanner.emptyState') }}
     </div>
 
     <div v-else class="grid gap-3 md:grid-cols-2">
@@ -194,7 +193,7 @@
 
         <div class="mt-3">
           <div class="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
-            <span>Avance</span>
+            <span>{{ t('builderPage.sprintPlanner.progress') }}</span>
             <span class="font-semibold text-[var(--text-primary)]">{{ Math.round(sprint.progress) }}%</span>
           </div>
           <div class="mt-1 h-2 w-full overflow-hidden rounded-full bg-[var(--bg-app)]">
@@ -203,23 +202,23 @@
         </div>
 
         <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-          <span class="rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[var(--text-muted)]">{{ sprint.pendingTickets }} pendientes</span>
-          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">{{ sprint.completedTickets }} completados</span>
-          <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">{{ sprint.blockedTickets }} bloqueados</span>
-          <span class="rounded-full bg-[var(--teal)]/15 px-2 py-0.5 font-semibold text-[var(--teal)]">Velocity {{ sprint.velocity }}</span>
+          <span class="rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[var(--text-muted)]">{{ sprint.pendingTickets }} {{ t('builderPage.sprintPlanner.pending') }}</span>
+          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">{{ sprint.completedTickets }} {{ t('builderPage.sprintPlanner.completed') }}</span>
+          <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">{{ sprint.blockedTickets }} {{ t('builderPage.sprintPlanner.blocked') }}</span>
+          <span class="rounded-full bg-[var(--teal)]/15 px-2 py-0.5 font-semibold text-[var(--teal)]">{{ t('builderPage.sprintPlanner.velocity') }} {{ sprint.velocity }}</span>
         </div>
 
         <div v-if="sprint.sla" class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
-          <span>SLA:</span>
-          <span class="text-[var(--text-primary)]">{{ Math.round(sprint.sla.complianceRate) }}% cumplimiento</span>
-          <span v-if="sprint.sla.breached" class="text-red-400">{{ sprint.sla.breached }} incumplidos</span>
-          <span v-if="sprint.sla.atRisk" class="text-amber-400">{{ sprint.sla.atRisk }} por vencer</span>
+          <span>{{ t('builderPage.sprintPlanner.sla') }}:</span>
+          <span class="text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.compliance', { value: Math.round(sprint.sla.complianceRate) }) }}</span>
+          <span v-if="sprint.sla.breached" class="text-red-400">{{ sprint.sla.breached }} {{ t('builderPage.sprintPlanner.breached') }}</span>
+          <span v-if="sprint.sla.atRisk" class="text-amber-400">{{ sprint.sla.atRisk }} {{ t('builderPage.sprintPlanner.nearDeadline') }}</span>
         </div>
 
         <div class="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-muted)]">
-          <span>{{ sprint.totalTickets }} tickets · {{ sprint.storyPointsTotal }} pts</span>
+          <span>{{ sprint.totalTickets }} tickets · {{ sprint.storyPointsTotal }} {{ t('builderPage.sprintPlanner.points') }}</span>
           <span :class="sprint.isOverdue ? 'font-semibold text-red-400' : ''">
-            {{ sprint.status === 'COMPLETED' ? 'Cerrado' : daysRemainingLabel(sprint.daysRemaining) }}
+            {{ sprint.status === 'COMPLETED' ? t('builderPage.sprintPlanner.closed') : daysRemainingLabel(sprint.daysRemaining) }}
           </span>
         </div>
       </article>
@@ -227,9 +226,9 @@
 
     <section v-if="velocityHistory.length" class="space-y-3 border-y border-[var(--border-subtle)] py-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 class="text-sm font-semibold text-[var(--text-primary)]">Velocity histórica</h3>
+        <h3 class="text-sm font-semibold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.velocityHistory') }}</h3>
         <p class="text-xs text-[var(--text-muted)]">
-          Promedio: <span class="font-semibold text-[var(--teal)]">{{ historyAverage }} pts</span>
+          {{ t('builderPage.sprintPlanner.average') }}: <span class="font-semibold text-[var(--teal)]">{{ historyAverage }} {{ t('builderPage.sprintPlanner.points') }}</span>
         </p>
       </div>
       <div class="space-y-2">
@@ -246,7 +245,7 @@
             ></div>
           </div>
           <span class="whitespace-nowrap text-[var(--text-muted)]">
-            {{ sprint.velocity }} pts · {{ sprint.storyPointsCompleted }} completados
+            {{ sprint.velocity }} {{ t('builderPage.sprintPlanner.points') }} · {{ sprint.storyPointsCompleted }} {{ t('builderPage.sprintPlanner.completed') }}
           </span>
         </div>
       </div>
@@ -278,14 +277,14 @@
             class="rounded-lg border border-[var(--teal)]/60 px-3 py-1.5 text-sm text-[var(--teal)] disabled:opacity-40"
             @click="finishSprint(selected)"
           >
-            Cerrar y calcular Velocity
+            {{ t('builderPage.sprintPlanner.closeAndCalculateVelocity') }}
           </button>
           <button
             type="button"
             class="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm text-red-400"
             @click="removeSprint(selected)"
           >
-            Eliminar
+            {{ t('builderPage.sprintPlanner.delete') }}
           </button>
         </div>
       </div>
@@ -293,48 +292,47 @@
       <!-- Métricas agregadas -->
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-[var(--bg-app)] p-3">
-          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Pendientes</p>
+          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.pending') }}</p>
           <p class="text-xl font-bold text-[var(--text-primary)]">{{ selected.pendingTickets }}</p>
         </div>
         <div class="rounded-xl bg-[var(--bg-app)] p-3">
-          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Completados</p>
+          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.completed') }}</p>
           <p class="text-xl font-bold text-emerald-400">{{ selected.completedTickets }}</p>
         </div>
         <div class="rounded-xl bg-[var(--bg-app)] p-3">
-          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Bloqueados</p>
+          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.blocked') }}</p>
           <p class="text-xl font-bold text-amber-400">{{ selected.blockedTickets }}</p>
         </div>
         <div class="rounded-xl bg-[var(--bg-app)] p-3">
-          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Velocity</p>
+          <p class="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.velocity') }}</p>
           <p class="text-xl font-bold text-[var(--teal)]">
             {{ selected.velocity }}
-            <span class="text-xs font-normal text-[var(--text-muted)]">pts</span>
+            <span class="text-xs font-normal text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.points') }}</span>
           </p>
         </div>
       </div>
 
       <!-- SLA agregado del Sprint -->
       <div class="rounded-xl border border-[var(--border-subtle)] p-3">
-        <p class="text-sm font-semibold text-[var(--text-primary)]">SLA del Sprint</p>
+        <p class="text-sm font-semibold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.slaTitle') || 'Sprint SLA' }}</p>
         <p class="text-xs text-[var(--text-muted)]">
-          El SLA se define por ticket (prioridad/severidad + configuración del ADMIN);
-          aquí se agregan sus resultados.
+          {{ t('builderPage.sprintPlanner.slaDescription') || 'The SLA is defined per ticket (priority/severity + admin settings); this area displays the aggregated results.' }}
         </p>
         <div class="mt-2 flex flex-wrap gap-2 text-[11px]">
-          <span class="rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[var(--text-muted)]">Total: {{ selected.sla.total }}</span>
-          <span class="rounded-full bg-slate-500/15 px-2 py-0.5 text-slate-400">En plazo: {{ selected.sla.onTrack }}</span>
-          <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">Próximos a vencer: {{ selected.sla.atRisk }}</span>
-          <span class="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">Incumplidos: {{ selected.sla.breached }}</span>
-          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">Cumplidos: {{ selected.sla.met }}</span>
+          <span class="rounded-full bg-[var(--bg-app)] px-2 py-0.5 text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.total') }}: {{ selected.sla.total }}</span>
+          <span class="rounded-full bg-slate-500/15 px-2 py-0.5 text-slate-400">{{ t('builderPage.sprintPlanner.onTrack') }}: {{ selected.sla.onTrack }}</span>
+          <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">{{ t('builderPage.sprintPlanner.nearDeadline') }}: {{ selected.sla.atRisk }}</span>
+          <span class="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">{{ t('builderPage.sprintPlanner.breached') }}: {{ selected.sla.breached }}</span>
+          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">{{ t('builderPage.sprintPlanner.met') }}: {{ selected.sla.met }}</span>
           <span class="rounded-full bg-[var(--teal)]/15 px-2 py-0.5 font-semibold text-[var(--teal)]">
-            {{ selected.sla.complianceRate }}% cumplimiento
+            {{ t('builderPage.sprintPlanner.compliance', { value: selected.sla.complianceRate }) }}
           </span>
         </div>
       </div>
 
       <!-- ================= TABLERO POR ESTADO (Kanban existente) ================= -->
       <div>
-        <p class="mb-2 text-sm font-semibold text-[var(--text-primary)]">Tablero del Sprint</p>
+        <p class="mb-2 text-sm font-semibold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.board') }}</p>
         <div class="flex gap-3 overflow-x-auto pb-2">
           <div
             v-for="column in selected.board ?? []"
@@ -368,14 +366,14 @@
       <div class="grid gap-4 lg:grid-cols-2">
         <div class="rounded-xl border border-[var(--border-subtle)] p-3">
           <p class="text-sm font-semibold text-[var(--text-primary)]">
-            Tickets del Sprint ({{ selected.tickets?.length ?? 0 }})
+            {{ t('builderPage.sprintPlanner.ticketsInSprint', { count: selected.tickets?.length ?? 0 }) }}
           </p>
           <p class="text-xs text-[var(--text-muted)]">
-            Los puntos de historia alimentan la Velocity del Sprint.
+            {{ t('builderPage.sprintPlanner.storyPointsInfo') }}
           </p>
 
           <div v-if="!(selected.tickets ?? []).length" class="mt-3 rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-[var(--text-muted)]">
-            Todavía no hay tickets asociados a este Sprint.
+            {{ t('builderPage.sprintPlanner.noTicketsInSprint') }}
           </div>
 
           <ul v-else class="mt-3 space-y-2">
@@ -389,7 +387,7 @@
                 <div class="min-w-0">
                   <p class="truncate text-sm text-[var(--text-primary)]">{{ ticket.title }}</p>
                   <p class="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                    Épica: {{ ticket.epicTitle || epicTitleFor(ticket.epicId) }} · Estado: {{ ticket.status }}
+                    {{ t('builderPage.sprintPlanner.epic') }}: {{ ticket.epicTitle || epicTitleFor(ticket.epicId) }} · {{ t('builderPage.sprintPlanner.state') }}: {{ ticket.status }}
                   </p>
                 </div>
                 <SlaBadge :status="store.slaForTicket(ticket.id)" />
@@ -414,7 +412,7 @@
                   class="rounded border border-red-500/40 px-2 py-1 text-[11px] text-red-400"
                   @click="detachTicket(ticket)"
                 >
-                  Quitar del Sprint
+                  {{ t('builderPage.sprintPlanner.removeFromSprint') }}
                 </button>
               </div>
             </li>
@@ -423,15 +421,15 @@
 
         <!-- ================= ASOCIAR TICKETS EXISTENTES ================= -->
         <div class="rounded-xl border border-[var(--border-subtle)] p-3">
-          <p class="text-sm font-semibold text-[var(--text-primary)]">Asociar tickets existentes</p>
+          <p class="text-sm font-semibold text-[var(--text-primary)]">{{ t('builderPage.sprintPlanner.associateExisting') }}</p>
           <p class="text-xs text-[var(--text-muted)]">
-            Solo tickets del mismo proyecto. Se conserva su Épica (relación independiente).
+            {{ t('builderPage.sprintPlanner.associateDescription') }}
           </p>
 
           <input
             v-model="availableSearch"
             type="search"
-            placeholder="Buscar ticket…"
+            :placeholder="t('builderPage.sprintPlanner.searchTickets')"
             class="mt-3 w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-app)] px-3 py-2 text-sm text-[var(--text-primary)]"
           />
 
@@ -446,26 +444,26 @@
                 <span class="block truncate text-sm text-[var(--text-primary)]">{{ ticket.title }}</span>
                 <span class="block text-[11px] text-[var(--text-muted)]">
                   {{ ticket.epicTitle || epicTitleFor(ticket.epicId) }} · {{ ticket.status }}
-                  <template v-if="ticket.sprintId"> · Sprint actual: {{ ticket.sprintName || 'otro Sprint' }}</template>
+                  <template v-if="ticket.sprintId"> · {{ t('builderPage.sprintPlanner.currentSprint') || 'Current sprint:' }} {{ ticket.sprintName || t('builderPage.sprintPlanner.noSprint') }}</template>
                 </span>
               </span>
               <SlaBadge :status="store.slaForTicket(ticket.id)" compact />
             </label>
 
             <p v-if="!filteredAvailableTickets.length" class="rounded-lg border border-dashed border-[var(--border-subtle)] px-3 py-4 text-center text-xs text-[var(--text-muted)]">
-              No hay tickets disponibles en este proyecto.
+              {{ t('builderPage.sprintPlanner.noTicketsAvailable') }}
             </p>
           </div>
 
           <div class="mt-3 flex items-center justify-between gap-2">
-            <span class="text-[11px] text-[var(--text-muted)]">{{ assignSelection.length }} seleccionado(s)</span>
+            <span class="text-[11px] text-[var(--text-muted)]">{{ t('builderPage.sprintPlanner.selected', { count: assignSelection.length }) }}</span>
             <button
               type="button"
               :disabled="!assignSelection.length || store.isSaving || !canManage"
               class="rounded-lg bg-[var(--teal-action)] px-3 py-1.5 text-sm text-white hover:bg-[var(--teal-90)] disabled:opacity-50"
               @click="attachTickets"
             >
-              Asociar al Sprint
+              {{ t('builderPage.sprintPlanner.associateToSprint') }}
             </button>
           </div>
         </div>
