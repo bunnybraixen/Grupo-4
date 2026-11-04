@@ -1142,6 +1142,11 @@ export interface AuthTokens {
    * Segundos hasta que el accessToken expira
    */
   expiresIn?: number
+
+  /**
+   * Timestamp de expiración del access token en milisegundos
+   */
+  expiresAt?: number
 }
 
 /**

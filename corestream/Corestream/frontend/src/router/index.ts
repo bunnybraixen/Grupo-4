@@ -14,6 +14,7 @@
 
 import { createRouter, createWebHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
 import type { UserRole } from '@/types'
+import { clearAuthTokens, isAccessTokenExpired, readStoredAuthTokens } from '@/services/api'
 
 /**
  * ========================================
@@ -401,17 +402,20 @@ router.beforeEach(
     from: RouteLocationNormalized,
     next: NavigationGuardNext
   ): Promise<void> => {
-    /**
-     * Obtiene el token de autenticación almacenado.
-     *
-     * `accessToken` lo escribe `setAuthTokens()` (services/api.ts) en cada
-     * login/refresh. Se acepta también `authTokens` (objeto con los tokens)
-     * como respaldo por si la sesión se restauró desde una versión anterior
-     * que solo persistía ese objeto.
-     */
-    const token =
-      localStorage.getItem('accessToken') || localStorage.getItem('authTokens')
+    const storedTokens = readStoredAuthTokens()
+    const token = storedTokens?.accessToken ?? localStorage.getItem('accessToken')
     const userRole = localStorage.getItem('userRole') as UserRole | null
+    const hasExpiredToken = !!token && isAccessTokenExpired(token, 30000)
+
+    if (hasExpiredToken) {
+      clearAuthTokens()
+      localStorage.removeItem('userRole')
+      next({
+        name: 'Login',
+        query: { redirect: to.path }
+      })
+      return
+    }
 
     /**
      * Meta información de la ruta

@@ -107,6 +107,42 @@ const normalizeRole = (role: unknown): UserRole => {
 }
 
 /**
+ * Decodifica el payload de un JWT sin validar firma.
+ * Se usa solo para leer el campo `exp` en el cliente y decidir si el token ya expiró.
+ */
+const decodeJwtPayload = (token: string | null | undefined): Record<string, unknown> | null => {
+  if (!token) return null
+
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const decoded = atob(padded)
+    return JSON.parse(decoded)
+  } catch {
+    return null
+  }
+}
+
+export const getAccessTokenExpiryMs = (token: string | null | undefined): number | null => {
+  const payload = decodeJwtPayload(token)
+  if (!payload || payload.exp === undefined || payload.exp === null) return null
+
+  const exp = Number(payload.exp)
+  if (!Number.isFinite(exp)) return null
+
+  return exp * 1000
+}
+
+export const isAccessTokenExpired = (token: string | null | undefined, skewMs = 0): boolean => {
+  const expiry = getAccessTokenExpiryMs(token)
+  if (expiry === null) return false
+  return Date.now() >= expiry - skewMs
+}
+
+/**
  * Normaliza la respuesta de usuario del backend (snake_case plano) al tipo
  * `User` que usa el frontend.
  */
@@ -151,11 +187,24 @@ const normalizeTeam = (raw: any): Team => {
  */
 const normalizeTokens = (raw: any): AuthTokens => {
   const source = raw?.tokens ?? raw?.data?.tokens ?? raw?.data ?? raw ?? {}
+  const accessToken = source.accessToken ?? source.access_token ?? ''
+  const refreshToken = source.refreshToken ?? source.refresh_token ?? ''
+  const expiresAt = getAccessTokenExpiryMs(accessToken) ?? source.expiresAt ?? source.expires_at ?? undefined
+  const expiresIn =
+    typeof source.expiresIn === 'number'
+      ? source.expiresIn
+      : typeof source.expires_in === 'number'
+        ? source.expires_in
+        : expiresAt !== undefined
+          ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+          : undefined
+
   return {
-    accessToken: source.accessToken ?? source.access_token ?? '',
-    refreshToken: source.refreshToken ?? source.refresh_token ?? '',
+    accessToken,
+    refreshToken,
     tokenType: source.tokenType ?? source.token_type ?? 'Bearer',
-    expiresIn: source.expiresIn ?? source.expires_in ?? undefined
+    expiresIn,
+    expiresAt
   }
 }
 
@@ -187,6 +236,31 @@ const hydrateAuthState = (): void => {
 }
 
 hydrateAuthState()
+
+export const readStoredAuthTokens = (): AuthTokens | null => {
+  try {
+    const stored = localStorage.getItem(AUTH_TOKENS_KEY)
+    if (!stored) return null
+
+    const parsed = JSON.parse(stored)
+    return normalizeTokens(parsed)
+  } catch {
+    const fallbackToken = localStorage.getItem(ACCESS_TOKEN_KEY)
+    const fallbackRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+
+    if (!fallbackToken) return null
+
+    return {
+      accessToken: fallbackToken,
+      refreshToken: fallbackRefreshToken ?? '',
+      tokenType: 'Bearer',
+      expiresAt: getAccessTokenExpiryMs(fallbackToken) ?? undefined,
+      expiresIn: getAccessTokenExpiryMs(fallbackToken)
+        ? Math.max(0, Math.ceil((getAccessTokenExpiryMs(fallbackToken)! - Date.now()) / 1000))
+        : undefined
+    }
+  }
+}
 
 /**
  * Crea y configura la instancia de Axios
@@ -407,11 +481,15 @@ const createApiClient = (): AxiosInstance => {
           } catch (refreshError) {
             /**
              * Si la renovación falla (refresh token expirado),
-             * limpia los tokens y rechaza la promesa
-             * El usuario será redirigido a login
+             * limpiamos la sesión y forzamos login.
              */
             authState.accessToken = null
             authState.refreshToken = null
+            clearAuthTokens()
+
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login'
+            }
 
             return Promise.reject(refreshError)
           }
@@ -422,6 +500,11 @@ const createApiClient = (): AxiosInstance => {
            */
           authState.accessToken = null
           authState.refreshToken = null
+          clearAuthTokens()
+
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login'
+          }
         }
       }
 
@@ -2145,8 +2228,20 @@ export const api = {
  * @param tokens - Nuevos tokens de autenticación
  */
 export const setAuthTokens = (tokens: AuthTokens): void => {
-  authState.accessToken = tokens.accessToken
-  authState.refreshToken = tokens.refreshToken
+  const normalized = {
+    ...tokens,
+    expiresAt: tokens.expiresAt ?? getAccessTokenExpiryMs(tokens.accessToken) ?? undefined,
+    expiresIn:
+      tokens.expiresIn ??
+      (tokens.expiresAt !== undefined
+        ? Math.max(0, Math.ceil((tokens.expiresAt - Date.now()) / 1000))
+        : getAccessTokenExpiryMs(tokens.accessToken) !== null
+          ? Math.max(0, Math.ceil((getAccessTokenExpiryMs(tokens.accessToken)! - Date.now()) / 1000))
+          : undefined)
+  }
+
+  authState.accessToken = normalized.accessToken
+  authState.refreshToken = normalized.refreshToken
 
   /**
    * Persistencia: se guarda el objeto completo (`authTokens`) y además las
@@ -2155,9 +2250,9 @@ export const setAuthTokens = (tokens: AuthTokens): void => {
    * recarga de página dejaba la SPA sin token y la API respondía 403.
    */
   try {
-    localStorage.setItem(AUTH_TOKENS_KEY, JSON.stringify(tokens))
-    localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken ?? '')
-    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken ?? '')
+    localStorage.setItem(AUTH_TOKENS_KEY, JSON.stringify(normalized))
+    localStorage.setItem(ACCESS_TOKEN_KEY, normalized.accessToken ?? '')
+    localStorage.setItem(REFRESH_TOKEN_KEY, normalized.refreshToken ?? '')
   } catch {
     // Modo privado / almacenamiento no disponible: la sesión seguirá viva
     // en memoria hasta que se recargue la página.
