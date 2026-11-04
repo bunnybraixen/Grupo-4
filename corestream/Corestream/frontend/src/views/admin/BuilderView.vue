@@ -381,16 +381,16 @@
 
       <!-- Consulta de tickets: filtra por título o estado dentro de la aplicación -->
       <section v-if="canManageApplications" class="mb-4 border border-[var(--border-subtle)] rounded-lg p-3">
-        <h3 class="text-sm font-semibold mb-2">Etiquetas reutilizables</h3>
+        <h3 class="text-sm font-semibold mb-2">{{ t('builderPage.reusableTags') }}</h3>
         <form class="flex gap-2 mb-2" @submit.prevent="createTag">
-          <input v-model="newTagName" maxlength="80" placeholder="Nueva etiqueta"
+          <input v-model="newTagName" maxlength="80" :placeholder="t('builderPage.newTag')"
             class="flex-1 min-w-0 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm" />
-          <button :disabled="working || !newTagName.trim()" class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] disabled:opacity-50">Crear</button>
+          <button :disabled="working || !newTagName.trim()" class="px-3 py-2 rounded-lg text-sm bg-[var(--teal)]/20 text-[var(--teal)] disabled:opacity-50">{{ t('builderPage.createTag') }}</button>
         </form>
         <div class="flex flex-wrap gap-2">
           <span v-for="tag in availableTags" :key="tag.id" class="inline-flex items-center gap-2 rounded-full bg-[var(--bg-app)] px-3 py-1 text-xs">
             {{ tag.name }}
-            <button type="button" :disabled="working" :aria-label="`Eliminar etiqueta ${tag.name}`" @click="deleteTag(tag)" class="text-red-400">×</button>
+            <button type="button" :disabled="working" :aria-label="t('builderPage.deleteTag', { name: tag.name })" @click="deleteTag(tag)" class="text-red-400">×</button>
           </span>
         </div>
         <p v-if="tagError" class="mt-2 text-xs text-red-400">{{ tagError }}</p>
@@ -399,39 +399,39 @@
       <div id="builder-ticket-filters" class="mb-4 space-y-3">
         <input
           v-model="searchQuery"
-          placeholder="Buscar tickets por título, descripción o estado…"
+          :placeholder="t('builderPage.filterTicketsPlaceholder')"
           class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg p-2 outline-none focus:border-[var(--teal)]"
         />
 
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-            <span>Responsable</span>
+            <span>{{ t('workbenchDashboard.assignee') }}</span>
             <select v-model="ticketAssigneeFilter" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
-              <option value="">Todos</option>
+              <option value="">{{ t('workbenchDashboard.statusAll') }}</option>
               <option v-for="user in usersList" :key="user.id" :value="user.id">{{ user.fullName || user.email }}</option>
             </select>
           </label>
           <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-            <span>Sprint</span>
+            <span>{{ t('workbenchDashboard.sprint') }}</span>
             <select v-model="ticketSprintFilter" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
-              <option value="">Todos</option>
+              <option value="">{{ t('workbenchDashboard.statusAll') }}</option>
               <option v-for="sprint in selectedAppSprints" :key="sprint.id" :value="sprint.id">{{ sprint.name }}</option>
             </select>
           </label>
           <label class="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
-            <span>Ordenar por</span>
+            <span>{{ t('workbenchDashboard.sortBy') }}</span>
             <select v-model="ticketSortBy" class="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--teal)]">
-              <option value="default">Orden por defecto</option>
-              <option value="status">Estado</option>
-              <option value="priority">Prioridad</option>
-              <option value="title">Nombre alfabético</option>
-              <option value="progress">Avance</option>
+              <option value="default">{{ t('workbenchDashboard.defaultSort') }}</option>
+              <option value="status">{{ t('workbenchDashboard.statusLabel') }}</option>
+              <option value="priority">{{ t('workbenchDashboard.priority') }}</option>
+              <option value="title">{{ t('workbenchDashboard.alphabetical') }}</option>
+              <option value="progress">{{ t('workbenchDashboard.progress') }}</option>
             </select>
           </label>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-medium text-[var(--text-muted)]">Estado:</span>
+          <span class="text-xs font-medium text-[var(--text-muted)]">{{ t('workbenchDashboard.statusLabel') }}</span>
           <button
             v-for="status in ['all', 'PENDING', 'TODO', 'IN_PROGRESS', 'BLOCKED', 'REDIRECTED', 'DONE']"
             :key="status"
@@ -444,9 +444,9 @@
                 : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
             ]"
           >
-            {{ status === 'all' ? 'Todos' : statusLabel(status) }}
+            {{ status === 'all' ? t('workbenchDashboard.statusAll') : statusLabel(status) }}
           </button>
-          <button v-if="ticketStatusFilter !== 'all'" type="button" @click="ticketStatusFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">Quitar</button>
+          <button v-if="ticketStatusFilter !== 'all'" type="button" @click="ticketStatusFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">{{ t('builderPage.clear') }}</button>
         </div>
 
         <button
@@ -458,11 +458,11 @@
             ticketOverdueFilter ? 'bg-red-500 text-white' : 'border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-red-400'
           ]"
         >
-          Solo vencidos
+          {{ t('workbenchDashboard.dateOverdue') }}
         </button>
 
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-medium text-[var(--text-muted)]">Prioridad:</span>
+          <span class="text-xs font-medium text-[var(--text-muted)]">{{ t('workbenchDashboard.priority') }}</span>
           <button
             v-for="priority in ['all', 'LOW', 'MEDIUM', 'HIGH', 'URGENT']"
             :key="priority"
@@ -475,9 +475,9 @@
                 : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--teal)]'
             ]"
           >
-            {{ priority === 'all' ? 'Todas' : priorityLabel(priority) }}
+            {{ priority === 'all' ? t('workbenchDashboard.statusAll') : priorityLabel(priority) }}
           </button>
-          <button v-if="ticketPriorityFilter !== 'all'" type="button" @click="ticketPriorityFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">Quitar</button>
+          <button v-if="ticketPriorityFilter !== 'all'" type="button" @click="ticketPriorityFilter = 'all'" class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]">{{ t('builderPage.clear') }}</button>
         </div>
         <!-- ============================================================ -->
         <!-- NEW-03: filtro por etiquetas con chips                        -->
@@ -487,7 +487,7 @@
         <!-- ver todos los tickets).                                       -->
         <!-- ============================================================ -->
         <div v-if="availableTags.length" class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-[var(--text-muted)]">Etiquetas:</span>
+          <span class="text-xs text-[var(--text-muted)]">{{ t('workbenchDashboard.tags') }}</span>
           <button
             v-for="tag in availableTags"
             :key="tag.id"
@@ -509,7 +509,7 @@
             @click="clearTicketFilters"
             class="text-xs text-[var(--text-muted)] underline hover:text-[var(--teal)]"
           >
-            Quitar filtros
+            {{ t('builderPage.clearFilters') }}
           </button>
         </div>
       </div>
