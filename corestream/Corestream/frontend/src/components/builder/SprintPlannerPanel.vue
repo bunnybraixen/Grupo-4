@@ -259,7 +259,7 @@
           <p class="text-xs text-[var(--text-muted)]">
             {{ selected.applicationName || projectName(selected.applicationId) }} ·
             {{ formatDate(selected.startDate) }} → {{ formatDate(selected.endDate) }}
-            ({{ selected.durationDays }} días)
+            ({{ t('builderPage.sprintPlanner.durationDays', { count: selected.durationDays }) }})
           </p>
         </div>
 
@@ -269,7 +269,7 @@
             class="rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-primary)]"
             @click="openEditForm(selected)"
           >
-            Editar
+            {{ t('common.edit') }}
           </button>
           <button
             type="button"
@@ -347,7 +347,7 @@
             </div>
 
             <div v-if="!column.tickets.length" class="rounded-lg border border-dashed border-[var(--border-subtle)] px-2 py-3 text-center text-[11px] text-[var(--text-muted)]">
-              Sin tickets
+              {{ t('builderPage.sprintPlanner.noTicketsInColumn') }}
             </div>
 
             <div class="space-y-2">
@@ -395,7 +395,7 @@
 
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <label class="flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
-                  Puntos
+                  {{ t('builderPage.sprintPlanner.points') }}
                   <input
                     :value="ticket.storyPoints ?? 0"
                     type="number"
@@ -482,6 +482,7 @@
  * Kanban del Builder.
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSprintsStore } from '@/stores/sprints'
 import SlaBadge from '@/components/shared/SlaBadge.vue'
 import TicketCard from './TicketCard.vue'
@@ -506,6 +507,7 @@ const emit = defineEmits<{
   refresh: [epicIds: string[]]
 }>()
 
+const { t } = useI18n()
 const store = useSprintsStore()
 
 const projectFilter = ref(props.initialApplicationId ?? '')
@@ -701,11 +703,11 @@ const closeForm = (): void => {
 const submitForm = async (): Promise<void> => {
   formError.value = ''
   if (!form.value.startDate || !form.value.endDate) {
-    formError.value = 'Indica la fecha de inicio y la de término.'
+    formError.value = t('builderPage.sprintPlanner.formMissingDates')
     return
   }
   if (new Date(form.value.endDate) <= new Date(form.value.startDate)) {
-    formError.value = 'La fecha de término debe ser posterior a la fecha de inicio.'
+    formError.value = t('builderPage.sprintPlanner.formEndDateAfterStart')
     return
   }
 
@@ -735,7 +737,7 @@ const submitForm = async (): Promise<void> => {
 
 /** Cierra el Sprint y calcula su Velocity */
 const finishSprint = async (sprint: Sprint): Promise<void> => {
-  if (!window.confirm(`¿Cerrar el Sprint «${sprint.name}» y calcular su Velocity?`)) return
+  if (!window.confirm(t('builderPage.sprintPlanner.confirmCloseSprint', { name: sprint.name }))) return
   try {
     await store.completeSprint(sprint.id)
     selectedId.value = sprint.id
@@ -747,7 +749,7 @@ const finishSprint = async (sprint: Sprint): Promise<void> => {
 
 /** Elimina el Sprint (los tickets se conservan) */
 const removeSprint = async (sprint: Sprint): Promise<void> => {
-  if (!window.confirm(`¿Eliminar el Sprint «${sprint.name}»? Los tickets NO se eliminan.`)) return
+  if (!window.confirm(t('builderPage.sprintPlanner.confirmDeleteSprint', { name: sprint.name }))) return
   try {
     await store.deleteSprint(sprint.id)
     if (selectedId.value === sprint.id) selectedId.value = null
@@ -829,9 +831,9 @@ const formatDate = (value?: string): string => {
 /** Etiqueta del estado del Sprint */
 const statusLabel = (status: string): string => {
   const map: Record<string, string> = {
-    PLANNED: 'Planificado',
-    ACTIVE: 'En curso',
-    COMPLETED: 'Cerrado'
+    PLANNED: t('builderPage.sprintPlanner.statusPlanned'),
+    ACTIVE: t('builderPage.sprintPlanner.statusActive'),
+    COMPLETED: t('builderPage.sprintPlanner.statusCompleted')
   }
   return map[status] ?? status
 }
@@ -850,10 +852,10 @@ const statusClasses = (status: string): string => {
 
 /** Texto de días restantes / excedidos */
 const daysRemainingLabel = (days: number): string => {
-  if (days > 1) return `${days} días restantes`
-  if (days === 1) return '1 día restante'
-  if (days === 0) return 'Vence hoy'
-  return `${Math.abs(days)} días excedido`
+  if (days > 1) return t('builderPage.sprintPlanner.daysRemaining', { count: days })
+  if (days === 1) return t('builderPage.sprintPlanner.oneDayRemaining')
+  if (days === 0) return t('builderPage.sprintPlanner.dueToday')
+  return t('builderPage.sprintPlanner.daysOverdue', { count: Math.abs(days) })
 }
 
 /** Convierte un ISO a valor de <input type="datetime-local"> */
