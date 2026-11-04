@@ -2506,11 +2506,27 @@ const displayLiveDuration = (ticket: Ticket, timer: 'work' | 'blocked'): string 
 const displayWorkTime = (ticket: Ticket): string => displayLiveDuration(ticket, 'work')
 const displayBlockedTime = (ticket: Ticket): string => displayLiveDuration(ticket, 'blocked')
 
-const statusLabel = (status: string): string =>
-  ({ PENDING: 'Pendientes', TODO: 'Por hacer', IN_PROGRESS: 'En progreso', BLOCKED: 'Bloqueado', REDIRECTED: 'Redirigido', DONE: 'Hecho' })[status] ?? status
+const statusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    PENDING: t('reportsPage.indicators.pending'),
+    TODO: t('statuses.todo'),
+    IN_PROGRESS: t('statuses.inProgress'),
+    BLOCKED: t('statuses.blocked'),
+    REDIRECTED: t('statuses.redirected'),
+    DONE: t('statuses.done'),
+  }
+  return labels[status] ?? status
+}
 
-const priorityLabel = (priority: string): string =>
-  ({ LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', URGENT: 'Urgente' })[priority] ?? priority
+const priorityLabel = (priority: string): string => {
+  const labels: Record<string, string> = {
+    LOW: t('statuses.low'),
+    MEDIUM: t('statuses.medium'),
+    HIGH: t('statuses.high'),
+    URGENT: t('statuses.urgent'),
+  }
+  return labels[priority] ?? priority
+}
 
 const statusClass = (status: string): string =>
   ({
